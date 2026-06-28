@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prashna Validation Console</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/validation.css" />
+  </head>
+  <body>
+    <main class="validation-shell">
+      <header class="validation-header">
+        <div>
+          <p class="eyebrow">Calculation QA</p>
+          <h1>Validation Console</h1>
+          <p class="lede">Compare our Swiss Ephemeris output against trusted reference tools and save expected values.</p>
+        </div>
+        <a class="share-link" href="/">Back to App</a>
+      </header>
+
+      <section class="validation-summary" id="summary"></section>
+
+      <section class="validation-tools">
+        <input id="case-filter" placeholder="Filter by case, city, category, status" />
+        <button type="button" id="refresh-button">Refresh</button>
+      </section>
+
+      <section id="case-list" class="case-list"></section>
+    </main>
+
+    <script src="/validation.js"></script>
+  </body>
+</html>

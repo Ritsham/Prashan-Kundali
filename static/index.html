@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kundali Studio</title>
+    <link rel="stylesheet" href="/styles.css?v=20260628-tabbed-interpretation" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="entry">
+        <div class="intro-panel">
+          <p class="eyebrow">Lahiri sidereal calculations</p>
+          <h1>Kundali Studio</h1>
+          <p class="lede">
+            Generate a precise North Indian Prashna or Lagna chart with key divisional charts, planetary positions, and complete Vimshottari dasha drill-down.
+          </p>
+          <div class="trust-strip" aria-label="Calculation settings">
+            <span>Swiss Ephemeris</span>
+            <span>Whole-sign houses</span>
+            <span>16 varga charts</span>
+            <span>Mahadasha to Prana</span>
+          </div>
+          <p class="utility-link"><a href="/validation.html">Open validation console</a></p>
+        </div>
+
+        <div class="mode-panel" id="mode-panel">
+          <button type="button" class="mode-card" data-mode="prashna">
+            <span class="mode-icon">?</span>
+            <strong>Prashna Kundli</strong>
+            <span>Question-based chart using exact submit time.</span>
+          </button>
+          <button type="button" class="mode-card" data-mode="lagna">
+            <span class="mode-icon">D1</span>
+            <strong>Lagna Kundli</strong>
+            <span>Birth chart using name, gender, birth time, and birthplace.</span>
+          </button>
+        </div>
+
+        <form id="prashna-form" class="form hidden">
+          <div class="form-head">
+            <div>
+              <p class="eyebrow" id="mode-eyebrow">Selected mode</p>
+              <h2 id="form-title">Kundli</h2>
+            </div>
+            <button type="button" id="change-mode-button">Change</button>
+          </div>
+
+          <label>
+            Name
+            <input id="name" name="name" autocomplete="name" required placeholder="Your name" />
+          </label>
+
+          <label id="question-field">
+            Question
+            <textarea id="question" name="question" required rows="4" placeholder="Ask the exact Prashna question"></textarea>
+          </label>
+
+          <label id="question-domain-field">
+            Question domain
+            <select id="question_domain" name="question_domain">
+              <option value="">General / not sure</option>
+              <option value="wealth">Wealth / money</option>
+              <option value="marriage">Marriage / relationship</option>
+              <option value="child">Child / progeny</option>
+              <option value="job_career">Job / career</option>
+              <option value="illness">Illness / health</option>
+              <option value="foreign">Foreign / travel</option>
+              <option value="education">Education</option>
+            </select>
+          </label>
+
+          <label id="job-type-field" class="hidden">
+            Job type
+            <select id="job_type" name="job_type">
+              <option value="">Not sure</option>
+              <option value="government">Government job</option>
+              <option value="private">Private job</option>
+            </select>
+          </label>
+
+          <div id="birth-fields" class="hidden">
+            <label>
+              Gender
+              <select id="gender" name="gender">
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+
+            <label>
+              Birth date and time
+              <input id="birth_datetime_local" name="birth_datetime_local" type="datetime-local" step="1" />
+            </label>
+          </div>
+
+          <label>
+            City / place
+            <input id="place_search" name="place_search" autocomplete="off" required placeholder="Type city, e.g. New Delhi" />
+          </label>
+
+          <div class="location-search-actions">
+            <button type="button" id="place-search-button">Search Place</button>
+            <button type="button" id="gps-button">Use GPS</button>
+          </div>
+
+          <div id="place-results" class="place-results" aria-live="polite"></div>
+
+          <details class="manual-location">
+            <summary>Manual coordinates</summary>
+            <div class="location-grid">
+              <label>
+                Latitude
+                <input id="latitude" name="latitude" inputmode="decimal" required placeholder="28.6139" />
+              </label>
+              <label>
+                Longitude
+                <input id="longitude" name="longitude" inputmode="decimal" required placeholder="77.2090" />
+              </label>
+            </div>
+
+            <label>
+              Place name
+              <input id="place_name" name="place_name" required placeholder="New Delhi, India" />
+            </label>
+          </details>
+
+          <details class="manual-location">
+            <summary>Validation time override</summary>
+            <label>
+              Exact UTC time
+              <input id="asked_at_utc" name="asked_at_utc" placeholder="2026-06-26T07:35:00+00:00" />
+            </label>
+            <p class="field-hint">Leave blank for true Prashna mode. Use only when matching AstroSage/DrikPanchang input time.</p>
+          </details>
+
+          <div class="actions">
+            <button type="submit" id="submit-button">Generate Kundli</button>
+          </div>
+          <p id="status" class="status"></p>
+        </form>
+      </section>
+
+      <section id="result" class="result hidden">
+        <div class="result-head">
+          <div>
+            <p class="eyebrow">Generated chart</p>
+            <h2 id="chart-title">Chart</h2>
+          </div>
+          <a id="share-link" class="share-link" href="#">Share link</a>
+        </div>
+
+        <div class="facts" id="facts"></div>
+
+        <nav id="result-tabs" class="result-tabs hidden" aria-label="Result views">
+          <button type="button" id="charts-view-button" data-result-view="charts" class="is-active">Charts</button>
+          <button type="button" id="interpretation-view-button" data-result-view="interpretation">Interpretation</button>
+        </nav>
+
+        <article id="interpretation-card" class="interpretation-card hidden">
+          <div class="interpretation-head">
+            <div>
+              <p class="eyebrow" id="interpretation-domain">Interpretation</p>
+              <h3 id="interpretation-title">Prashna Reading</h3>
+            </div>
+            <span id="interpretation-confidence" class="interpretation-confidence"></span>
+          </div>
+          <div id="interpretation-body"></div>
+        </article>
+
+        <button type="button" class="grid-resizer grid-resizer-left" data-resize-col="left" aria-label="Resize chart and table columns"></button>
+        <button type="button" class="grid-resizer grid-resizer-right" data-resize-col="right" aria-label="Resize table and dasha columns"></button>
+
+        <article class="worksheet">
+          <div class="worksheet-head">
+            <div>
+              <p class="eyebrow">Worksheet</p>
+              <h3>Topic Charts</h3>
+            </div>
+            <div class="worksheet-actions">
+              <select id="chart-picker"></select>
+              <button type="button" id="add-chart-button">Add Chart</button>
+              <button type="button" id="reset-worksheet-button">Reset</button>
+            </div>
+          </div>
+          <div id="topic-chart-tabs" class="chart-tabs"></div>
+          <div id="divisional-charts" class="worksheet-canvas"></div>
+          <div id="panel-palette" class="panel-palette hidden" aria-live="polite"></div>
+        </article>
+
+        <article class="planet-card">
+          <h3>Planetary Positions</h3>
+          <div class="table-wrap">
+            <table id="planet-table"></table>
+          </div>
+        </article>
+
+        <button type="button" class="row-resizer" data-resize-row="middle" aria-label="Resize planetary and transit panels"></button>
+
+        <article id="transit-section" class="hidden">
+          <div class="dasha-app-head">
+            <div>
+              <p class="eyebrow">Current gochar</p>
+              <h3>Transit for Lagna Kundli</h3>
+            </div>
+            <span class="dasha-system">Birth Lagna houses</span>
+          </div>
+          <div id="transit-facts" class="facts transit-facts"></div>
+          <div class="transit-layout">
+            <div>
+              <h3>Transit Chart</h3>
+              <div id="transit-chart" class="north-chart"></div>
+            </div>
+            <div class="table-wrap">
+              <table id="transit-table"></table>
+            </div>
+          </div>
+        </article>
+
+        <article class="dasha-card">
+          <div class="dasha-app-head">
+            <div>
+              <p class="eyebrow">Time periods</p>
+              <h3>Vimshottari Dasha</h3>
+            </div>
+            <span class="dasha-system">120 year cycle</span>
+          </div>
+          <div id="dasha-summary" class="dasha-summary"></div>
+          <div class="dasha-drillbar">
+            <button type="button" id="dasha-back-button" disabled>Back</button>
+            <div>
+              <h3 id="dasha-heading" class="dasha-heading">Mahadasha</h3>
+              <p id="dasha-path" class="dasha-path">Select a period to open the next dasha level.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="dasha-table"></table>
+          </div>
+          <p class="dasha-note">Dates shown are period ending dates. Drill-down levels: Mahadasha, Antardasha, Pratyantardasha, Sookshma, Prana.</p>
+        </article>
+      </section>
+    </main>
+
+    <script src="/app.js?v=20260628-tabbed-interpretation"></script>
+  </body>
+</html>

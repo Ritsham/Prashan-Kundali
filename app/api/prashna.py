@@ -1,0 +1,108 @@
+from datetime import datetime, timezone
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from app.services.chart_calculator import CalculationDependencyError, calculate_prashna_chart
+from app.services.geocoding_service import geocode_place
+from app.services.timezone_service import timezone_at
+from app.storage.database import get_chart, save_chart
+
+router = APIRouter()
+
+
+class LocationInput(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    place_name: str = Field(min_length=1, max_length=160)
+
+
+class PrashnaRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    question: str = Field(min_length=3, max_length=1000)
+    question_domain: str = Field(default="", max_length=40)
+    question_subdomain: str = Field(default="", max_length=40)
+    location: LocationInput
+    asked_at_utc: Optional[str] = None
+
+
+class LagnaRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    gender: str = Field(pattern="^(male|female|other)$")
+    birth_datetime_local: str = Field(min_length=16, max_length=32)
+    location: LocationInput
+
+
+@router.post("/prashna")
+def create_prashna(payload: PrashnaRequest) -> dict:
+    asked_at_utc = datetime.now(timezone.utc)
+    if payload.asked_at_utc:
+        try:
+            asked_at_utc = datetime.fromisoformat(payload.asked_at_utc).astimezone(timezone.utc)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid asked_at_utc ISO datetime.") from exc
+    try:
+        chart = calculate_prashna_chart(
+            question=payload.question,
+            name=payload.name,
+            asked_at_utc=asked_at_utc,
+            latitude=payload.location.latitude,
+            longitude=payload.location.longitude,
+            place_name=payload.location.place_name,
+            chart_type="prashna",
+            question_domain=payload.question_domain,
+            question_subdomain=payload.question_subdomain,
+        )
+    except CalculationDependencyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    chart_id = save_chart(chart)
+    chart["id"] = chart_id
+    return {"chart_id": chart_id, "chart": chart}
+
+
+@router.post("/lagna")
+def create_lagna(payload: LagnaRequest) -> dict:
+    try:
+        tz_name = timezone_at(payload.location.latitude, payload.location.longitude)
+        local_dt = datetime.fromisoformat(payload.birth_datetime_local)
+        if local_dt.tzinfo is None:
+            local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
+        birth_utc = local_dt.astimezone(timezone.utc)
+        chart = calculate_prashna_chart(
+            question="",
+            name=payload.name,
+            asked_at_utc=birth_utc,
+            latitude=payload.location.latitude,
+            longitude=payload.location.longitude,
+            place_name=payload.location.place_name,
+            chart_type="lagna",
+            gender=payload.gender,
+        )
+    except CalculationDependencyError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    chart_id = save_chart(chart)
+    chart["id"] = chart_id
+    return {"chart_id": chart_id, "chart": chart}
+
+
+@router.get("/charts/{chart_id}")
+def read_chart(chart_id: str) -> dict:
+    chart = get_chart(chart_id)
+    if not chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+    return {"chart_id": chart_id, "chart": chart}
+
+
+@router.get("/geocode")
+def geocode(query: str, limit: int = 6) -> dict:
+    if len(query.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Enter at least 2 characters.")
+    return {"query": query, "results": geocode_place(query, limit=max(1, min(limit, 8)))}
