@@ -115,3 +115,33 @@ def merge_results(local: list[dict], remote: list[dict]) -> list[dict]:
         seen.add(key)
         merged.append(item)
     return merged
+
+
+def reverse_geocode_place(lat: float, lon: float) -> dict:
+    NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
+    params = urlencode(
+        {
+            "lat": str(lat),
+            "lon": str(lon),
+            "format": "jsonv2",
+            "addressdetails": "1",
+        }
+    )
+    request = Request(f"{NOMINATIM_REVERSE_URL}?{params}", headers={"User-Agent": USER_AGENT})
+    try:
+        with urlopen(request, timeout=8) as response:
+            item = json.loads(response.read().decode("utf-8"))
+            return {
+                "place_name": item.get("display_name", f"{lat}, {lon}"),
+                "latitude": round(lat, 6),
+                "longitude": round(lon, 6),
+                "source": "nominatim-reverse",
+            }
+    except Exception as e:
+        return {
+            "place_name": f"GPS: {lat}, {lon}",
+            "latitude": round(lat, 6),
+            "longitude": round(lon, 6),
+            "source": "fallback",
+        }
+

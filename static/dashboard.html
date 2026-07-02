@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astrologer Dashboard - Prashna Kundli</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .dashboard-container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 30px;
+        }
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .dashboard-header h1 {
+            color: var(--primary-color, #f39c12);
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 25px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            border-color: var(--primary-color, #f39c12);
+        }
+        .feature-card h3 {
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        .feature-card p {
+            color: #aaa;
+            font-size: 14px;
+        }
+        .icon {
+            font-size: 40px;
+            margin-bottom: 15px;
+        }
+        #verification-warning {
+            display: none;
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <header class="top-nav">
+        <div class="nav-logo">
+            <span class="logo-text">Prashna<span class="highlight">Kundli</span></span>
+        </div>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-btn">Home</a>
+            <button type="button" id="btn-logout" class="btn-login-header">Logout</button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="dashboard-container">
+            <div id="verification-warning">
+                Your application is pending admin review. You will get access to all features once verified.
+            </div>
+
+            <div class="dashboard-header">
+                <h1>Welcome to your Dashboard</h1>
+            </div>
+            
+            <div class="feature-grid">
+                <!-- Community Card -->
+                <a href="/community.html" class="feature-card" id="card-community">
+                    <div class="icon">👥</div>
+                    <h3>Astrologer Community</h3>
+                    <p>Discuss case studies, share research, and network with verified peers.</p>
+                </a>
+                
+                <!-- Client Bookings Card -->
+                <a href="#" class="feature-card">
+                    <div class="icon">📅</div>
+                    <h3>My Consultations</h3>
+                    <p>Manage your client requests and upcoming paid sessions.</p>
+                </a>
+
+                <!-- Profile Card -->
+                <a href="#" class="feature-card">
+                    <div class="icon">⚙️</div>
+                    <h3>Profile Settings</h3>
+                    <p>Update your bio, pricing, and expertise areas.</p>
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+
+        async function initDashboard() {
+            // Fetch config to get supabase keys (assuming this endpoint exists)
+            const configRes = await fetch('/api/config');
+            const config = await configRes.json();
+            const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (!session) {
+                window.location.href = '/index.html';
+                return;
+            }
+
+            // Fetch user role
+            const { data: userData, error } = await supabase
+                .from('users')
+                .select('role, verification_status')
+                .eq('id', session.user.id)
+                .single();
+
+            if (userData) {
+                if (userData.verification_status !== 'verified') {
+                    document.getElementById('verification-warning').style.display = 'block';
+                    document.getElementById('card-community').style.opacity = '0.5';
+                    document.getElementById('card-community').style.pointerEvents = 'none';
+                    document.getElementById('card-community').href = '#';
+                }
+            } else {
+                // Not found in users table or no role assigned
+                document.getElementById('verification-warning').style.display = 'block';
+                document.getElementById('card-community').style.opacity = '0.5';
+                document.getElementById('card-community').style.pointerEvents = 'none';
+            }
+            
+            document.getElementById('btn-logout').addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                localStorage.removeItem('supabase_token');
+                window.location.href = '/index.html';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    </script>
+</body>
+</html>

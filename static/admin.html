@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Prashna Kundli</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .admin-container {
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 30px;
+        }
+        .admin-header {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .admin-header h1 {
+            color: #e74c3c;
+        }
+        .pending-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .applicant-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .applicant-info h3 {
+            margin-bottom: 5px;
+            color: #fff;
+        }
+        .applicant-info p {
+            color: #aaa;
+            font-size: 14px;
+            margin: 2px 0;
+        }
+        .action-btns button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .btn-approve {
+            background: #2ecc71;
+            color: #fff;
+        }
+        .btn-reject {
+            background: #e74c3c;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <header class="top-nav">
+        <div class="nav-logo">
+            <span class="logo-text">Prashna<span class="highlight">Admin</span></span>
+        </div>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-btn">Home</a>
+            <button type="button" id="btn-logout" class="btn-login-header">Logout</button>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="admin-container">
+            <div class="admin-header">
+                <h1>Astrologer Verification Queue</h1>
+                <p>Review and approve astrologer applications here.</p>
+            </div>
+            
+            <div class="pending-list" id="pending-list">
+                <!-- Applications load here -->
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+
+        async function loadPending() {
+            const token = localStorage.getItem('supabase_token');
+            if (!token) {
+                window.location.href = '/index.html';
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/admin/pending-astrologers', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (res.status === 403) {
+                    alert("Unauthorized. Admin access required.");
+                    window.location.href = '/index.html';
+                    return;
+                }
+
+                const data = await res.json();
+                const list = document.getElementById('pending-list');
+                
+                if (!data.pending || data.pending.length === 0) {
+                    list.innerHTML = '<p>No pending applications at the moment.</p>';
+                    return;
+                }
+
+                list.innerHTML = data.pending.map(p => `
+                    <div class="applicant-card" id="card-${p.user_id}">
+                        <div class="applicant-info">
+                            <h3>${p.name || 'Unknown'} (${p.email})</h3>
+                            <p><strong>Experience:</strong> ${p.experience_years} years</p>
+                            <p><strong>Expertise:</strong> ${p.expertise_areas.join(', ')}</p>
+                            <p><strong>Bio:</strong> ${p.bio || 'N/A'}</p>
+                            <p><strong>Links:</strong> ${p.social_links && p.social_links.website ? `<a href="${p.social_links.website}" target="_blank" style="color:var(--primary-color)">${p.social_links.website}</a>` : 'N/A'}</p>
+                        </div>
+                        <div class="action-btns">
+                            <button class="btn-approve" onclick="verifyUser('${p.user_id}', 'approve')">Approve</button>
+                            <button class="btn-reject" onclick="verifyUser('${p.user_id}', 'reject')">Reject</button>
+                        </div>
+                    </div>
+                `).join('');
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        window.verifyUser = async function(userId, action) {
+            const token = localStorage.getItem('supabase_token');
+            try {
+                const res = await fetch(`/api/admin/verify-astrologer?user_id=${userId}&action=${action}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    document.getElementById(`card-${userId}`).remove();
+                } else {
+                    const data = await res.json();
+                    alert(`Error: ${data.detail || 'Failed to update'}`);
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Error updating user');
+            }
+        };
+
+        document.getElementById('btn-logout').addEventListener('click', async () => {
+            const configRes = await fetch('/api/config');
+            const config = await configRes.json();
+            const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+            await supabase.auth.signOut();
+            localStorage.removeItem('supabase_token');
+            window.location.href = '/index.html';
+        });
+
+        document.addEventListener('DOMContentLoaded', loadPending);
+    </script>
+</body>
+</html>

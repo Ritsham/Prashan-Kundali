@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Apply as Astrologer - Prashna Kundli</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .apply-container {
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .apply-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .apply-header h1 {
+            color: var(--primary-color, #f39c12);
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #ddd;
+        }
+        .form-group input, .form-group textarea, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.2);
+            color: #fff;
+        }
+        .btn-submit {
+            width: 100%;
+            padding: 15px;
+            background: var(--primary-color, #f39c12);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        .btn-submit:hover {
+            background: var(--primary-hover, #e67e22);
+        }
+    </style>
+</head>
+<body>
+    <header class="top-nav">
+        <div class="nav-logo">
+            <span class="logo-text">Prashna<span class="highlight">Kundli</span></span>
+        </div>
+        <div class="nav-links">
+            <a href="/index.html" class="nav-btn">Home</a>
+        </div>
+    </header>
+
+    <main class="main-content">
+        <div class="apply-container">
+            <div class="apply-header">
+                <h1>Join the Astrologer Community</h1>
+                <p>Submit your application to get verified and access the exclusive moat.</p>
+            </div>
+            
+            <form id="applyForm">
+                <div class="form-group">
+                    <label for="experience">Years of Experience</label>
+                    <input type="number" id="experience" name="experience" min="0" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="expertise">Areas of Expertise (Comma separated)</label>
+                    <input type="text" id="expertise" name="expertise" placeholder="e.g. Vedic, KP, Tarot" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="social">Social Links / Website</label>
+                    <input type="url" id="social" name="social" placeholder="https://yourwebsite.com">
+                </div>
+                
+                <div class="form-group">
+                    <label for="bio">Short Bio</label>
+                    <textarea id="bio" name="bio" rows="4" placeholder="Tell us about your practice..."></textarea>
+                </div>
+                
+                <button type="submit" class="btn-submit">Submit Application</button>
+            </form>
+            <div id="statusMessage" style="margin-top: 20px; text-align: center;"></div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('applyForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const token = localStorage.getItem('supabase_token');
+            if (!token) {
+                alert('Please sign in first to apply!');
+                return;
+            }
+
+            const payload = {
+                experience_years: parseInt(document.getElementById('experience').value),
+                expertise_areas: document.getElementById('expertise').value.split(',').map(s => s.trim()),
+                social_links: { website: document.getElementById('social').value },
+                bio: document.getElementById('bio').value
+            };
+
+            try {
+                const res = await fetch('/api/astrologer/apply', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('statusMessage').innerHTML = '<span style="color: #2ecc71;">Application submitted! Admin will review it shortly.</span>';
+                    document.getElementById('applyForm').reset();
+                } else {
+                    document.getElementById('statusMessage').innerHTML = `<span style="color: #e74c3c;">Error: ${data.detail}</span>`;
+                }
+            } catch (err) {
+                console.error(err);
+                document.getElementById('statusMessage').innerHTML = '<span style="color: #e74c3c;">Failed to submit application.</span>';
+            }
+        });
+    </script>
+</body>
+</html>

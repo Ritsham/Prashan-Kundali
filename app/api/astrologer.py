@@ -1,0 +1,65 @@
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
+from app.dependencies import AuthState, get_current_user, RequireRole
+
+router = APIRouter()
+
+class AstrologerApplyRequest(BaseModel):
+    experience_years: int
+    expertise_areas: List[str]
+    bio: Optional[str] = None
+    social_links: Optional[dict] = None
+
+@router.post("/astrologer/apply")
+def apply_for_astrologer(req: AstrologerApplyRequest, auth: AuthState = Depends(get_current_user)):
+    data = {
+        "user_id": auth.user_id,
+        "experience_years": req.experience_years,
+        "expertise_areas": req.expertise_areas,
+        "bio": req.bio,
+        "social_links": req.social_links
+    }
+    auth.client.table("astrologer_profiles").upsert(data).execute()
+    auth.client.table("users").update({"verification_status": "pending"}).eq("id", auth.user_id).execute()
+    return {"status": "success", "message": "Application submitted"}
+
+@router.post("/admin/verify-astrologer")
+def verify_astrologer(user_id: str, action: str, auth: AuthState = Depends(RequireRole("admin"))):
+    if action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+        
+    status = "verified" if action == "approve" else "rejected"
+    role = "astrologer" if action == "approve" else "user"
+    
+    auth.client.table("users").update({
+        "verification_status": status,
+        "role": role
+    }).eq("id", user_id).execute()
+    
+    return {"status": "success", "message": f"Astrologer {status}"}
+
+@router.get("/admin/pending-astrologers")
+def get_pending_astrologers(auth: AuthState = Depends(RequireRole("admin"))):
+    res = auth.client.table("users").select("id, name, email").eq("verification_status", "pending").execute()
+    if not res.data:
+        return {"pending": []}
+        
+    user_ids = [u["id"] for u in res.data]
+    prof_res = auth.client.table("astrologer_profiles").select("*").in_("user_id", user_ids).execute()
+    
+    profiles_by_user = {p["user_id"]: p for p in prof_res.data}
+    combined = []
+    for u in res.data:
+        prof = profiles_by_user.get(u["id"], {})
+        combined.append({
+            "user_id": u["id"],
+            "name": u.get("name", "Unknown"),
+            "email": u.get("email", ""),
+            "experience_years": prof.get("experience_years", 0),
+            "expertise_areas": prof.get("expertise_areas", []),
+            "bio": prof.get("bio", ""),
+            "social_links": prof.get("social_links", {})
+        })
+        
+    return {"pending": combined}
