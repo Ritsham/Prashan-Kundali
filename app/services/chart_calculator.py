@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -6,8 +7,7 @@ from app.astrology.constants import PLANET_ORDER
 from app.astrology.divisional import build_all_divisional_charts, build_d1
 from app.astrology.vimshottari import vimshottari_from_moon
 from app.astrology.zodiac import nakshatra_for, normalize_degrees, whole_sign_house, zodiac_point
-from app.services.answer_generator import generate_interpretation_answer
-from app.services.interpretation_service import build_interpretation
+from app.astrology.kp_system import get_kp_lords, calculate_placidus_cusps, build_kp_significators
 from app.services.timezone_service import timezone_at
 
 
@@ -25,7 +25,7 @@ def load_swe():
     return swe
 
 
-def calculate_prashna_chart(
+async def calculate_prashna_chart(
     *,
     question: str,
     name: str,
@@ -54,18 +54,34 @@ def calculate_prashna_chart(
     tz_name = timezone_at(latitude, longitude)
     asked_at_local = asked_at_utc.astimezone(ZoneInfo(tz_name))
 
-    lagna = calculate_lagna(swe, jd, latitude, longitude, ayanamsa)
-    planets = calculate_planets(swe, jd, lagna["sign_index"])
+    lagna_task = asyncio.to_thread(calculate_lagna, swe, jd, latitude, longitude, ayanamsa)
+    kp_cusps_task = asyncio.to_thread(calculate_placidus_cusps, swe, jd, latitude, longitude, ayanamsa)
+    lagna, kp_cusps = await asyncio.gather(lagna_task, kp_cusps_task)
+
+    planets = await asyncio.to_thread(calculate_planets, swe, jd, lagna["sign_index"])
     moon = next(planet for planet in planets if planet["name"] == "Moon")
-    transit = None
+    
+    # Calculate KP data, Divisional charts and Dashas concurrently
+    kp_data_task = asyncio.to_thread(build_kp_significators, planets, kp_cusps)
+    dashas_task = asyncio.to_thread(vimshottari_from_moon, moon["longitude"], asked_at_utc)
+    divisional_task = asyncio.to_thread(build_all_divisional_charts, planets, lagna)
+    
+    transit_task = None
     if chart_type == "lagna":
-        transit = calculate_transit(
+        transit_task = asyncio.to_thread(
+            calculate_transit,
             swe=swe,
             latitude=latitude,
             longitude=longitude,
             timezone_name=tz_name,
             natal_lagna_sign_index=lagna["sign_index"],
         )
+        tasks = [kp_data_task, dashas_task, divisional_task, transit_task]
+        kp_data, dashas, divisional_charts, transit = await asyncio.gather(*tasks)
+    else:
+        transit = None
+        tasks = [kp_data_task, dashas_task, divisional_task]
+        kp_data, dashas, divisional_charts = await asyncio.gather(*tasks)
 
     chart = {
         "meta": {
@@ -93,15 +109,12 @@ def calculate_prashna_chart(
         },
         "lagna": lagna,
         "planets": planets,
-        "dashas": vimshottari_from_moon(moon["longitude"], asked_at_utc),
-        "divisional_charts": build_all_divisional_charts(planets, lagna),
+        "kp_system": kp_data,
+        "dashas": dashas,
+        "divisional_charts": divisional_charts,
     }
     if transit:
         chart["transit"] = transit
-    interpretation = build_interpretation(chart)
-    if interpretation:
-        interpretation["answer"] = generate_interpretation_answer(chart, interpretation)
-        chart["interpretation"] = interpretation
     return chart
 
 
@@ -160,6 +173,8 @@ def calculate_lagna(swe, jd: float, latitude: float, longitude: float, ayanamsa:
     sidereal_asc = normalize_degrees(ascmc[0] - ayanamsa)
     point = zodiac_point(sidereal_asc)
     nak = nakshatra_for(sidereal_asc)
+    kp_lords = get_kp_lords(sidereal_asc)
+    
     return {
         "longitude": point.longitude,
         "sign_index": point.sign_index,
@@ -168,6 +183,7 @@ def calculate_lagna(swe, jd: float, latitude: float, longitude: float, ayanamsa:
         "formatted_degree": point.formatted,
         "nakshatra": nak["name"],
         "pada": nak["pada"],
+        **kp_lords
     }
 
 
@@ -197,6 +213,8 @@ def calculate_planets(swe, jd: float, lagna_sign_index: int) -> list[dict]:
 
         point = zodiac_point(lon)
         nak = nakshatra_for(lon)
+        kp_lords = get_kp_lords(lon)
+        
         results.append(
             {
                 "name": name,
@@ -210,6 +228,7 @@ def calculate_planets(swe, jd: float, lagna_sign_index: int) -> list[dict]:
                 "pada": nak["pada"],
                 "speed": round(speed, 6),
                 "retrograde": speed < 0,
+                **kp_lords
             }
         )
 

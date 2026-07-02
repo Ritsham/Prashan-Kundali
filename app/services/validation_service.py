@@ -1,9 +1,9 @@
+import os
+import httpx
 import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-
-from app.services.chart_calculator import calculate_prashna_chart
 
 CASE_FILE = Path("validation/reference_cases/prashna_cases.csv")
 
@@ -33,14 +33,23 @@ def write_cases(rows: list[dict]) -> None:
 
 
 def generated_output(row: dict) -> dict:
-    chart = calculate_prashna_chart(
-        question=row["question"],
-        name=row["name"],
-        asked_at_utc=datetime.fromisoformat(row["asked_at_utc"]),
-        latitude=float(row["latitude"]),
-        longitude=float(row["longitude"]),
-        place_name=row["place_name"],
-    )
+    astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+    payload_data = {
+        "chart_type": "prashna",
+        "name": row["name"],
+        "question": row["question"],
+        "location": {
+            "latitude": float(row["latitude"]),
+            "longitude": float(row["longitude"]),
+            "place_name": row["place_name"]
+        },
+        "asked_at_utc": datetime.fromisoformat(row["asked_at_utc"]).isoformat()
+    }
+    
+    with httpx.Client() as client:
+        resp = client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
+        resp.raise_for_status()
+        chart = resp.json()["chart"]
     moon = next(planet for planet in chart["planets"] if planet["name"] == "Moon")
     return {
         "lagna_sign": chart["lagna"]["sign"],
