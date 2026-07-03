@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astrologer Dashboard - Kundali Studio</title>
+    <link rel="stylesheet" href="./styles.css?v=2">
+    <style>
+        .dashboard-container {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 30px;
+        }
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--line);
+        }
+        .dashboard-header h1 {
+            font-family: 'Cinzel', serif;
+            color: var(--ink-light);
+            font-size: 2.2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        #verification-warning {
+            display: none;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            text-align: center;
+            font-size: 0.95rem;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <nav class="global-navbar">
+        <div class="logo-text">
+            ॐ <span class="highlight">Kundali</span> Studio
+        </div>
+        <div class="nav-links">
+            <a href="./index.html" class="nav-link-btn">Home</a>
+            <button type="button" id="btn-logout" class="small-btn">Logout</button>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="dashboard-container">
+            <div id="verification-warning">
+                🕉️ <strong>Application Pending:</strong> Your astrologer profile is currently under verification by our administrative panel. You will gain access to the community discussions once approved.
+            </div>
+
+            <div class="dashboard-header">
+                <h1>Astrologer Studio</h1>
+            </div>
+            
+            <div class="feature-grid">
+                <!-- Community Card -->
+                <a href="./community.html" class="feature-card" id="card-community">
+                    <span class="icon">👥</span>
+                    <h3>Astrologer Community</h3>
+                    <p>Discuss case studies, share research, and network with verified peers in real-time channels.</p>
+                </a>
+                
+                <!-- Client Bookings Card -->
+                <a href="#" class="feature-card">
+                    <span class="icon">📅</span>
+                    <h3>My Consultations</h3>
+                    <p>Manage pending customer requests, view question charts, and deliver predictions.</p>
+                </a>
+
+                <!-- Profile Card -->
+                <a href="#" class="feature-card">
+                    <span class="icon">⚙️</span>
+                    <h3>Studio Settings</h3>
+                    <p>Configure your consultation bio, language parameters, and pricing sheets.</p>
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+
+        async function initDashboard() {
+            const configRes = await fetch('/api/config');
+            const config = await configRes.json();
+            const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
+
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (!session) {
+                window.location.href = './index.html';
+                return;
+            }
+
+            // Fetch user details
+            const { data: userData } = await supabase
+                .from('users')
+                .select('role, verification_status')
+                .eq('id', session.user.id)
+                .single();
+
+            if (userData) {
+                if (userData.verification_status !== 'verified') {
+                    document.getElementById('verification-warning').style.display = 'block';
+                    document.getElementById('card-community').style.opacity = '0.4';
+                    document.getElementById('card-community').style.pointerEvents = 'none';
+                    document.getElementById('card-community').href = '#';
+                }
+            } else {
+                document.getElementById('verification-warning').style.display = 'block';
+                document.getElementById('card-community').style.opacity = '0.4';
+                document.getElementById('card-community').style.pointerEvents = 'none';
+            }
+            
+            document.getElementById('btn-logout').addEventListener('click', async () => {
+                await supabase.auth.signOut();
+                localStorage.removeItem('supabase_token');
+                window.location.href = './index.html';
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    </script>
+</body>
+</html>

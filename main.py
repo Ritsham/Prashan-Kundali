@@ -69,7 +69,7 @@ async def websocket_consultation(websocket: WebSocket, booking_id: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, f"consultation_{booking_id}")
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
 if __name__ == "__main__":
     import uvicorn

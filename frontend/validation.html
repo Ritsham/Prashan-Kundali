@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Validation Console - Kundali Studio</title>
+    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./validation.css?v=2" />
+  </head>
+  <body>
+    <!-- Navigation Bar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/" class="nav-link-btn">← Back to Portal</a>
+      </div>
+    </nav>
+
+    <main class="validation-shell">
+      <header class="validation-header">
+        <div>
+          <p class="eyebrow">Swiss Ephemeris QA Engine</p>
+          <h1>Validation Console</h1>
+          <p class="lede">Compare calculations against AstroSage, DrikPanchang, and Jagannatha Hora to audit engine accuracy.</p>
+        </div>
+      </header>
+
+      <!-- Status Summary Cards -->
+      <section class="validation-summary" id="summary">
+        <div class="fact"><span>Loading</span><strong>Cases...</strong></div>
+      </section>
+
+      <!-- Search and Filter Tools -->
+      <section class="validation-tools">
+        <input id="case-filter" placeholder="🔍 Filter by Case ID, place, category, status (pass/fail)..." autocomplete="off" />
+        <button type="button" id="refresh-button">🔄 Sync Cases</button>
+      </section>
+
+      <!-- Test Cases List -->
+      <section id="case-list" class="case-list"></section>
+    </main>
+
+    <script src="./validation.js"></script>
+  </body>
+</html>
