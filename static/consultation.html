@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consultation - Prashna Astro</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body {
+      background: #f7f4ef;
+      color: #241f1a;
+    }
+    .consult-page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 72px;
+    }
+    .consult-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+      gap: 28px;
+      align-items: start;
+    }
+    .profile-panel,
+    .request-panel,
+    .result-panel {
+      background: #fff;
+      border: 1px solid #e5ded6;
+      border-radius: 8px;
+      box-shadow: 0 18px 50px rgba(63, 45, 32, 0.08);
+    }
+    .profile-panel {
+      padding: 24px;
+    }
+    .profile-photo {
+      width: 112px;
+      height: 112px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #eee1d4;
+      margin-bottom: 18px;
+    }
+    .eyebrow {
+      color: #9b4d24;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 800;
+      margin: 0 0 8px;
+    }
+    h1 {
+      font-size: clamp(34px, 5vw, 56px);
+      line-height: 1;
+      margin: 0 0 12px;
+      letter-spacing: 0;
+    }
+    .profile-title {
+      color: #6f6153;
+      margin: 0 0 18px;
+      line-height: 1.6;
+    }
+    .profile-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .profile-row {
+      border-top: 1px solid #eee6dd;
+      padding-top: 12px;
+    }
+    .profile-row span {
+      display: block;
+      color: #7b6e61;
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .profile-row strong {
+      color: #241f1a;
+      line-height: 1.45;
+    }
+    .positioning {
+      margin-top: 20px;
+      padding: 14px;
+      background: #fff7e8;
+      border-left: 3px solid #d6812d;
+      color: #5c4630;
+      line-height: 1.6;
+      border-radius: 6px;
+    }
+    .request-panel {
+      padding: 24px;
+    }
+    .request-panel h2,
+    .result-panel h2 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+    .request-panel p {
+      color: #6f6153;
+      line-height: 1.6;
+      margin-top: 0;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 800;
+      color: #463b31;
+      margin-bottom: 7px;
+    }
+    input,
+    select,
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d9d0c6;
+      border-radius: 8px;
+      padding: 12px;
+      font: inherit;
+      background: #fffdf9;
+      color: #241f1a;
+    }
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+    }
+    .btn-submit {
+      width: 100%;
+      min-height: 48px;
+      border: 0;
+      border-radius: 8px;
+      background: #8c3d25;
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .btn-submit:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+    .result-panel {
+      display: none;
+      margin-top: 24px;
+      padding: 22px;
+    }
+    .result-panel.show {
+      display: block;
+    }
+    .status-pill {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: #eef6ef;
+      color: #276b3b;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+    .status-pill.waiting_queue {
+      background: #fff3d8;
+      color: #8b5a00;
+    }
+    .result-details {
+      display: grid;
+      gap: 8px;
+      margin-top: 16px;
+      color: #5f5348;
+    }
+    .status-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .secondary-btn {
+      min-height: 42px;
+      border: 1px solid #d9d0c6;
+      border-radius: 8px;
+      background: #fffdf9;
+      color: #4a3d32;
+      font-weight: 800;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+    .small-note {
+      color: #7b6e61;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-top: 12px;
+    }
+    @media (max-width: 900px) {
+      .consult-hero,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="top-nav">
+    <div class="nav-logo">
+      <span class="logo-text">Prashna<span class="highlight">Astro</span></span>
+    </div>
+    <div class="nav-links">
+      <a href="/index.html" class="nav-btn">Home</a>
+      <a href="/community.html" class="nav-btn">Community</a>
+    </div>
+  </header>
+
+  <main class="consult-page">
+    <section class="consult-hero">
+      <aside class="profile-panel">
+        <img id="consultant-photo" class="profile-photo" src="https://www.shanitemple.com/index_images/astrology-puja/janamkundli.png" alt="Founder astrologer">
+        <p class="eyebrow">Founder Astrologer / Primary Consultant</p>
+        <h1 id="consultant-name">Rupesh Kumar</h1>
+        <p class="profile-title" id="consultant-bio">Consultations are available for focused astrological guidance.</p>
+
+        <div class="profile-grid">
+          <div class="profile-row"><span>Experience</span><strong id="consultant-experience">-</strong></div>
+          <div class="profile-row"><span>Astrology Systems</span><strong id="consultant-systems">-</strong></div>
+          <div class="profile-row"><span>Languages</span><strong id="consultant-languages">-</strong></div>
+          <div class="profile-row"><span>Consultation Type</span><strong id="consultant-type">-</strong></div>
+        </div>
+        <div class="positioning" id="positioning">
+          Consultations are currently available with our founder astrologer. More verified astrologers may be added later after quality review.
+        </div>
+      </aside>
+
+      <section>
+        <div class="request-panel">
+          <p class="eyebrow">Request Consultation</p>
+          <h2>Submit your details</h2>
+          <p>Only 20 active consultation requests are handled at a time. If slots are full, your request enters the waiting queue.</p>
+
+          <form id="consultation-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="name">Full Name</label>
+                <input id="name" required autocomplete="name">
+              </div>
+              <div class="form-group">
+                <label for="phone">Mobile / WhatsApp Number</label>
+                <input id="phone" required autocomplete="tel">
+              </div>
+              <div class="form-group">
+                <label for="email">Email</label>
+                <input id="email" type="email" required autocomplete="email">
+              </div>
+              <div class="form-group">
+                <label for="topic">Consultation Topic</label>
+                <select id="topic" required>
+                  <option>Career</option>
+                  <option>Marriage</option>
+                  <option>Business</option>
+                  <option>Health</option>
+                  <option>Prashna</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="date_of_birth">Date of Birth</label>
+                <input id="date_of_birth" type="date" required>
+              </div>
+              <div class="form-group">
+                <label for="time_of_birth">Time of Birth</label>
+                <input id="time_of_birth" type="time" required>
+              </div>
+              <div class="form-group full">
+                <label for="place_of_birth">Place of Birth</label>
+                <input id="place_of_birth" required placeholder="City, State, Country">
+              </div>
+              <div class="form-group full">
+                <label for="question">Proposed Question</label>
+                <textarea id="question" required placeholder="Write the question you want the consultant to review."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="preferred_time">Preferred Time</label>
+                <input id="preferred_time" placeholder="Example: Tomorrow evening, Sunday 11 AM">
+              </div>
+              <div class="form-group">
+                <label for="payment_status">Payment Status</label>
+                <select id="payment_status">
+                  <option value="not_paid">Not paid</option>
+                  <option value="paid">Paid</option>
+                  <option value="pending">Payment pending</option>
+                </select>
+              </div>
+            </div>
+            <button id="submit-btn" class="btn-submit" type="submit">Request Consultation</button>
+          </form>
+        </div>
+
+        <div class="result-panel" id="result-panel">
+          <span class="status-pill" id="result-status">pending</span>
+          <h2 id="result-title">Request received</h2>
+          <p id="result-message"></p>
+          <div class="result-details" id="result-details"></div>
+          <div class="status-actions">
+            <button id="refresh-status-btn" class="secondary-btn" type="button">Refresh Status</button>
+            <button id="clear-status-btn" class="secondary-btn" type="button">Clear Saved Request</button>
+          </div>
+          <div class="small-note">Save your request ID if you contact support. This browser also remembers your latest consultation request.</div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/consultation.js"></script>
+</body>
+</html>

@@ -1,7 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from typing import Dict, List
 import json
 import logging
+import os
+from supabase import create_client, ClientOptions
 
 from app.storage.community_db import (
     get_channels,
@@ -12,10 +14,34 @@ from app.storage.community_db import (
     save_thread_reply,
     get_thread_replies,
 )
+from app.dependencies import AuthState, RequireVerifiedAstrologer
 
 router = APIRouter(prefix="/community", tags=["community"])
 
 logger = logging.getLogger(__name__)
+
+
+def websocket_has_verified_access(token: str) -> bool:
+    if not token:
+        return False
+    try:
+        options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
+        client = create_client(os.getenv("SUPABASE_URL", ""), os.getenv("SUPABASE_ANON_KEY", ""), options=options)
+        user_res = client.auth.get_user(token)
+        if not user_res or not user_res.user:
+            return False
+        profile_res = client.table("users").select("role, verification_status, community_access").eq("id", user_res.user.id).execute()
+        if not profile_res.data:
+            return False
+        profile = profile_res.data[0]
+        return (
+            profile.get("role") == "astrologer"
+            and profile.get("verification_status") == "verified"
+            and bool(profile.get("community_access", True))
+        )
+    except Exception as exc:
+        logger.error("Community websocket auth failed: %s", exc)
+        return False
 
 class ConnectionManager:
     def __init__(self):
@@ -45,22 +71,26 @@ manager = ConnectionManager()
 
 
 @router.get("/channels")
-async def api_get_channels():
+async def api_get_channels(auth: AuthState = Depends(RequireVerifiedAstrologer())):
     return await get_channels()
 
 
 @router.get("/messages/{channel_name}")
-async def api_get_messages(channel_name: str, limit: int = 50):
+async def api_get_messages(channel_name: str, limit: int = 50, auth: AuthState = Depends(RequireVerifiedAstrologer())):
     return await get_messages(channel_name, limit)
 
 
 @router.get("/threads/{message_id}")
-async def api_get_threads(message_id: str):
+async def api_get_threads(message_id: str, auth: AuthState = Depends(RequireVerifiedAstrologer())):
     return await get_thread_replies(message_id)
 
 
 @router.websocket("/ws/{channel_name}")
 async def websocket_endpoint(websocket: WebSocket, channel_name: str):
+    token = websocket.query_params.get("token", "")
+    if not websocket_has_verified_access(token):
+        await websocket.close(code=1008)
+        return
     await manager.connect(websocket, channel_name)
     try:
         while True:

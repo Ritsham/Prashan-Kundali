@@ -1,10 +1,17 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
+from typing import Optional
 import json
 import os
 import httpx
 
 from app.storage.consultation_db import (
+    get_founder_consultant,
+    get_public_consultation_queue_status,
+    create_consultation_request,
+    get_consultation_request,
+    list_consultation_requests,
+    update_consultation_request,
     get_queue_status,
     create_consultation,
     get_consultation_queue,
@@ -12,7 +19,7 @@ from app.storage.consultation_db import (
     decline_consultation
 )
 from app.api.prashna import LocationInput
-from app.dependencies import get_current_user, AuthState
+from app.dependencies import get_current_user, AuthState, RequireRole
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from app.services.timezone_service import timezone_at
@@ -30,6 +37,68 @@ class ConsultationBookRequest(BaseModel):
 
 class AnswerRequest(BaseModel):
     answer: str = Field(min_length=5, max_length=2000)
+
+class PublicConsultationRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    phone: str = Field(min_length=6, max_length=24)
+    email: str = Field(min_length=5, max_length=160)
+    date_of_birth: str = Field(min_length=4, max_length=20)
+    time_of_birth: str = Field(min_length=2, max_length=20)
+    place_of_birth: str = Field(min_length=1, max_length=160)
+    topic: str = Field(pattern="^(Career|Marriage|Business|Health|Prashna|Other)$")
+    question: str = Field(min_length=3, max_length=2000)
+    preferred_time: str = Field(default="", max_length=120)
+    payment_status: str = Field(default="not_paid", max_length=40)
+
+class AdminConsultationUpdate(BaseModel):
+    status: Optional[str] = Field(default=None, pattern="^(pending|accepted|in_progress|completed|rejected|cancelled|waiting_queue)$")
+    meeting_link: Optional[str] = Field(default=None, max_length=500)
+    scheduled_at: Optional[str] = Field(default=None, max_length=120)
+    admin_notes: Optional[str] = Field(default=None, max_length=3000)
+
+
+@router.get("/consultation/profile")
+async def consultation_profile():
+    return {
+        "consultant": await get_founder_consultant(),
+        "positioning": "Consultations are currently available with our founder astrologer. More verified astrologers may be added later after quality review.",
+    }
+
+
+@router.get("/consultation/request-status")
+async def consultation_request_status():
+    return await get_public_consultation_queue_status()
+
+
+@router.post("/consultation/request")
+async def request_consultation(payload: PublicConsultationRequest):
+    result = await create_consultation_request(payload.model_dump())
+    return result
+
+
+@router.get("/consultation/request/{request_id}")
+async def read_consultation_request(request_id: str):
+    request = await get_consultation_request(request_id)
+    if not request:
+        raise HTTPException(status_code=404, detail="Consultation request not found")
+    return {"request": request}
+
+
+@router.get("/admin/consultations/requests")
+async def admin_list_consultation_requests(status: Optional[str] = None, auth: AuthState = Depends(RequireRole("admin"))):
+    return {"requests": await list_consultation_requests(status)}
+
+
+@router.post("/admin/consultations/requests/{request_id}")
+async def admin_update_consultation_request(
+    request_id: str,
+    payload: AdminConsultationUpdate,
+    auth: AuthState = Depends(RequireRole("admin")),
+):
+    result = await update_consultation_request(request_id, payload.model_dump())
+    if not result["request"]:
+        raise HTTPException(status_code=404, detail="Consultation request not found")
+    return result
 
 @router.get("/consultation/status")
 async def check_status():

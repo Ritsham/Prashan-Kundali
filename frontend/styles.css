@@ -585,6 +585,48 @@ input:focus, textarea:focus, select:focus {
   color: var(--saffron-gold);
 }
 
+.lagna-single-step .wizard-progress-bar,
+.lagna-single-step .wizard-steps-indicator,
+.lagna-single-step #wizard-step-2,
+.lagna-single-step #wizard-step-1 > .wizard-actions,
+.lagna-single-step #wizard-step-3 .btn-secondary {
+  display: none !important;
+}
+
+.lagna-single-step #wizard-step-3.hidden {
+  display: block !important;
+}
+
+.lagna-single-step #wizard-step-3 {
+  margin-top: 24px;
+}
+
+.lagna-single-step #wizard-step-3 .wizard-actions {
+  justify-content: flex-end;
+}
+
+.prashna-single-step .wizard-progress-bar,
+.prashna-single-step .wizard-steps-indicator,
+.prashna-single-step #wizard-step-1 > .wizard-actions,
+.prashna-single-step #wizard-step-2 .wizard-actions,
+.prashna-single-step #wizard-step-3 .btn-secondary {
+  display: none !important;
+}
+
+.prashna-single-step #wizard-step-2.hidden,
+.prashna-single-step #wizard-step-3.hidden {
+  display: block !important;
+}
+
+.prashna-single-step #wizard-step-2,
+.prashna-single-step #wizard-step-3 {
+  margin-top: 24px;
+}
+
+.prashna-single-step #wizard-step-3 .wizard-actions {
+  justify-content: flex-end;
+}
+
 .wizard-actions {
   display: flex;
   justify-content: flex-end;

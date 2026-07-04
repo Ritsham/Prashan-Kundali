@@ -42,3 +42,18 @@ class RequireRole:
             raise HTTPException(status_code=403, detail=f"Requires {self.role} role")
         return auth_state
 
+class RequireVerifiedAstrologer:
+    def __call__(self, auth_state: AuthState = Depends(get_current_user)):
+        res = auth_state.client.table("users").select("role, verification_status, community_access").eq("id", auth_state.user_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=403, detail="Community access requires verified astrologer status")
+
+        user = res.data[0]
+        is_verified_astrologer = (
+            user.get("role") == "astrologer"
+            and user.get("verification_status") == "verified"
+            and bool(user.get("community_access", True))
+        )
+        if not is_verified_astrologer:
+            raise HTTPException(status_code=403, detail="Community access requires verified astrologer status")
+        return auth_state

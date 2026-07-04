@@ -3,6 +3,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import os
 
 from app.api.prashna import router as prashna_router
@@ -16,6 +17,19 @@ from app.storage.community_db import init_community_db
 from app.storage.consultation_db import init_consultation_db
 
 app = FastAPI(title="Prashna Kundli MVP", version="0.1.0")
+
+ADMIN_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ADMIN_CORS_ORIGINS", "http://127.0.0.1:8088,http://localhost:8088").split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ADMIN_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
@@ -31,6 +45,12 @@ def get_config():
         "supabaseUrl": os.getenv("SUPABASE_URL", ""),
         "supabaseAnonKey": os.getenv("SUPABASE_ANON_KEY", "")
     }
+
+
+@app.get("/consultation", include_in_schema=False)
+def consultation_page():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend/consultation.html")
 
 
 app.include_router(prashna_router, prefix="/api")

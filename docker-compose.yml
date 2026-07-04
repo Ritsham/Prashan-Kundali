@@ -132,6 +132,9 @@ services:
       ASTROLOGY_ENGINE_URL: http://astrology_engine:8001
       LLM_ENGINE_URL: http://llm_engine:8002
     volumes:
+      - ./app:/app/app
+      - ./frontend:/app/frontend
+      - ./main.py:/app/main.py
       - ./ephemeris:/app/ephemeris:ro
     networks:
       - kundali_net

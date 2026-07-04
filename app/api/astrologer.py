@@ -6,22 +6,45 @@ from app.dependencies import AuthState, get_current_user, RequireRole
 router = APIRouter()
 
 class AstrologerApplyRequest(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    whatsapp_no: Optional[str] = None
     experience_years: int
     expertise_areas: List[str]
     bio: Optional[str] = None
     social_links: Optional[dict] = None
+    proof_document_name: Optional[str] = None
+    proof_document_base64: Optional[str] = None
+    proof_document_link: Optional[str] = None
+    sample_case_study: Optional[str] = None
+    learning_goals: Optional[str] = None
 
 @router.post("/astrologer/apply")
 def apply_for_astrologer(req: AstrologerApplyRequest, auth: AuthState = Depends(get_current_user)):
+    social_links = req.social_links or {}
+    social_links.update({
+        "full_name": req.full_name,
+        "email": req.email or auth.email,
+        "whatsapp_no": req.whatsapp_no,
+        "proof_document_name": req.proof_document_name,
+        "proof_document_base64": req.proof_document_base64,
+        "proof_document_link": req.proof_document_link,
+        "sample_case_study": req.sample_case_study,
+        "learning_goals": req.learning_goals,
+    })
     data = {
         "user_id": auth.user_id,
         "experience_years": req.experience_years,
         "expertise_areas": req.expertise_areas,
         "bio": req.bio,
-        "social_links": req.social_links
+        "social_links": social_links
     }
     auth.client.table("astrologer_profiles").upsert(data).execute()
-    auth.client.table("users").update({"verification_status": "pending"}).eq("id", auth.user_id).execute()
+    auth.client.table("users").update({
+        "role": "astrologer",
+        "verification_status": "pending",
+        "community_access": False,
+    }).eq("id", auth.user_id).execute()
     return {"status": "success", "message": "Application submitted"}
 
 @router.post("/admin/verify-astrologer")
@@ -31,10 +54,12 @@ def verify_astrologer(user_id: str, action: str, auth: AuthState = Depends(Requi
         
     status = "verified" if action == "approve" else "rejected"
     role = "astrologer" if action == "approve" else "user"
+    community_access = action == "approve"
     
     auth.client.table("users").update({
         "verification_status": status,
-        "role": role
+        "role": role,
+        "community_access": community_access,
     }).eq("id", user_id).execute()
     
     return {"status": "success", "message": f"Astrologer {status}"}

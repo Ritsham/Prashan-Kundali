@@ -3,7 +3,8 @@
 -- 1. Update users table to include role and verification_status
 -- Note: Assuming the `users` table exists. If it was created from `database.py` sync_user, it might just have id, email, name, last_sign_in.
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user';
-ALTER TABLE public.users ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'unverified';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'none';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS community_access BOOLEAN DEFAULT FALSE;
 
 -- 2. Create astrologer_profiles table
 CREATE TABLE IF NOT EXISTS public.astrologer_profiles (

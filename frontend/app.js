@@ -77,6 +77,7 @@ const modePanel = document.querySelector("#mode-panel");
 const changeModeButton = document.querySelector("#change-mode-button");
 const formTitle = document.querySelector("#form-title");
 const modeEyebrow = document.querySelector("#mode-eyebrow");
+const portalGuidanceDesc = document.querySelector(".guidance-desc");
 const questionField = document.querySelector("#question-field");
 const questionDomainField = document.querySelector("#question-domain-field");
 const jobTypeField = document.querySelector("#job-type-field");
@@ -106,17 +107,21 @@ document.addEventListener('astro:modeChanged', (e) => {
   const isLagna = e.detail === 'lagna';
   modePanel.classList.add("hidden");
   form.classList.remove("hidden");
+  form.classList.toggle("lagna-single-step", isLagna);
+  form.classList.toggle("prashna-single-step", !isLagna);
   
   formTitle.textContent = isLagna ? "Lagna Kundli" : "Prashna Kundli";
   modeEyebrow.textContent = isLagna ? "Birth chart mode" : "Question chart mode";
+  portalGuidanceDesc?.classList.toggle("hidden", isLagna);
   questionField.classList.toggle("hidden", isLagna);
   questionDomainField.classList.toggle("hidden", isLagna);
   jobTypeField.classList.add("hidden");
   birthFields.classList.toggle("hidden", !isLagna);
   document.querySelector("#question").required = !isLagna;
   document.querySelector("#birth_datetime_local").required = isLagna;
-  submitButton.textContent = isLagna ? "Generate Lagna Kundli" : "Generate Prashna Kundli";
+  submitButton.textContent = isLagna ? "Get Kundali" : "Get your Prashana Kundali";
   statusEl.textContent = isLagna ? "Enter birth details, then search and select birthplace." : "Ask your question, then search and select current place.";
+  window.nextWizardStep?.(1);
   syncQuestionDomainControls();
 });
 
@@ -134,6 +139,9 @@ function bindUIEvents() {
     document.body.classList.remove("has-result");
     resultEl.classList.add("hidden");
     form.classList.add("hidden");
+    form.classList.remove("lagna-single-step");
+    form.classList.remove("prashna-single-step");
+    portalGuidanceDesc?.classList.remove("hidden");
     modePanel.classList.remove("hidden");
     statusEl.textContent = "";
   });
@@ -179,7 +187,7 @@ function bindUIEvents() {
   });
 
   navHome.addEventListener("click", () => { activeTab = "home"; updateNavigation(true); });
-  navConsultant.addEventListener("click", () => { activeTab = "consultant"; updateNavigation(true); });
+  navConsultant.addEventListener("click", () => { window.location.href = "/consultation"; });
   navPricing.addEventListener("click", () => { activeTab = "pricing"; updateNavigation(true); });
   navCommunity?.addEventListener("click", (e) => {
     if (!AppState.session) {
