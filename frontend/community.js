@@ -1,9 +1,14 @@
+import { showFlash } from './flash.js';
+
 document.addEventListener('DOMContentLoaded', () => {
     let currentChannel = 'general';
     let userName = localStorage.getItem('astro_community_name') || 'Anonymous Astrologer';
     let ws = null;
     let selectedImageBase64 = null;
     let currentThreadMessageId = null;
+    
+    // In-memory store to safely hold message data without breaking HTML strings
+    const messageStore = new Map();
 
     // DOM Elements
     const channelListEl = document.getElementById('channel-list');
@@ -31,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
         promptForNameIfNeeded();
         fetchChannels();
         connectWebSocket(currentChannel);
+        bindMessageActions(); // Bind the event delegator
     }
 
     function promptForNameIfNeeded() {
@@ -58,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
             renderChannels(channels);
         } catch (error) {
             console.error("Failed to fetch channels:", error);
+            showFlash("Failed to load community channels: " + error.message, "error");
         }
     }
 
@@ -80,26 +87,20 @@ document.addEventListener('DOMContentLoaded', () => {
         currentChannel = newChannel;
         currentChannelNameEl.textContent = `# ${currentChannel}`;
         
-        // Update UI active state
         document.querySelectorAll('.channel-item').forEach(el => {
             if (el.textContent === currentChannel) el.classList.add('active');
             else el.classList.remove('active');
         });
 
-        // Close thread if open
         closeThread();
-        
-        // Reconnect WS
         connectWebSocket(currentChannel);
     }
 
     function connectWebSocket(channel) {
-        if (ws) {
-            ws.close();
-        }
-        messagesContainerEl.innerHTML = ''; // clear messages
+        if (ws) ws.close();
+        messagesContainerEl.innerHTML = ''; 
+        messageStore.clear(); // Clear memory on switch
 
-        // Fetch history first
         fetchMessages(channel);
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -107,12 +108,13 @@ document.addEventListener('DOMContentLoaded', () => {
         ws = new WebSocket(wsUrl);
 
         ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            handleWebSocketMessage(data);
+            const payload = JSON.parse(event.data);
+            handleWebSocketMessage(payload);
         };
 
         ws.onerror = (error) => {
             console.error('WebSocket Error:', error);
+            showFlash("Community chat connection error.", "error");
         };
     }
 
@@ -120,15 +122,20 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch(`/api/community/messages/${encodeURIComponent(channel)}`);
             const messages = await response.json();
-            messages.forEach(msg => appendMessage(msg, false));
+            messages.forEach(msg => {
+                messageStore.set(msg.id, msg);
+                appendMessage(msg, false);
+            });
             scrollToBottom();
         } catch (error) {
             console.error("Failed to fetch messages:", error);
+            showFlash("Failed to load chat history.", "error");
         }
     }
 
     function handleWebSocketMessage(payload) {
         if (payload.type === 'new_message') {
+            messageStore.set(payload.data.id, payload.data);
             appendMessage(payload.data, true);
         } else if (payload.type === 'message_deleted') {
             const msgEl = document.getElementById(`msg-${payload.message_id}`);
@@ -142,10 +149,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const starBtn = document.querySelector(`#msg-${payload.message_id} .action-btn.star`);
             if (starBtn) {
                 starBtn.classList.add('starred');
-                const countSpan = starBtn.querySelector('.star-count');
-                if (countSpan) {
-                    countSpan.textContent = parseInt(countSpan.textContent || 0) + 1;
-                }
             }
         } else if (payload.type === 'new_thread_reply') {
             if (currentThreadMessageId === payload.data.parent_message_id) {
@@ -154,24 +157,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Use Event Delegation to avoid HTML quote corruption
+    function bindMessageActions() {
+        messagesContainerEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('.action-btn');
+            if (!btn) return;
+
+            const msgId = btn.dataset.id;
+            
+            if (btn.classList.contains('delete')) {
+                if (confirm("Delete this message?")) {
+                    ws.send(JSON.stringify({ action: 'delete_message', message_id: msgId }));
+                }
+            } else if (btn.classList.contains('star')) {
+                ws.send(JSON.stringify({ action: 'star_message', message_id: msgId }));
+            } else if (btn.classList.contains('reply')) {
+                const msg = messageStore.get(msgId);
+                if (msg) openThread(msg.id, msg.user_name, msg.content, msg.image_base64);
+            }
+        });
+    }
+
     function createMessageHTML(msg, isThreadReply = false) {
         const timeString = new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         const isMine = msg.user_name === userName;
         
         let actionsHtml = '';
         if (!isThreadReply && !msg.is_deleted) {
-            // Escaping quotes for onclick
-            const safeContent = msg.content ? msg.content.replace(/`/g, '\\`').replace(/'/g, "\\'").replace(/"/g, '&quot;') : '';
             actionsHtml = `
                 <div class="message-actions">
-                    <button class="action-btn reply" onclick="openThread('${msg.id}', '${msg.user_name}', \`${safeContent}\`, '${msg.image_base64 || ''}')" title="Reply in Thread">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    <button type="button" class="action-btn reply" data-id="${msg.id}" title="Reply in Thread">
+                        <svg xmlns="http://www.w3.org/2000/svg" style="stroke: #211C4D; fill: none;" width="16" height="16" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                     </button>
-                    <button class="action-btn star ${msg.stars > 0 ? 'starred' : ''}" onclick="starMessage('${msg.id}')" title="Star/Like">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                    <button type="button" class="action-btn star ${msg.stars > 0 ? 'starred' : ''}" data-id="${msg.id}" title="Star/Like">
+                        <svg xmlns="http://www.w3.org/2000/svg" style="stroke: ${msg.stars > 0 ? '#9E3324' : '#211C4D'}; fill: ${msg.stars > 0 ? '#9E3324' : 'none'};" width="16" height="16" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                     </button>
-                    <button class="action-btn delete" onclick="deleteMessage('${msg.id}')" title="Delete">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    <button type="button" class="action-btn delete" data-id="${msg.id}" title="Delete">
+                        <svg xmlns="http://www.w3.org/2000/svg" style="stroke: #211C4D; fill: none;" width="16" height="16" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                     </button>
                 </div>
             `;
@@ -203,9 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function appendMessage(msg, smoothScroll = false) {
         messagesContainerEl.insertAdjacentHTML('beforeend', createMessageHTML(msg));
-        if (smoothScroll) {
-            scrollToBottom();
-        }
+        if (smoothScroll) scrollToBottom();
     }
 
     function scrollToBottom() {
@@ -249,41 +269,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Global Functions for inline onclick handlers
-    window.deleteMessage = function(id) {
-        if (confirm("Delete this message?")) {
-            ws.send(JSON.stringify({
-                action: 'delete_message',
-                message_id: id
-            }));
-        }
-    }
-
-    window.starMessage = function(id) {
-        ws.send(JSON.stringify({
-            action: 'star_message',
-            message_id: id
-        }));
-    }
-
-    window.openThread = async function(id, author, content, image) {
+    // Thread Logic
+    async function openThread(id, author, content, image) {
         currentThreadMessageId = id;
         
-        const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); // Approximate for display
         const imageHtml = image ? `<img src="${image}" class="message-image">` : '';
         
         threadOriginalMessageEl.innerHTML = `
-            <div class="message-header">
-                <span class="message-author">${author}</span>
-            </div>
-            <div class="message-content">${content}</div>
+            <div class="message-header"><span class="message-author">${author}</span></div>
+            <div class="message-content">${marked.parse(content || '')}</div>
             ${imageHtml}
         `;
         
         threadSidebar.classList.add('open');
         threadRepliesEl.innerHTML = '';
         
-        // Fetch thread replies
         try {
             const response = await fetch(`/api/community/threads/${encodeURIComponent(id)}`);
             const replies = await response.json();

@@ -2,53 +2,53 @@
    Vedic Kundali Studio - Premium Dark Theme CSS
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+Devanagari:wght@400;500;600;700&family=Marcellus&family=Inter:wght@400;500;600&display=swap');
 
 :root {
   color-scheme: light;
   
-  /* Core Colors - Luxury Astronomy */
-  --bg-space: #FDF8F0; /* Light gold background from image */
-  --bg-surface: #FFFFFF;
-  --bg-panel: #F7F0E6;
-  --bg-glass: rgba(253, 248, 240, 0.7);
+  /* Modern Indian Luxury Palette */
+  --bg-space: #FAF5EC;          /* Warm Ivory / Sandstone background */
+  --bg-surface: #FFFDF9;        /* Handmade paper / Polished Marble */
+  --bg-panel: #F3EBE0;          /* Sandstone Shadow */
+  --bg-glass: rgba(250, 245, 236, 0.85);
   
   /* Accents */
-  --saffron-orange: #D6B36A; /* Gold */
-  --saffron-gold: #E7C98A;   /* Warm Gold */
-  --divine-gold: #D6B36A;
-  --accent-purple: #2E2B5F;  /* Deep Indigo */
-  --accent-blue: #5C6BC0;    /* Accent Blue */
+  --saffron-orange: #C8A261;    /* Burnished Gold */
+  --saffron-gold: #9E3324;      /* Deep Vermillion (Primary Actions) */
+  --divine-gold: #C8A261;       /* Burnished Gold */
+  --accent-purple: #211C4D;     /* Royal Indigo */
+  --accent-blue: #488286;       /* Muted Turquoise */
   
-  --auric-glow: rgba(214, 179, 106, 0.05);
-  --line-gold: rgba(46, 43, 95, 0.08); /* Darker border */
+  --auric-glow: rgba(200, 162, 97, 0.05);
+  --line-gold: rgba(112, 99, 77, 0.12); /* Hairline sandstone border */
   
   /* Text */
-  --ink-light: #2E2B5F; /* Dark indigo text for readability */
-  --ink-dim: #5C6BC0;
-  --ink-dark: #1A1A20;
+  --ink-light: #211C4D;         /* Royal Indigo text */
+  --ink-dim: #70634D;           /* Muted Bronze text */
+  --ink-dark: #211C4D;          
   
   /* Utilities */
-  --maroon: #991b1b;
-  --green-emerald: #10B981;
-  --emerald-glow: rgba(16, 185, 129, 0.05);
-  --blue-sky: #5C6BC0;
+  --maroon: #9E3324;
+  --green-emerald: #488286;     /* Muted Turquoise as success */
+  --emerald-glow: rgba(72, 130, 134, 0.05);
+  --blue-sky: #488286;
   
   /* UI Layout Variables */
-  --line: rgba(46, 43, 95, 0.08); /* Dark line for light background */
-  --shadow-gold: 0 4px 20px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+  --line: rgba(112, 99, 77, 0.12);
+  --shadow-gold: 0 4px 20px rgba(112, 99, 77, 0.08), 0 1px 3px rgba(112, 99, 77, 0.04);
 
-  --ink-deep: #1A1A20;
-  --ink-deep-soft: #2E2B5F;
-  --gold-foil: #D6B36A;
-  --gold-foil-dim: rgba(214, 179, 106, 0.65);
-  --hairline-on-deep: rgba(46, 43, 95, 0.08);
-  --shadow-deep: 0 20px 50px rgba(0, 0, 0, 0.1);
+  --ink-deep: #211C4D;
+  --ink-deep-soft: #70634D;
+  --gold-foil: #C8A261;
+  --gold-foil-dim: rgba(200, 162, 97, 0.65);
+  --hairline-on-deep: rgba(112, 99, 77, 0.12);
+  --shadow-deep: 0 20px 50px rgba(112, 99, 77, 0.1);
 
   /* Material-style aliases referenced by app.js at runtime */
   --color-primary: var(--saffron-gold);
-  --color-on-primary: #000000;
-  --color-error: #ef4444;
+  --color-on-primary: #FFFFFF;
+  --color-error: #9E3324;
   --color-outline: var(--line-gold);
   --color-surface-variant: var(--bg-panel);
   --color-on-surface-variant: var(--ink-dim);
@@ -65,6 +65,46 @@
   display: none !important;
 }
 
+/* ==========================================================================
+   Shared Page Layout & Utilities (DRY)
+   ========================================================================== */
+.page-container {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 30px;
+}
+.page-header {
+  margin-bottom: 32px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+.page-header.center {
+  text-align: center;
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.page-title {
+  font-family: 'Marcellus', serif;
+  color: var(--ink-light);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 10px;
+}
+.page-subtitle {
+  color: var(--ink-dim);
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* Text Utilities */
+.text-muted { color: var(--ink-dim); }
+.status-success { color: var(--green-emerald); }
+.status-error { color: var(--saffron-gold); }
+.status-warning { color: #f59e0b; }
+
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -73,7 +113,12 @@
 
 body {
   min-height: 100vh;
-  background: var(--bg-space);
+  background-color: var(--bg-space);
+  background-image: 
+    radial-gradient(var(--saffron-orange) 0.5px, transparent 0.5px),
+    linear-gradient(rgba(112, 99, 77, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(112, 99, 77, 0.02) 1px, transparent 1px);
+  background-size: 24px 24px, 48px 48px, 48px 48px;
   color: var(--ink-light);
   font-family: 'Inter', sans-serif;
   overflow-x: hidden;
@@ -121,7 +166,7 @@ body.has-result {
 }
 
 .logo-text {
-  font-family: 'Cinzel', serif;
+  font-family: 'Marcellus', serif;
   font-weight: 700;
   font-size: 1.3rem;
   letter-spacing: 0.01em;
@@ -132,59 +177,65 @@ body.has-result {
 }
 
 .logo-text::before {
-  content: '';
-  display: inline-block;
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  background:
-    linear-gradient(135deg, var(--saffron-gold), var(--saffron-orange));
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-  box-shadow: 0 2px 6px rgba(211, 84, 0, 0.3);
+  display: none; /* Replaced by Lord Ganesha logo */
+}
+
+.navbar-ganesha {
+  height: 70px;
+  width: auto;
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 2px 6px rgba(158, 51, 36, 0.25));
+  margin-right: -2px; /* Pull it slightly closer to the text */
 }
 
 .logo-text .highlight {
-  color: var(--saffron-orange);
+  color: var(--saffron-gold); /* Vermillion highlight */
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
-  background: rgba(46, 43, 95, 0.5);
-  border: 1px solid var(--line-gold);
-  border-radius: 999px;
-  padding: 4px;
+  gap: 24px;
 }
 
 .nav-btn, .nav-link-btn {
-  background: transparent;
-  border: 1px solid transparent;
+  background: transparent !important;
+  border: none !important;
   color: var(--ink-dim);
-  padding: 9px 18px;
-  font-size: 0.88rem;
-  font-weight: 600;
-  border-radius: 999px;
+  padding: 8px 0;
+  font-family: 'Marcellus', serif;
+  font-size: 0.95rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
-  box-shadow: none;
+  position: relative;
 }
 
 .nav-btn:hover, .nav-link-btn:hover {
-  color: var(--divine-gold);
-  background: rgba(194, 149, 79, 0.1);
+  color: var(--saffron-orange);
+  background: transparent;
   transform: none;
   box-shadow: none;
 }
 
-.nav-btn.active {
-  color: var(--ink-deep-soft) !important;
-  background: linear-gradient(135deg, var(--saffron-gold), var(--saffron-orange)) !important;
-  border-color: transparent;
-  box-shadow: 0 3px 10px rgba(211, 84, 0, 0.25);
+.nav-btn.active, .nav-link-btn.active {
+  color: var(--ink-light) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.nav-btn.active::after, .nav-link-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--saffron-orange);
 }
 
 .nav-auth {
@@ -416,14 +467,14 @@ h1 {
 .form, article {
   background: var(--bg-surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 8px; /* Sharper, architectural look */
   box-shadow: var(--shadow-gold);
   overflow: hidden;
 }
 
 .form {
-  padding: 28px;
-  border: 1px solid rgba(46, 43, 95, 0.06);
+  padding: 36px;
+  border: 1px solid var(--line);
 }
 
 .form-head {
@@ -437,27 +488,28 @@ h1 {
 }
 
 .card-header h2 {
-  font-family: 'Cinzel', serif;
-  font-weight: 600;
+  font-family: 'Marcellus', serif;
+  font-weight: 500;
   font-size: 1.5rem;
   color: var(--ink-light);
 }
 
 .portal-guidance-banner {
-  background: rgba(245, 158, 11, 0.04);
-  border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: 12px;
+  background: rgba(158, 51, 36, 0.03); /* Muted vermillion tint */
+  border: 1px solid rgba(158, 51, 36, 0.1);
+  border-radius: 6px;
   padding: 16px;
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .shanti-heading {
-  font-family: 'Cinzel', serif;
-  color: var(--saffron-gold);
+  font-family: 'Marcellus', serif;
+  color: var(--saffron-gold); /* Deep Vermillion */
   font-size: 1.15rem;
   font-weight: 700;
   margin-bottom: 6px;
+  letter-spacing: 0.05em;
 }
 
 .guidance-desc {
@@ -481,26 +533,26 @@ label > span {
 
 input, textarea, select {
   width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  border: 1px solid rgba(112, 99, 77, 0.2);
+  border-radius: 6px; /* Sharper */
   padding: 14px 16px;
   color: var(--ink-light);
-  background: var(--bg-space);
+  background: var(--bg-surface); /* Clean white marble/handmade paper */
   font: inherit;
   font-size: 0.95rem;
-  transition: all 0.2s ease;
-  box-shadow: inset 0 2px 4px rgba(46, 43, 95, 0.08);
+  transition: all 0.25s ease;
+  box-shadow: none;
 }
 
 input:hover, textarea:hover, select:hover {
-  border-color: rgba(46, 43, 95, 0.15);
+  border-color: rgba(112, 99, 77, 0.4);
 }
 
 input:focus, textarea:focus, select:focus {
-  border-color: var(--saffron-gold);
+  border-color: var(--saffron-orange); /* Burnished Gold focus border */
   outline: none;
-  box-shadow: 0 0 0 3px rgba(244, 201, 93, 0.15), inset 0 2px 4px rgba(46, 43, 95, 0.08);
-  background: var(--bg-panel);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 1px var(--saffron-orange);
 }
 
 /* Wizard Progress */
@@ -700,43 +752,72 @@ input:focus, textarea:focus, select:focus {
 .planet {
   position: absolute;
   border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, var(--bg-surface), #000);
-  box-shadow: inset -10px -10px 20px rgba(0,0,0,0.5), 0 0 40px rgba(124, 58, 237, 0.2);
+  background: transparent;
+  border: 1px dashed rgba(112, 99, 77, 0.15); /* Fine dashed sandstone/bronze line */
+  box-shadow: none;
 }
 
 .planet-1 {
-  width: 300px;
-  height: 300px;
-  top: -100px;
-  right: -50px;
-  opacity: 0.8;
-  animation: float 20s ease-in-out infinite alternate;
+  width: 520px;
+  height: 520px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.65;
+  animation: rotate-slow 120s linear infinite;
+}
+
+.planet-1::after {
+  content: '';
+  position: absolute;
+  top: 15%;
+  left: 15%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--saffron-orange); /* Burnished Gold planet */
 }
 
 .planet-2 {
-  width: 150px;
-  height: 150px;
-  bottom: 20%;
-  left: -20px;
-  opacity: 0.6;
-  background: radial-gradient(circle at 30% 30%, var(--bg-surface), #000);
-  box-shadow: inset -10px -10px 20px rgba(0,0,0,0.5), 0 0 40px rgba(244, 201, 93, 0.1);
-  animation: float 15s ease-in-out infinite alternate-reverse;
+  width: 320px;
+  height: 320px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.5;
+  border: 1px solid rgba(112, 99, 77, 0.1);
+  animation: rotate-slow-reverse 80s linear infinite;
 }
 
-@keyframes float {
-  0% { transform: translateY(0) rotate(0deg); }
-  100% { transform: translateY(-30px) rotate(5deg); }
+.planet-2::after {
+  content: '';
+  position: absolute;
+  bottom: 20%;
+  right: 20%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--saffron-gold); /* Deep Vermillion planet */
+}
+
+@keyframes rotate-slow {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes rotate-slow-reverse {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(-360deg); }
 }
 
 .constellation-overlay {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(rgba(46,43,95,0.1) 1px, transparent 1px);
-  background-size: 50px 50px;
-  opacity: 0.15;
-  mask-image: radial-gradient(circle at center, black, transparent 80%);
-  -webkit-mask-image: radial-gradient(circle at center, black, transparent 80%);
+  background-image: radial-gradient(rgba(112, 99, 77, 0.15) 1.5px, transparent 1.5px);
+  background-size: 40px 40px;
+  opacity: 0.25;
+  mask-image: radial-gradient(circle at center, black, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at center, black, transparent 75%);
 }
 
 .hero-container {
@@ -752,6 +833,8 @@ input:focus, textarea:focus, select:focus {
   flex-direction: column;
   align-items: center;
 }
+
+
 
 .hero-eyebrow-mark {
   display: inline-flex;
@@ -771,7 +854,7 @@ input:focus, textarea:focus, select:focus {
 }
 
 .hero-main-title {
-  font-family: 'Cinzel', serif;
+  font-family: 'Marcellus', serif;
   font-size: clamp(2.5rem, 6vw, 4.5rem);
   font-weight: 700;
   line-height: 1.1;
@@ -822,13 +905,13 @@ input:focus, textarea:focus, select:focus {
 }
 
 .h1, h2, h3, h4, h5, h6 {
-  font-family: 'Cinzel', serif;
+  font-family: 'Marcellus', serif;
   font-weight: 700;
   color: var(--ink-light);
 }
 
 .hero-stat-row strong {
-  font-family: 'Cinzel', serif;
+  font-family: 'Marcellus', serif;
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--ink-light);
@@ -1897,7 +1980,7 @@ body.has-result .interpretation-card {
 }
 
 .interpretation-head h3 {
-  font-family: 'Cinzel', serif;
+  font-family: 'Marcellus', serif;
   color: var(--divine-gold);
   font-size: 1.25rem;
 }
@@ -2594,7 +2677,7 @@ button.btn-wizard-secondary {
 }
 
 .wizard-title {
-  font-family: 'Cinzel', serif;
+  font-family: 'Marcellus', serif;
   font-size: 0.68rem;
   letter-spacing: 0.22em;
   color: var(--gold-foil);
@@ -2903,4 +2986,244 @@ body.view-consultants #consultants-card {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   India-Market Visual Redesign Accents
+   ========================================================================== */
+
+/* Tiro Devanagari Hindi / Noto Serif Devanagari styling */
+.devanagari-accent {
+  font-family: 'Noto Serif Devanagari', serif;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: var(--saffron-gold); /* Deep Vermillion */
+  font-weight: 500;
+  display: block;
+  margin-bottom: 8px;
+  text-shadow: none !important;
+}
+
+/* Today's Panchang Strip */
+.panchang-strip {
+  width: 100%;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 24px;
+  font-size: 0.82rem;
+  color: var(--ink-dim);
+  font-family: 'Inter', sans-serif;
+  z-index: 99;
+  position: relative;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.panchang-strip::-webkit-scrollbar {
+  height: 2px;
+}
+
+.panchang-strip::-webkit-scrollbar-thumb {
+  background: var(--saffron-orange);
+}
+
+.panchang-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panchang-label {
+  font-family: 'Noto Serif Devanagari', 'Inter', serif;
+  color: var(--saffron-gold);
+  font-weight: 600;
+}
+
+.panchang-val {
+  color: var(--ink-light);
+  font-weight: 600;
+}
+
+.panchang-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--saffron-orange);
+  opacity: 0.3;
+}
+
+/* Ambient Rotating Background Chakra */
+.chakra-bg-container {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chakra-svg {
+  width: min(85vw, 650px);
+  height: min(85vw, 650px);
+  color: var(--saffron-orange);
+  opacity: 0.045; /* 4.5% opacity as subtle texture */
+  animation: rotate-chakra 180s linear infinite;
+  transform-origin: center;
+  flex-shrink: 0;
+}
+
+@keyframes rotate-chakra {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chakra-svg {
+    animation: none;
+  }
+}
+
+/* Faint Watermarks for empty states/forms */
+.faint-watermark-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.faint-watermark-container::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 250px;
+  height: 250px;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 100 100' fill='none' stroke='%23C8A261' stroke-width='0.8' aria-hidden='true' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='50' cy='50' r='6' stroke-width='1.2' /%3E%3Ccircle cx='50' cy='50' r='2' fill='%23C8A261' /%3E%3Ccircle cx='50' cy='50' r='18' stroke-dasharray='2,2' /%3E%3Ccircle cx='50' cy='50' r='44' stroke-width='1.2' /%3E%3Ccircle cx='50' cy='50' r='47' /%3E%3Cg stroke-width='0.6'%3E%3Cline x1='50' y1='50' x2='50' y2='6' /%3E%3Cline x1='50' y1='50' x2='50' y2='94' /%3E%3Cline x1='50' y1='50' x2='6' y2='50' /%3E%3Cline x1='50' y1='50' x2='94' y2='50' /%3E%3Cline x1='50' y1='50' x2='19' y2='19' /%3E%3Cline x1='50' y1='50' x2='81' y2='81' /%3E%3Cline x1='50' y1='50' x2='19' y2='81' /%3E%3Cline x1='50' y1='50' x2='81' y2='19' /%3E%3C/g%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  opacity: 0.025;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Gopuram Arch Divider */
+.gopuram-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 40px 0;
+  opacity: 0.3;
+  color: var(--saffron-orange);
+  width: 100%;
+}
+
+.gopuram-divider::before, .gopuram-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line), transparent);
+}
+
+.gopuram-svg {
+  width: 38px;
+  height: 38px;
+  margin: 0 16px;
+  flex-shrink: 0;
+}
+
+/* Diya Accent Elements */
+.diya-bullet-list {
+  list-style: none;
+}
+
+.diya-bullet-list li {
+  position: relative;
+  padding-left: 28px;
+  margin-bottom: 12px;
+}
+
+.diya-bullet-list li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  width: 14px;
+  height: 14px;
+  background: radial-gradient(circle at 50% 100%, var(--saffron-orange) 30%, transparent 60%);
+  border: 1px solid var(--saffron-orange);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  clip-path: polygon(0 40%, 50% 0, 100% 40%, 100% 100%, 0 100%);
+}
+
+.diya-bullet-list li::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 0px;
+  width: 2px;
+  height: 4px;
+  background: var(--saffron-gold); /* Sindoor/Vermillion Flame */
+  border-radius: 50%;
+  animation: flicker 0.2s infinite alternate;
+}
+
+@keyframes flicker {
+  from { transform: scale(1); opacity: 0.8; }
+  to { transform: scale(1.1); opacity: 1; }
+}
+
+/* Premium Toast / Flash Notification */
+.astro-toast-container {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+.astro-toast {
+  pointer-events: auto;
+  min-width: 300px;
+  max-width: 450px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--line-gold);
+  box-shadow: var(--shadow-gold);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transform: translateY(-20px);
+  opacity: 0;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-light);
+}
+.astro-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+.astro-toast.error {
+  border-left: 4px solid var(--saffron-gold);
+}
+.astro-toast.success {
+  border-left: 4px solid var(--green-emerald);
+}
+.astro-toast.info {
+  border-left: 4px solid var(--divine-gold);
+}
+.astro-toast-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.astro-toast-message {
+  flex-grow: 1;
 }

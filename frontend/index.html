@@ -20,6 +20,9 @@
       window.onerror = function (msg, url, line, col, error) {
         if (!__astroDebugOn) {
           console.error(msg, error);
+          if (window.showFlash) {
+            window.showFlash(error?.message || msg, "error");
+          }
           return false;
         }
         const div = document.createElement("div");
@@ -49,6 +52,9 @@
       window.onunhandledrejection = function (event) {
         if (!__astroDebugOn) {
           console.error(event.reason);
+          if (window.showFlash) {
+            window.showFlash(event.reason?.message || event.reason || "Unhandled Promise Rejection", "error");
+          }
           return;
         }
         const div = document.createElement("div");
@@ -137,7 +143,7 @@
       <!-- Global Navbar -->
       <nav class="global-navbar" aria-label="Main Navigation">
         <div class="logo-text">
-          ॐ <span class="highlight">Kundali</span> Studio
+          <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
         </div>
         <div class="nav-links">
           <button type="button" id="nav-home" class="nav-btn active">
@@ -179,9 +185,99 @@
         </div>
       </nav>
 
+      <!-- Today's Panchang Strip -->
+      <div class="panchang-strip" aria-label="Today's Panchang Info">
+        <!-- TODO: wire to real panchang API/backend -->
+        <div class="panchang-item">
+          <span class="panchang-label">तिथि (Tithi)</span>
+          <span class="panchang-val">Shukla Ekadashi</span>
+        </div>
+        <div class="panchang-divider"></div>
+        <div class="panchang-item">
+          <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+          <span class="panchang-val">Anuradha</span>
+        </div>
+        <div class="panchang-divider"></div>
+        <div class="panchang-item">
+          <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+          <span class="panchang-val">05:24 AM / 07:12 PM</span>
+        </div>
+        <div class="panchang-divider"></div>
+        <div class="panchang-item">
+          <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+          <span class="panchang-val">11:45 AM - 12:35 PM</span>
+        </div>
+      </div>
+
       <section class="entry">
         <!-- Celestial Background Elements -->
         <div class="celestial-bg">
+          <!-- Rotating Sudarshan Chakra Background -->
+          <div class="chakra-bg-container">
+            <svg class="chakra-svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="0.8" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <!-- Center hub -->
+              <circle cx="50" cy="50" r="6" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="2" fill="currentColor" />
+              <!-- Inner ring -->
+              <circle cx="50" cy="50" r="18" stroke-dasharray="2,2" />
+              <!-- Outer ring -->
+              <circle cx="50" cy="50" r="44" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="47" />
+              <!-- 24 Spokes -->
+              <g stroke-width="0.6">
+                <line x1="50" y1="50" x2="50" y2="6" />
+                <line x1="50" y1="50" x2="50" y2="94" />
+                <line x1="50" y1="50" x2="6" y2="50" />
+                <line x1="50" y1="50" x2="94" y2="50" />
+                <line x1="50" y1="50" x2="19" y2="19" />
+                <line x1="50" y1="50" x2="81" y2="81" />
+                <line x1="50" y1="50" x2="19" y2="81" />
+                <line x1="50" y1="50" x2="81" y2="19" />
+                <line x1="50" y1="50" x2="61.4" y2="8.4" />
+                <line x1="50" y1="50" x2="38.6" y2="91.6" />
+                <line x1="50" y1="50" x2="72.1" y2="15.6" />
+                <line x1="50" y1="50" x2="27.9" y2="84.4" />
+                <line x1="50" y1="50" x2="84.4" y2="27.9" />
+                <line x1="50" y1="50" x2="15.6" y2="72.1" />
+                <line x1="50" y1="50" x2="91.6" y2="38.6" />
+                <line x1="50" y1="50" x2="8.4" y2="61.4" />
+                <line x1="50" y1="50" x2="61.4" y2="91.6" />
+                <line x1="50" y1="50" x2="38.6" y2="8.4" />
+                <line x1="50" y1="50" x2="72.1" y2="84.4" />
+                <line x1="50" y1="50" x2="27.9" y2="15.6" />
+                <line x1="50" y1="50" x2="84.4" y2="72.1" />
+                <line x1="50" y1="50" x2="15.6" y2="27.9" />
+                <line x1="50" y1="50" x2="91.6" y2="61.4" />
+                <line x1="50" y1="50" x2="8.4" y2="38.6" />
+              </g>
+              <!-- Teeth details -->
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(0 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(15 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(30 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(45 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(60 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(75 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(90 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(105 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(120 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(135 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(150 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(165 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(180 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(195 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(210 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(225 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(240 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(255 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(270 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(285 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(300 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(315 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(330 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(345 50 50)" />
+            </svg>
+          </div>
+
           <div class="planet planet-1"></div>
           <div class="planet planet-2"></div>
           <div class="constellation-overlay"></div>
@@ -189,6 +285,7 @@
 
         <div class="hero-container">
           <div class="hero-center-content">
+            <span class="devanagari-accent">ज्योतिषं नेत्रं शास्त्रस्य</span>
             <span class="hero-eyebrow-mark">✨ Luxury Spiritual Wellness</span>
             <h1 class="hero-main-title">
               Decode the Blueprint Written in the Stars.
@@ -204,22 +301,19 @@
                 class="btn-primary mode-card"
                 data-mode="lagna"
               >
-                Generate Birth Chart (Lagna)
+                Lagna (Birth Chart)
               </button>
               <button
                 type="button"
                 class="btn-secondary mode-card"
                 data-mode="prashna"
               >
-                Ask a Question (Prashna)
+                Prashna (Ask a Question)
               </button>
             </div>
 
             <div class="hero-stat-row">
-              <div><strong>Swiss</strong><span>Ephemeris</span></div>
-              <div><strong>Lahiri</strong><span>Ayanamsa</span></div>
-              <div><strong>Secure</strong><span>Login</span></div>
-              <div><strong>Expert</strong><span>Astrologers</span></div>
+              <div><strong>Expert</strong><span>Astrologer</span></div>
             </div>
           </div>
         </div>
@@ -1124,6 +1218,6 @@
       </footer>
     </main>
 
-    <script src="./app.js"></script>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>

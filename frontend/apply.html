@@ -6,32 +6,6 @@
     <title>Apply as Astrologer - Kundali Studio</title>
     <link rel="stylesheet" href="./styles.css?v=2">
     <style>
-        .apply-container {
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 40px;
-            background: var(--bg-surface);
-            border: 1px solid var(--line);
-            border-radius: 16px;
-        }
-        .apply-header {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        .apply-header h1 {
-            font-family: 'Cinzel', serif;
-            font-size: 2.1rem;
-            color: var(--ink-light);
-            margin-bottom: 8px;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-        .apply-header p {
-            color: var(--ink-dim);
-            font-family: 'Inter', sans-serif;
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
         .form-group {
             margin-bottom: 24px;
         }
@@ -82,7 +56,7 @@
 <body>
     <nav class="global-navbar">
         <div class="logo-text">
-            ॐ <span class="highlight">Kundali</span> Studio
+            <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
         </div>
         <div class="nav-links">
             <a href="./index.html" class="nav-link-btn">Home</a>
@@ -90,13 +64,14 @@
     </nav>
 
     <main class="main-content">
-        <div class="apply-container">
-            <div class="apply-header">
-                <h1>Practitioner Registry</h1>
-                <p>Register your credentials to gain verified status and participate in client consultation channels.</p>
+        <div class="page-container faint-watermark-container" style="max-width: 600px; background: var(--bg-surface); border: 1px solid var(--line); border-radius: 16px;">
+            <div class="page-header center" style="position: relative; z-index: 1;">
+                <span class="devanagari-accent">पंजीकरण</span>
+                <h1 class="page-title">Practitioner Registry</h1>
+                <p class="page-subtitle">Register your credentials to gain verified status and participate in client consultation channels.</p>
             </div>
             
-            <form id="applyForm">
+            <form id="applyForm" style="position: relative; z-index: 1;">
                 <div class="form-group">
                     <label for="experience">Astrological Experience (Years)</label>
                     <input type="number" id="experience" name="experience" min="0" required placeholder="e.g. 5">
@@ -119,7 +94,7 @@
                 
                 <button type="submit" class="btn-submit">Submit Credentials</button>
             </form>
-            <div id="statusMessage" style="margin-top: 24px; text-align: center; font-size: 0.95rem; font-weight: 600;"></div>
+            <div id="statusMessage" style="margin-top: 24px; text-align: center; font-size: 0.95rem; font-weight: 600; position: relative; z-index: 1;"></div>
         </div>
     </main>
 
@@ -150,14 +125,14 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    document.getElementById('statusMessage').innerHTML = '<span style="color: #10b981;">🕉️ Credentials submitted successfully. Administrative review will complete in 24-48 hours.</span>';
+                    document.getElementById('statusMessage').innerHTML = '<span class="status-success">🕉️ Credentials submitted successfully. Administrative review will complete in 24-48 hours.</span>';
                     document.getElementById('applyForm').reset();
                 } else {
-                    document.getElementById('statusMessage').innerHTML = `<span style="color: #ef4444;">Error: ${data.detail}</span>`;
+                    document.getElementById('statusMessage').innerHTML = `<span class="status-error">Error: ${data.detail}</span>`;
                 }
             } catch (err) {
                 console.error(err);
-                document.getElementById('statusMessage').innerHTML = '<span style="color: #ef4444;">Failed to submit application.</span>';
+                document.getElementById('statusMessage').innerHTML = '<span class="status-error">Failed to submit application.</span>';
             }
         });
     </script>

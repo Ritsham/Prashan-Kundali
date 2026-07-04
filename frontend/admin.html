@@ -6,30 +6,6 @@
     <title>Admin Dashboard - Kundali Studio</title>
     <link rel="stylesheet" href="./styles.css?v=2">
     <style>
-        .admin-container {
-            max-width: 1000px;
-            margin: 40px auto;
-            padding: 30px;
-        }
-        .admin-header {
-            margin-bottom: 30px;
-            padding-bottom: 24px;
-            border-bottom: 1px solid var(--line);
-        }
-        .admin-header h1 {
-            font-family: 'Cinzel', serif;
-            color: var(--ink-light);
-            font-size: 2.2rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            margin-bottom: 10px;
-        }
-        .admin-header p {
-            color: var(--ink-dim);
-            font-family: 'Inter', sans-serif;
-            font-size: 1rem;
-            line-height: 1.5;
-        }
         .pending-list {
             display: flex;
             flex-direction: column;
@@ -95,16 +71,16 @@
             border: 1px solid var(--line);
         }
         .btn-reject:hover {
-            border-color: #ef4444;
-            color: #ef4444;
-            background: rgba(239, 68, 68, 0.1);
+            border-color: var(--color-error);
+            color: var(--color-error);
+            background: rgba(158, 51, 36, 0.1);
         }
     </style>
 </head>
 <body>
     <nav class="global-navbar">
         <div class="logo-text">
-            ॐ <span class="highlight">Admin</span> Studio
+            <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Admin</span> Studio
         </div>
         <div class="nav-links">
             <a href="./index.html" class="nav-link-btn">Home</a>
@@ -113,10 +89,10 @@
     </nav>
 
     <main class="main-content">
-        <div class="admin-container">
-            <div class="admin-header">
-                <h1>Practitioner Verification Queue</h1>
-                <p>Verify practitioner profiles, credentials, bios, and websites before granting access to community boards.</p>
+        <div class="page-container">
+            <div class="page-header">
+                <h1 class="page-title">Practitioner Verification Queue</h1>
+                <p class="page-subtitle">Verify practitioner profiles, credentials, bios, and websites before granting access to community boards.</p>
             </div>
             
             <div class="pending-list" id="pending-list">
@@ -126,7 +102,8 @@
     </main>
 
     <script type="module">
-        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+        import { initLogout } from './auth-shared.js';
+        import { showFlash } from './flash.js';
 
         async function loadPending() {
             const token = localStorage.getItem('supabase_token');
@@ -150,7 +127,7 @@
                 const list = document.getElementById('pending-list');
                 
                 if (!data.pending || data.pending.length === 0) {
-                    list.innerHTML = '<p style="color: var(--ink-dim); text-align: center; margin-top: 40px;">No pending applications in queue at the moment.</p>';
+                    list.innerHTML = '<p class="text-muted" style="text-align: center; margin-top: 40px;">No pending applications in queue at the moment.</p>';
                     return;
                 }
 
@@ -172,6 +149,7 @@
 
             } catch (err) {
                 console.error(err);
+                showFlash("Failed to load queue: " + err.message, "error");
             }
         }
 
@@ -190,20 +168,14 @@
                 }
             } catch (err) {
                 console.error(err);
-                alert('Error updating user');
+                showFlash("Failed to update user: " + err.message, "error");
             }
         };
 
-        document.getElementById('btn-logout').addEventListener('click', async () => {
-            const configRes = await fetch('/api/config');
-            const config = await configRes.json();
-            const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey);
-            await supabase.auth.signOut();
-            localStorage.removeItem('supabase_token');
-            window.location.href = './index.html';
+        document.addEventListener('DOMContentLoaded', () => {
+            initLogout('btn-logout');
+            loadPending();
         });
-
-        document.addEventListener('DOMContentLoaded', loadPending);
     </script>
 </body>
 </html>

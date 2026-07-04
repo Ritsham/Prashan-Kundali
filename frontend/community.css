@@ -3,23 +3,23 @@
    ========================================================================== */
 
 :root {
-    /* Map chat colors to the main app dark mode variables from styles.css */
-    --bg-sidebar: var(--bg-surface, #FFFFFF);
-    --bg-chat: var(--bg-space, #FDF8F0);
+    /* Map chat colors to the main app light mode variables from styles.css */
+    --bg-sidebar: var(--bg-surface, #FFFDF9);
+    --bg-chat: var(--bg-space, #FAF5EC);
     
     /* Text */
-    --text-primary: var(--ink-light, #2E2B5F);
-    --text-secondary: var(--ink-dim, #5C6BC0);
+    --text-primary: var(--ink-light, #211C4D);
+    --text-secondary: var(--ink-dim, #70634D);
     
     /* Borders & Accents */
-    --border-light: var(--line, rgba(46, 43, 95, 0.08));
-    --accent: var(--saffron-gold, #E7C98A);
-    --bubble-mine: var(--bg-surface, #FFFFFF);
-    --bubble-theirs: var(--bg-panel, #F7F0E6);
-    --glass-panel: rgba(253, 248, 240, 0.7);
-    --accent-primary: var(--saffron-gold, #F4C95D);
+    --border-light: var(--line, rgba(112, 99, 77, 0.12));
+    --accent: var(--saffron-orange, #C8A261);
+    --bubble-mine: var(--bg-surface, #FFFDF9);
+    --bubble-theirs: var(--bg-panel, #F3EBE0);
+    --glass-panel: rgba(250, 245, 236, 0.85);
+    --accent-primary: var(--saffron-gold, #9E3324);
     --border-color: var(--border-light);
-    --danger: #ef4444;
+    --danger: #9E3324;
 }
 
 body {
@@ -59,7 +59,7 @@ body {
 }
 
 .sidebar-header h2 {
-    font-family: 'Cinzel', serif;
+    font-family: 'Marcellus', serif;
     font-size: 1.1rem;
     font-weight: 700;
     margin: 0;
@@ -142,7 +142,7 @@ body {
     font-size: 12px;
     font-weight: bold;
     margin-right: 12px;
-    font-family: 'Cinzel', serif;
+    font-family: 'Marcellus', serif;
 }
 
 .channel-item.active .channel-avatar {
@@ -210,7 +210,7 @@ body {
 }
 
 .chat-header h3 {
-    font-family: 'Cinzel', serif;
+    font-family: 'Marcellus', serif;
     margin: 0;
     font-size: 1.1rem;
     font-weight: 700;
@@ -313,14 +313,15 @@ body {
     visibility: hidden;
     transition: all 0.2s ease;
     box-shadow: 0 4px 12px rgba(46, 43, 95, 0.08);
+    z-index: 100; /* Fixes overlapping issues */
 }
 
 .message-row.mine .message-actions {
-    left: -80px;
+    left: -90px; /* Pushed out slightly more for breathing room */
 }
 
 .message-row.theirs .message-actions {
-    right: -80px;
+    right: -90px;
 }
 
 .message-bubble:hover .message-actions {
@@ -331,7 +332,6 @@ body {
 .action-btn {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
     cursor: pointer;
     width: 28px;
     height: 28px;
@@ -340,6 +340,29 @@ body {
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
+    padding: 0; /* Prevents padding from crushing the SVG */
+}
+
+.action-btn svg {
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px;
+    min-height: 16px;
+    display: block;
+    transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+    background: rgba(46,43,95,0.08);
+}
+
+.action-btn.star.starred svg {
+    stroke: var(--accent-primary) !important;
+    fill: var(--accent-primary) !important;
+}
+
+.action-btn.delete:hover svg {
+    stroke: var(--danger) !important;
 }
 
 .action-btn:hover {
@@ -347,8 +370,18 @@ body {
     color: var(--text-primary);
 }
 
-.action-btn.star.starred { color: var(--accent-primary); }
-.action-btn.delete:hover { color: var(--danger); }
+.action-btn:hover svg {
+    stroke: var(--text-primary);
+}
+
+.action-btn.star.starred svg {
+    stroke: var(--accent-primary);
+    fill: var(--accent-primary);
+}
+
+.action-btn.delete:hover svg {
+    stroke: var(--danger);
+}
 
 /* Chat Input (Pill Shaped) */
 .chat-input-container {
@@ -479,7 +512,7 @@ body {
 }
 
 .thread-header h3 {
-    font-family: 'Cinzel', serif;
+    font-family: 'Marcellus', serif;
     margin: 0;
     font-size: 1.05rem;
     font-weight: 700;

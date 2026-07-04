@@ -1,3 +1,5 @@
+import { showFlash } from './flash.js';
+
 async function fetchQueue() {
   try {
     const res = await fetch("/api/consultation/queue");
@@ -6,6 +8,7 @@ async function fetchQueue() {
     renderQueue(data.queue);
   } catch(e) {
     console.error(e);
+    showFlash("Failed to load consultation queue: " + e.message, "error");
   }
 }
 
@@ -19,7 +22,7 @@ function renderQueue(queue) {
   list.innerHTML = "";
   
   if (queue.length === 0) {
-    list.innerHTML = "<li style='padding: 16px; color:#999; font-size:14px;'>Queue is empty</li>";
+    list.innerHTML = "<li class='text-muted' style='padding: 16px; font-size:14px;'>Queue is empty</li>";
     if (activeItem) {
       document.getElementById("main-view").innerHTML = "<div class='empty-state'>Queue is empty.</div>";
       activeItem = null;
@@ -49,7 +52,7 @@ function selectItem(id) {
   main.innerHTML = `
     <div class="detail-card">
       <h2>Consultation for ${item.user_name}</h2>
-      <p style="color:#666; font-size: 13px;">Deadline: ${new Date(item.sla_deadline).toLocaleString()}</p>
+      <p class="text-muted" style="font-size: 13px;">Deadline: ${new Date(item.sla_deadline).toLocaleString()}</p>
       
       <div class="question-box">
         <strong>Question:</strong><br/>
@@ -84,7 +87,7 @@ window.submitAnswer = async function(id) {
   const answer = document.getElementById("answer-input").value.trim();
   const status = document.getElementById("action-status");
   if (answer.length < 5) {
-    status.style.color = "red";
+    status.className = "status-error";
     status.textContent = "Answer too short.";
     return;
   }
@@ -97,17 +100,18 @@ window.submitAnswer = async function(id) {
       body: JSON.stringify({ answer })
     });
     if (res.ok) {
-      status.style.color = "green";
+      status.className = "status-success";
       status.textContent = "Answer submitted successfully!";
       activeItem = null;
       setTimeout(fetchQueue, 1000);
     } else {
-      status.style.color = "red";
+      status.className = "status-error";
       status.textContent = "Failed to submit.";
     }
   } catch(e) {
-    status.style.color = "red";
+    status.className = "status-error";
     status.textContent = "Error.";
+    showFlash("Error submitting answer: " + e.message, "error");
   }
 }
 
@@ -118,20 +122,20 @@ window.declineQuestion = async function(id) {
   try {
     const res = await fetch(`/api/consultation/${id}/decline`, { method: "POST" });
     if (res.ok) {
-      status.style.color = "green";
+      status.className = "status-success";
       status.textContent = "Declined successfully.";
       activeItem = null;
       setTimeout(fetchQueue, 1000);
     } else {
-      status.style.color = "red";
+      status.className = "status-error";
       status.textContent = "Failed to decline.";
     }
   } catch(e) {
-    status.style.color = "red";
+    status.className = "status-error";
     status.textContent = "Error.";
+    showFlash("Error declining case: " + e.message, "error");
   }
 }
 
-// Init polling
 fetchQueue();
 setInterval(fetchQueue, 5000);
