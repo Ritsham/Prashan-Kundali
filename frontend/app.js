@@ -63,6 +63,9 @@ const transitFacts = document.querySelector("#transit-facts");
 const transitTable = document.querySelector("#transit-table");
 const dashaTable = document.querySelector("#dasha-table");
 const dashaSummary = document.querySelector("#dasha-summary");
+const kpSection = document.querySelector("#kp-section");
+const kpPlanetTable = document.querySelector("#kp-planet-table");
+const kpCuspTable = document.querySelector("#kp-cusp-table");
 const shareLink = document.querySelector("#share-link");
 const chartTitle = document.querySelector("#chart-title");
 const dashaHeading = document.querySelector("#dasha-heading");
@@ -423,6 +426,7 @@ function renderChart(chart) {
   renderConsultants(chart);
   renderDivisionalCharts(chart.divisional_charts, chart);
   renderPlanets(chart.planets);
+  renderKPSystem(chart.kp_system, chart.planets);
   renderTransit(chart.transit, isLagna);
   renderDasha(normalizeDasha(chart.dashas, chart.question.asked_at_utc));
   
@@ -1019,6 +1023,78 @@ function renderPlanets(planets) {
   planetTable.innerHTML = `
     <thead><tr><th>Planet</th><th>Sign</th><th>Degree</th><th>House</th><th>Nakshatra</th><th>Pada</th><th>Motion</th></tr></thead>
     <tbody>${planets.map((p) => `<tr><td>${p.name}</td><td>${p.sign}</td><td>${p.formatted_degree}</td><td>${p.house}</td><td>${p.nakshatra}</td><td>${p.pada}</td><td>${p.retrograde ? "Retrograde" : "Direct"}</td></tr>`).join("")}</tbody>
+  `;
+}
+
+function renderKPSystem(kp, planets) {
+  if (!kp) {
+    kpSection.classList.add("hidden");
+    return;
+  }
+  
+  kpSection.classList.remove("hidden");
+  
+  // Render Planets Table
+  const sigs = kp.planet_significators;
+  const planetsData = Object.keys(sigs).map(name => {
+    // Find planet object in original chart by name
+    const p = planets?.find(x => x.name === name) || {};
+    return `
+      <tr>
+        <td><strong>${name}</strong></td>
+        <td>${p.sign_lord || "-"}</td>
+        <td>${p.star_lord || "-"}</td>
+        <td>${p.sub_lord || "-"}</td>
+        <td>${p.sub_sub_lord || "-"}</td>
+        <td>${sigs[name].join(", ")}</td>
+      </tr>
+    `;
+  });
+  
+  kpPlanetTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>Planet</th>
+        <th>Sign Lord</th>
+        <th>Star Lord</th>
+        <th>Sub Lord</th>
+        <th>Sub-Sub Lord</th>
+        <th>Significators (Houses)</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${planetsData.join("")}
+    </tbody>
+  `;
+  
+  // Render Cusps Table
+  const cuspsData = kp.cusps.map(c => `
+    <tr>
+      <td><strong>${c.house}</strong></td>
+      <td>${c.longitude}°</td>
+      <td>${c.sign_lord || "-"}</td>
+      <td>${c.star_lord || "-"}</td>
+      <td>${c.sub_lord || "-"}</td>
+      <td>${c.sub_sub_lord || "-"}</td>
+      <td>${kp.house_occupants[c.house].join(", ") || "-"}</td>
+    </tr>
+  `);
+  
+  kpCuspTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>Cusp</th>
+        <th>Degree</th>
+        <th>Sign Lord</th>
+        <th>Star Lord</th>
+        <th>Sub Lord</th>
+        <th>Sub-Sub Lord</th>
+        <th>Occupants</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${cuspsData.join("")}
+    </tbody>
   `;
 }
 

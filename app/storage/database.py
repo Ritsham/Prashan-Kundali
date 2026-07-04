@@ -59,6 +59,12 @@ def save_prashna_chart(db: Client, chart: dict, user_id: str) -> str:
             print(f"Warning: Supabase save_prashna_chart failed: {e}")
     return chart_id
 
+def update_prashna_chart(db: Client, chart_id: str, chart: dict) -> None:
+    data = {
+        "chart_json": json.dumps(chart)
+    }
+    db.table("prashna_charts").update(data).eq("id", chart_id).execute()
+
 def save_lagna_chart(db: Client, chart: dict, user_id: str) -> str:
     chart_id = f"chart_{uuid4().hex[:12]}"
     meta = chart.get("meta", {})

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 import json
+import os
+import httpx
 
 from app.storage.consultation_db import (
     get_queue_status,
@@ -10,7 +12,6 @@ from app.storage.consultation_db import (
     decline_consultation
 )
 from app.api.prashna import LocationInput
-from app.services.chart_calculator import calculate_prashna_chart, CalculationDependencyError
 from app.dependencies import get_current_user, AuthState
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -54,18 +55,27 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
             local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
         birth_utc = local_dt.astimezone(timezone.utc)
         
-        snapshot = calculate_prashna_chart(
-            question=payload.question,
-            name=payload.name,
-            asked_at_utc=birth_utc,
-            latitude=payload.location.latitude,
-            longitude=payload.location.longitude,
-            place_name=payload.location.place_name,
-            chart_type="lagna",
-            gender=payload.gender,
-        )
-    except CalculationDependencyError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+        
+        payload_data = {
+            "chart_type": "prashna",
+            "name": payload.name,
+            "question": payload.question,
+            "location": {
+                "latitude": payload.location.latitude,
+                "longitude": payload.location.longitude,
+                "place_name": payload.location.place_name
+            },
+            "asked_at_utc": birth_utc.isoformat()
+        }
+            
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
+            
+        if resp.status_code != 200:
+            raise HTTPException(status_code=422, detail="Failed to calculate astrological snapshot for consultation.")
+            
+        snapshot = resp.json()["chart"]
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Chart calculation failed: {str(exc)}")
 

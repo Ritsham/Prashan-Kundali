@@ -1,0 +1,144 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Kundali Studio — Production Microservice Orchestration
+#
+#  Services:
+#    redis            — Message broker + SSE pub/sub channel
+#    astrology_engine — Math (PySwisseph) + Insight Engine  [port 8001]
+#    llm_engine       — LLM Orchestration API               [port 8002]
+#    llm_worker       — Celery background worker for LLM generation
+#    api_gateway      — Main FastAPI app (auth, DB, static)  [port 8000]
+#
+#  Start all:
+#    docker compose up --build
+#
+#  Start only backend engines (no gateway):
+#    docker compose up redis astrology_engine llm_engine llm_worker
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  kundali_net:
+    driver: bridge
+
+volumes:
+  redis_data:
+
+services:
+
+  # ── 0. Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: kundali_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - kundali_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── 1. Astrology Engine ───────────────────────────────────────
+  astrology_engine:
+    build:
+      context: .
+      dockerfile: services/astrology_engine/Dockerfile
+    container_name: kundali_astrology_engine
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./ephemeris:/app/ephemeris:ro  # Shared ephemeris data (read-only)
+    networks:
+      - kundali_net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8001/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── 2. LLM Engine API ─────────────────────────────────────────
+  llm_engine:
+    build:
+      context: .
+      dockerfile: services/llm_engine_service/Dockerfile
+    container_name: kundali_llm_engine
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - kundali_net
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8002/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── 3. LLM Celery Worker ──────────────────────────────────────
+  llm_worker:
+    build:
+      context: .
+      dockerfile: services/llm_engine_service/Dockerfile
+    container_name: kundali_llm_worker
+    restart: unless-stopped
+    # Override the CMD to run the Celery worker instead of uvicorn
+    command: >
+      celery -A app.celery_app.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=default
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    networks:
+      - kundali_net
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── 4. API Gateway (Main App) ─────────────────────────────────
+  api_gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kundali_gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ASTROLOGY_ENGINE_URL: http://astrology_engine:8001
+      LLM_ENGINE_URL: http://llm_engine:8002
+    volumes:
+      - ./ephemeris:/app/ephemeris:ro
+    networks:
+      - kundali_net
+    depends_on:
+      redis:
+        condition: service_healthy
+      astrology_engine:
+        condition: service_healthy
+      llm_engine:
+        condition: service_healthy

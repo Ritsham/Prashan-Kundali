@@ -5,13 +5,20 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
-from app.services.chart_calculator import CalculationDependencyError, calculate_prashna_chart
+import os
+import httpx
 from app.services.geocoding_service import geocode_place, reverse_geocode_place
 from app.services.timezone_service import timezone_at
 from app.storage.database import get_chart, save_prashna_chart, save_lagna_chart, sync_user
 from app.dependencies import get_current_user, AuthState
+from app.core.rate_limiter import RateLimiter
 
 router = APIRouter()
+
+# Rate limiters
+prashna_rate_limiter = RateLimiter(requests=10, window=60) # 10 req / minute
+lagna_rate_limiter = RateLimiter(requests=10, window=60)
+
 
 
 class LocationInput(BaseModel):
@@ -51,7 +58,7 @@ def sync_user_endpoint(payload: UserSyncRequest, auth: AuthState = Depends(get_c
 
 
 @router.post("/prashna")
-def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_current_user)) -> dict:
+async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_current_user), _ = Depends(prashna_rate_limiter)) -> dict:
     try:
         asked_at_utc = datetime.now(timezone.utc)
         if payload.asked_at_utc:
@@ -61,25 +68,66 @@ def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_curren
                 raise HTTPException(status_code=400, detail="Invalid asked_at_utc ISO datetime.") from exc
         
         try:
-            chart = calculate_prashna_chart(
-                question=payload.question,
-                name=payload.name,
-                asked_at_utc=asked_at_utc,
-                latitude=payload.location.latitude,
-                longitude=payload.location.longitude,
-                place_name=payload.location.place_name,
-                chart_type="prashna",
-                question_domain=payload.question_domain,
-                question_subdomain=payload.question_subdomain,
-            )
-        except CalculationDependencyError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+            
+            payload_data = {
+                "chart_type": "prashna",
+                "name": payload.name,
+                "question": payload.question,
+                "question_domain": payload.question_domain,
+                "question_subdomain": payload.question_subdomain,
+                "location": {
+                    "latitude": payload.location.latitude,
+                    "longitude": payload.location.longitude,
+                    "place_name": payload.location.place_name
+                }
+            }
+            if payload.asked_at_utc:
+                payload_data["asked_at_utc"] = asked_at_utc.isoformat()
+                
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
+                
+            if resp.status_code == 503:
+                raise HTTPException(status_code=503, detail=resp.json().get("detail", "Calculation Dependency Error"))
+            elif resp.status_code != 200:
+                raise HTTPException(status_code=422, detail=resp.json().get("detail", "Failed to calculate chart"))
+                
+            result = resp.json()
+            chart = result["chart"]
+            interpretation = result.get("interpretation")
+
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to connect to astrology engine: {str(exc)}") from exc
         except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+        # Step 3: Save and Return immediately (so frontend feels instant)
         chart_id = save_prashna_chart(auth.client, chart, auth.user_id)
         chart["id"] = chart_id
-        return {"chart_id": chart_id, "chart": chart}
+        
+        # Step 4: Queue LLM Generation in the background
+        if interpretation:
+            try:
+                llm_url = os.getenv("LLM_ENGINE_URL", "http://localhost:8002")
+                async with httpx.AsyncClient() as client:
+                    await client.post(
+                        f"{llm_url}/generate",
+                        json={
+                            "chart_id": chart_id,
+                            "chart": chart,
+                            "interpretation": interpretation
+                        },
+                        timeout=5.0
+                    )
+            except Exception as e:
+                # Log but do not fail the request if LLM queuing fails
+                import logging
+                logging.warning(f"Failed to queue LLM generation: {e}")
+            
+        return {"chart_id": chart_id, "chart": chart, "status": "processing"}
     except HTTPException:
         raise
     except Exception as exc:
@@ -89,26 +137,37 @@ def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_curren
 
 
 @router.post("/lagna")
-def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_current_user)) -> dict:
+async def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_current_user), _ = Depends(lagna_rate_limiter)) -> dict:
     try:
         try:
             tz_name = timezone_at(payload.location.latitude, payload.location.longitude)
             local_dt = datetime.fromisoformat(payload.birth_datetime_local)
-            if local_dt.tzinfo is None:
-                local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
-            birth_utc = local_dt.astimezone(timezone.utc)
-            chart = calculate_prashna_chart(
-                question="",
-                name=payload.name,
-                asked_at_utc=birth_utc,
-                latitude=payload.location.latitude,
-                longitude=payload.location.longitude,
-                place_name=payload.location.place_name,
-                chart_type="lagna",
-                gender=payload.gender,
-            )
-        except CalculationDependencyError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+            
+            payload_data = {
+                "chart_type": "lagna",
+                "name": payload.name,
+                "gender": payload.gender,
+                "birth_datetime_local": payload.birth_datetime_local,
+                "location": {
+                    "latitude": payload.location.latitude,
+                    "longitude": payload.location.longitude,
+                    "place_name": payload.location.place_name
+                }
+            }
+                
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
+                
+            if resp.status_code == 503:
+                raise HTTPException(status_code=503, detail=resp.json().get("detail", "Calculation Dependency Error"))
+            elif resp.status_code != 200:
+                raise HTTPException(status_code=422, detail=resp.json().get("detail", "Failed to calculate chart"))
+                
+            chart = resp.json()["chart"]
+            
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to connect to astrology engine: {str(exc)}") from exc
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -142,3 +201,27 @@ def geocode(query: str, limit: int = 6) -> dict:
 @router.get("/reverse_geocode")
 def reverse_geocode(lat: float, lon: float) -> dict:
     return reverse_geocode_place(lat, lon)
+
+from fastapi.responses import StreamingResponse
+import redis
+import json
+import os
+
+@router.get("/stream/{chart_id}")
+def stream_chart(chart_id: str):
+    def event_stream():
+        redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        pubsub = redis_client.pubsub()
+        pubsub.subscribe(f"stream:{chart_id}")
+        
+        for message in pubsub.listen():
+            if message['type'] == 'message':
+                data = json.loads(message['data'])
+                if data.get('done'):
+                    yield "data: [DONE]\n\n"
+                    break
+                
+                text_chunk = data.get('text', '')
+                yield f"data: {json.dumps({'text': text_chunk})}\n\n"
+                
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
