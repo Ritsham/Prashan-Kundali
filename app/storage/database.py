@@ -10,8 +10,13 @@ import os
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
 
-# Initialize Supabase Client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# Initialize Supabase Client safely
+supabase = None
+if SUPABASE_URL and SUPABASE_ANON_KEY and "your-" not in SUPABASE_URL and "your-" not in SUPABASE_ANON_KEY:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+    except Exception as e:
+        print(f"Warning: Failed to initialize Supabase client: {e}")
 
 def init_db() -> None:
     # No-op since Supabase handles the database schema remotely
@@ -19,13 +24,19 @@ def init_db() -> None:
 
 def sync_user(db: Client, user_id: str, email: str, name: str) -> None:
     from datetime import datetime, timezone
+    if not db:
+        print("Warning: Supabase client is not initialized. Skipping sync_user.")
+        return
     data = {
         "id": user_id,
         "email": email,
         "name": name,
         "last_sign_in": datetime.now(timezone.utc).isoformat()
     }
-    db.table("users").upsert(data).execute()
+    try:
+        db.table("users").upsert(data).execute()
+    except Exception as e:
+        print(f"Warning: Supabase sync_user failed: {e}")
 
 def save_prashna_chart(db: Client, chart: dict, user_id: str) -> str:
     chart_id = f"chart_{uuid4().hex[:12]}"
@@ -41,7 +52,11 @@ def save_prashna_chart(db: Client, chart: dict, user_id: str) -> str:
         "longitude": question["longitude"],
         "chart_json": json.dumps(chart)
     }
-    db.table("prashna_charts").insert(data).execute()
+    if db:
+        try:
+            db.table("prashna_charts").insert(data).execute()
+        except Exception as e:
+            print(f"Warning: Supabase save_prashna_chart failed: {e}")
     return chart_id
 
 def update_prashna_chart(db: Client, chart_id: str, chart: dict) -> None:
@@ -66,27 +81,36 @@ def save_lagna_chart(db: Client, chart: dict, user_id: str) -> str:
         "longitude": question.get("longitude", 0.0),
         "chart_json": json.dumps(chart)
     }
-    db.table("lagna_charts").insert(data).execute()
+    if db:
+        try:
+            db.table("lagna_charts").insert(data).execute()
+        except Exception as e:
+            print(f"Warning: Supabase save_lagna_chart failed: {e}")
     return chart_id
 
 def get_chart(db: Client, chart_id: str) -> Optional[dict]:
-    # First, try to query prashna_charts
-    res = db.table("prashna_charts").select("id, chart_json, created_at").eq("id", chart_id).execute()
-    if res.data:
-        row = res.data[0]
-        chart = json.loads(row["chart_json"])
-        chart["id"] = row["id"]
-        chart["created_at"] = row["created_at"]
-        return chart
-    
-    # If not found, try to query lagna_charts
-    res = db.table("lagna_charts").select("id, chart_json, created_at").eq("id", chart_id).execute()
-    if res.data:
-        row = res.data[0]
-        chart = json.loads(row["chart_json"])
-        chart["id"] = row["id"]
-        chart["created_at"] = row["created_at"]
-        return chart
+    if not db:
+        return None
+    try:
+        # First, try to query prashna_charts
+        res = db.table("prashna_charts").select("id, chart_json, created_at").eq("id", chart_id).execute()
+        if res.data:
+            row = res.data[0]
+            chart = json.loads(row["chart_json"])
+            chart["id"] = row["id"]
+            chart["created_at"] = row["created_at"]
+            return chart
+        
+        # If not found, try to query lagna_charts
+        res = db.table("lagna_charts").select("id, chart_json, created_at").eq("id", chart_id).execute()
+        if res.data:
+            row = res.data[0]
+            chart = json.loads(row["chart_json"])
+            chart["id"] = row["id"]
+            chart["created_at"] = row["created_at"]
+            return chart
+    except Exception as e:
+        print(f"Warning: Supabase get_chart failed: {e}")
         
     return None
 
@@ -118,30 +142,40 @@ def save_consultant_booking(db: Client, booking: dict, user_id: str) -> str:
         "birth_details_json": json.dumps(booking.get("birth_details")) if booking.get("birth_details") else "",
         "status": booking.get("status", "requested")
     }
-    db.table("consultant_bookings").insert(data).execute()
+    if db:
+        try:
+            db.table("consultant_bookings").insert(data).execute()
+        except Exception as e:
+            print(f"Warning: Supabase save_consultant_booking failed: {e}")
     return booking_id
 
 def get_consultant_booking(db: Client, booking_id: str) -> Optional[dict]:
-    res = db.table("consultant_bookings").select("*").eq("id", booking_id).execute()
-    if not res.data:
+    if not db:
         return None
-    row = res.data[0]
-    return {
-        "id": row["id"],
-        "consultant_id": row["consultant_id"],
-        "consultant_name": row["consultant_name"],
-        "consultation_type": row["consultation_type"],
-        "client_name": row["client_name"],
-        "client_email": row["client_email"],
-        "client_phone": row["client_phone"],
-        "query_text": row["query_text"],
-        "chart_id": row["chart_id"],
-        "chart_type": row["chart_type"],
-        "chart": json.loads(row["chart_json"]) if row["chart_json"] else None,
-        "birth_details": json.loads(row["birth_details_json"]) if row["birth_details_json"] else None,
-        "status": row["status"],
-        "created_at": row["created_at"],
-    }
+    try:
+        res = db.table("consultant_bookings").select("*").eq("id", booking_id).execute()
+        if not res.data:
+            return None
+        row = res.data[0]
+        return {
+            "id": row["id"],
+            "consultant_id": row["consultant_id"],
+            "consultant_name": row["consultant_name"],
+            "consultation_type": row["consultation_type"],
+            "client_name": row["client_name"],
+            "client_email": row["client_email"],
+            "client_phone": row["client_phone"],
+            "query_text": row["query_text"],
+            "chart_id": row["chart_id"],
+            "chart_type": row["chart_type"],
+            "chart": json.loads(row["chart_json"]) if row["chart_json"] else None,
+            "birth_details": json.loads(row["birth_details_json"]) if row["birth_details_json"] else None,
+            "status": row["status"],
+            "created_at": row["created_at"],
+        }
+    except Exception as e:
+        print(f"Warning: Supabase get_consultant_booking failed: {e}")
+    return None
 
 def save_consultant_message(db: Client, message: dict, user_id: str) -> str:
     message_id = f"msg_{uuid4().hex[:12]}"
@@ -153,19 +187,29 @@ def save_consultant_message(db: Client, message: dict, user_id: str) -> str:
         "sender_name": message["sender_name"],
         "message_text": message["message_text"]
     }
-    db.table("consultant_messages").insert(data).execute()
+    if db:
+        try:
+            db.table("consultant_messages").insert(data).execute()
+        except Exception as e:
+            print(f"Warning: Supabase save_consultant_message failed: {e}")
     return message_id
 
 def list_consultant_messages(db: Client, booking_id: str) -> list[dict]:
-    res = db.table("consultant_messages").select("*").eq("booking_id", booking_id).order("created_at", desc=False).execute()
-    return [
-        {
-            "id": row["id"],
-            "booking_id": row["booking_id"],
-            "sender_role": row["sender_role"],
-            "sender_name": row["sender_name"],
-            "message_text": row["message_text"],
-            "created_at": row["created_at"],
-        }
-        for row in res.data
-    ]
+    if not db:
+        return []
+    try:
+        res = db.table("consultant_messages").select("*").eq("booking_id", booking_id).order("created_at", desc=False).execute()
+        return [
+            {
+                "id": row["id"],
+                "booking_id": row["booking_id"],
+                "sender_role": row["sender_role"],
+                "sender_name": row["sender_name"],
+                "message_text": row["message_text"],
+                "created_at": row["created_at"],
+            }
+            for row in res.data
+        ]
+    except Exception as e:
+        print(f"Warning: Supabase list_consultant_messages failed: {e}")
+    return []

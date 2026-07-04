@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astrologer Dashboard - Kundali Studio</title>
+    <link rel="stylesheet" href="./styles.css?v=2">
+    <style>
+        #verification-warning {
+            display: none;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            text-align: center;
+            font-size: 0.95rem;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <nav class="global-navbar">
+        <div class="logo-text">
+            <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+        </div>
+        <div class="nav-links">
+            <a href="./index.html" class="nav-link-btn">Home</a>
+            <button type="button" id="btn-logout" class="small-btn">Logout</button>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="page-container">
+            <div id="verification-warning">
+                🕉️ <strong>Application Pending:</strong> Your astrologer profile is currently under verification by our administrative panel. You will gain access to the community discussions once approved.
+            </div>
+
+            <div class="page-header">
+                <h1 class="page-title">Astrologer Studio</h1>
+            </div>
+            
+            <div class="feature-grid">
+                <a href="./community.html" class="feature-card" id="card-community">
+                    <span class="icon">👥</span>
+                    <h3>Astrologer Community</h3>
+                    <p>Discuss case studies, share research, and network with verified peers in real-time channels.</p>
+                </a>
+                
+                <a href="#" class="feature-card">
+                    <span class="icon">📅</span>
+                    <h3>My Consultations</h3>
+                    <p>Manage pending customer requests, view question charts, and deliver predictions.</p>
+                </a>
+
+                <a href="#" class="feature-card">
+                    <span class="icon">⚙️</span>
+                    <h3>Studio Settings</h3>
+                    <p>Configure your consultation bio, language parameters, and pricing sheets.</p>
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        import { requireAuth, initLogout } from './auth-shared.js';
+
+        async function initDashboard() {
+            const auth = await requireAuth();
+            if (!auth) return;
+            const { supabase, session } = auth;
+            
+            initLogout('btn-logout');
+
+            // Fetch user details
+            const { data: userData } = await supabase
+                .from('users')
+                .select('role, verification_status')
+                .eq('id', session.user.id)
+                .single();
+
+            if (userData && userData.verification_status !== 'verified' || !userData) {
+                document.getElementById('verification-warning').style.display = 'block';
+                document.getElementById('card-community').style.opacity = '0.4';
+                document.getElementById('card-community').style.pointerEvents = 'none';
+                if(userData) document.getElementById('card-community').href = '#';
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', initDashboard);
+    </script>
+</body>
+</html>
