@@ -24,6 +24,12 @@ LOCAL_PLACES = [
     ("jaipur", "Jaipur, Rajasthan, India", 26.9124, 75.7873, "city"),
     ("lucknow", "Lucknow, Uttar Pradesh, India", 26.8467, 80.9462, "city"),
     ("varanasi", "Varanasi, Uttar Pradesh, India", 25.3176, 82.9739, "city"),
+    ("gaya", "Gaya, Bihar, India", 24.7914, 85.0002, "city"),
+    ("gaya bihar", "Gaya, Bihar, India", 24.7914, 85.0002, "city"),
+    ("patna", "Patna, Bihar, India", 25.5941, 85.1376, "city"),
+    ("ranchi", "Ranchi, Jharkhand, India", 23.3441, 85.3096, "city"),
+    ("bhagalpur", "Bhagalpur, Bihar, India", 25.2425, 86.9842, "city"),
+    ("muzaffarpur", "Muzaffarpur, Bihar, India", 26.1197, 85.3910, "city"),
     ("goa", "Goa, India", 15.2993, 74.1240, "state"),
     ("london", "London, England, United Kingdom", 51.5074, -0.1278, "city"),
     ("new york", "New York, NY, USA", 40.7128, -74.0060, "city"),
@@ -57,7 +63,7 @@ def geocode_place(query: str, limit: int = 6) -> list[dict]:
 
 
 def normalize_query(query: str) -> str:
-    return " ".join(query.strip().lower().split())
+    return " ".join(query.strip().lower().replace(",", " ").split())
 
 
 def local_matches(query: str) -> list[dict]:
@@ -144,4 +150,3 @@ def reverse_geocode_place(lat: float, lon: float) -> dict:
             "longitude": round(lon, 6),
             "source": "fallback",
         }
-

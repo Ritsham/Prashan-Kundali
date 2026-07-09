@@ -180,3 +180,15 @@ def build_d1(planets: list[dict], lagna: dict) -> dict:
 
 def build_d9(planets: list[dict], lagna_longitude: float) -> dict:
     return build_divisional_chart(planets, lagna_longitude, "D9")
+
+
+def build_divisional_chart_from_moon(planets: list[dict], moon_longitude: float) -> dict:
+    """Build a Chandra Lagna (Moon) chart: Moon sign is treated as 1st house.
+    All planets are placed relative to Moon's sign position."""
+    signs = empty_chart()
+    moon_sign_idx = int(normalize_degrees(moon_longitude) // 30)
+    # Mark the Moon sign as Asc for rendering the 1st house
+    signs[SIGNS[moon_sign_idx]].append("Asc")
+    for p in planets:
+        signs[SIGNS[int(normalize_degrees(p["longitude"]) // 30)]].append(p["name"])
+    return signs

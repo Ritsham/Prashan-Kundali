@@ -38,7 +38,14 @@ def _now_iso() -> str:
 
 async def count_active_consultation_requests() -> int:
     try:
-        res = supabase.table("consultation_requests").select("id").in_("status", ACTIVE_CONSULTATION_STATUSES).execute()
+        stats_res = supabase.table("consultant_platform_stats").select("current_queue_size").eq("id", 1).execute()
+        if stats_res.data:
+            return int(stats_res.data[0].get("current_queue_size") or 0)
+    except Exception as exc:
+        print(f"Warning: consultation stats count failed: {exc}")
+
+    try:
+        res = supabase.table("paid_consultations").select("id").eq("status", "QUEUED").execute()
         return len(res.data or [])
     except Exception as exc:
         print(f"Warning: active consultation request count failed: {exc}")
@@ -48,32 +55,36 @@ async def count_active_consultation_requests() -> int:
 async def get_public_consultation_queue_status() -> Dict[str, Any]:
     active_count = await count_active_consultation_requests()
     try:
-        waiting_res = supabase.table("consultation_requests").select("id").eq("status", "waiting_queue").execute()
-        waiting_count = len(waiting_res.data or [])
+        stats_res = supabase.table("consultant_platform_stats").select("max_capacity").eq("id", 1).execute()
+        max_active = int(stats_res.data[0].get("max_capacity") or MAX_ACTIVE_CONSULTATION_REQUESTS) if stats_res.data else MAX_ACTIVE_CONSULTATION_REQUESTS
     except Exception as exc:
-        print(f"Warning: waiting consultation request count failed: {exc}")
-        waiting_count = 0
+        print(f"Warning: consultation capacity lookup failed: {exc}")
+        max_active = MAX_ACTIVE_CONSULTATION_REQUESTS
     return {
         "active_count": active_count,
-        "max_active": MAX_ACTIVE_CONSULTATION_REQUESTS,
-        "available_slots": max(0, MAX_ACTIVE_CONSULTATION_REQUESTS - active_count),
-        "waiting_count": waiting_count,
-        "can_request_active_slot": active_count < MAX_ACTIVE_CONSULTATION_REQUESTS,
+        "max_active": max_active,
+        "available_slots": max(0, max_active - active_count),
+        "waiting_count": 0,
+        "can_request_active_slot": active_count < max_active,
     }
 
 
 async def next_waiting_queue_number() -> int:
-    res = (
-        supabase.table("consultation_requests")
-        .select("queue_number")
-        .eq("status", "waiting_queue")
-        .order("queue_number", desc=True)
-        .limit(1)
-        .execute()
-    )
-    if not res.data:
+    try:
+        res = (
+            supabase.table("consultation_requests")
+            .select("queue_number")
+            .eq("status", "waiting_queue")
+            .order("queue_number", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return 1
+        return int(res.data[0].get("queue_number") or 0) + 1
+    except Exception as exc:
+        print(f"Warning: next_waiting_queue_number failed: {exc}")
         return 1
-    return int(res.data[0].get("queue_number") or 0) + 1
 
 
 async def create_consultation_request(payload: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
@@ -105,7 +116,10 @@ async def create_consultation_request(payload: Dict[str, Any], user_id: Optional
         "created_at": now,
         "updated_at": now,
     }
-    supabase.table("consultation_requests").insert(row).execute()
+    try:
+        supabase.table("consultation_requests").insert(row).execute()
+    except Exception as exc:
+        print(f"Warning: consultation_requests insert failed: {exc}")
 
     return {
         "request": row,
@@ -119,18 +133,26 @@ async def create_consultation_request(payload: Dict[str, Any], user_id: Optional
 
 
 async def list_consultation_requests(status: Optional[str] = None) -> List[Dict[str, Any]]:
-    query = supabase.table("consultation_requests").select("*")
-    if status:
-        query = query.eq("status", status)
-    res = query.order("created_at").execute()
-    return [dict(row) for row in (res.data or [])]
+    try:
+        query = supabase.table("consultation_requests").select("*")
+        if status:
+            query = query.eq("status", status)
+        res = query.order("created_at").execute()
+        return [dict(row) for row in (res.data or [])]
+    except Exception as exc:
+        print(f"Warning: list_consultation_requests failed: {exc}")
+        return []
 
 
 async def get_consultation_request(request_id: str) -> Optional[Dict[str, Any]]:
-    res = supabase.table("consultation_requests").select("*").eq("id", request_id).execute()
-    if not res.data:
+    try:
+        res = supabase.table("consultation_requests").select("*").eq("id", request_id).execute()
+        if not res.data:
+            return None
+        return dict(res.data[0])
+    except Exception as exc:
+        print(f"Warning: get_consultation_request failed: {exc}")
         return None
-    return dict(res.data[0])
 
 
 async def update_consultation_request(request_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:

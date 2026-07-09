@@ -8,6 +8,13 @@ export async function getSupabase() {
     const configRes = await fetch('/api/config');
     const config = await configRes.json();
     supabaseInstance = createClient(config.supabaseUrl, config.supabaseAnonKey);
+    supabaseInstance.auth.onAuthStateChange((_event, session) => {
+        if (session?.access_token) {
+            localStorage.setItem('supabase_token', session.access_token);
+        } else {
+            localStorage.removeItem('supabase_token');
+        }
+    });
     
     return supabaseInstance;
 }
@@ -20,7 +27,13 @@ export async function requireAuth() {
         window.location.href = './index.html';
         return null;
     }
+    localStorage.setItem('supabase_token', session.access_token);
     return { supabase, session };
+}
+
+export async function getAccessToken() {
+    const auth = await requireAuth();
+    return auth?.session?.access_token || null;
 }
 
 export async function initLogout(buttonId = 'btn-logout') {

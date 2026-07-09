@@ -11,7 +11,55 @@ const topicEl = document.getElementById("topic");
 const dateLabel = document.getElementById("date-label");
 const timeLabel = document.getElementById("time-label");
 const placeLabel = document.getElementById("place-label");
-const placeInput = document.getElementById("place_of_birth");
+const placeSearchInput = document.getElementById("place_search");
+const placeResultsEl = document.getElementById("place-results");
+let _placeDebounce = null;
+
+placeSearchInput.addEventListener("input", () => {
+  document.getElementById("place_of_birth").value = "";
+  clearTimeout(_placeDebounce);
+  const q = placeSearchInput.value.trim();
+  if (q.length < 2) { placeResultsEl.innerHTML = ""; return; }
+  placeResultsEl.innerHTML = `<div class="place-result" style="padding: 12px; color: #6f6153; background: #fff; border-bottom: 1px solid #efe5d8;">Searching…</div>`;
+  _placeDebounce = setTimeout(searchPlace, 400);
+});
+
+async function searchPlace() {
+  const query = placeSearchInput.value.trim();
+  if (query.length < 2) return;
+  try {
+    const res = await fetch(`/api/geocode?query=${encodeURIComponent(query)}&limit=6`);
+    const data = await res.json();
+    renderPlaceResults(data.results);
+  } catch (error) {
+    placeResultsEl.innerHTML = `<div class="place-result" style="padding: 12px; color: #6f6153; background: #fff; border-bottom: 1px solid #efe5d8;">Search failed</div>`;
+  }
+}
+
+function renderPlaceResults(results) {
+  if (!results || !results.length) { placeResultsEl.innerHTML = `<div class="place-result" style="padding: 12px; color: #6f6153; background: #fff; border-bottom: 1px solid #efe5d8;">No results found.</div>`; return; }
+  placeResultsEl.innerHTML = results.map((item, index) => `
+      <button type="button" class="place-result" style="width: 100%; text-align: left; padding: 12px; border: none; border-bottom: 1px solid #efe5d8; background: #fff; cursor: pointer; color: #241f1a;" data-index="${index}">
+        <strong style="display: block; font-size: 14px; margin-bottom: 4px;">${escapeHtml(item.place_name)}</strong>
+        <span style="display: block; font-size: 12px; color: #6f6153;">Lat: ${item.latitude}, Lon: ${item.longitude}</span>
+      </button>`
+  ).join("");
+
+  placeResultsEl.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      const place = results[Number(button.dataset.index)];
+      document.getElementById("place_of_birth").value = `${place.place_name} (Lat: ${place.latitude}, Lon: ${place.longitude})`;
+      placeSearchInput.value = place.place_name;
+      placeResultsEl.innerHTML = "";
+    });
+  });
+}
+
+document.addEventListener("click", (e) => {
+  if (placeResultsEl && !e.target.closest("#place_search") && !e.target.closest("#place-results")) {
+    placeResultsEl.innerHTML = "";
+  }
+});
 const queueActive = document.getElementById("queue-active");
 const queueAvailable = document.getElementById("queue-available");
 const queueWaiting = document.getElementById("queue-waiting");
@@ -78,7 +126,9 @@ function updateTopicFields() {
   dateLabel.textContent = isPrashna ? "Date of Question" : "Date of Birth";
   timeLabel.textContent = isPrashna ? "Time of Question" : "Time of Birth";
   placeLabel.textContent = isPrashna ? "Place of Question" : "Place of Birth";
-  placeInput.placeholder = isPrashna ? "Where the question is being asked" : "City, State, Country";
+  if (placeSearchInput) {
+    placeSearchInput.placeholder = isPrashna ? "Where the question is being asked" : "Search city...";
+  }
 }
 
 function renderRequestStatus(request, message, slotAvailable = true) {
@@ -157,11 +207,9 @@ form.addEventListener("submit", async (event) => {
     email: value("email"),
     date_of_birth: value("date_of_birth"),
     time_of_birth: value("time_of_birth"),
-    place_of_birth: value("place_of_birth"),
+    place_of_birth: value("place_of_birth") || value("place_search"),
     topic: value("topic"),
-    question: value("question"),
-    preferred_time: value("preferred_time"),
-    payment_status: value("payment_status"),
+    question: value("question")
   };
 
   try {
@@ -180,6 +228,7 @@ form.addEventListener("submit", async (event) => {
     renderRequestStatus(request, data.message, data.slot_available);
     loadQueueStatus();
     form.reset();
+    sessionStorage.removeItem("consultation_form_state");
     updateTopicFields();
   } catch (err) {
     resultStatus.textContent = "error";
@@ -190,7 +239,7 @@ form.addEventListener("submit", async (event) => {
     resultPanel.classList.add("show");
   } finally {
     submitBtn.disabled = false;
-    submitBtn.textContent = "Request Consultation";
+    submitBtn.textContent = "Book Consultation";
   }
 });
 
@@ -206,3 +255,42 @@ loadQueueStatus();
 loadLatestRequestStatus();
 updateTopicFields();
 setInterval(loadQueueStatus, 15000);
+
+// Form state preservation
+const STATE_KEY = 'consultation_form_state';
+function saveFormState() {
+  const state = {
+    name: value("name"),
+    phone: value("phone"),
+    email: value("email"),
+    date_of_birth: value("date_of_birth"),
+    time_of_birth: value("time_of_birth"),
+    place_search: value("place_search"),
+    place_of_birth: value("place_of_birth"),
+    topic: value("topic"),
+    question: value("question")
+  };
+  sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+}
+
+function loadFormState() {
+  const saved = sessionStorage.getItem(STATE_KEY);
+  if (saved) {
+    try {
+      const state = JSON.parse(saved);
+      document.getElementById("name").value = state.name || "";
+      document.getElementById("phone").value = state.phone || "";
+      document.getElementById("email").value = state.email || "";
+      document.getElementById("date_of_birth").value = state.date_of_birth || "";
+      document.getElementById("time_of_birth").value = state.time_of_birth || "";
+      document.getElementById("place_search").value = state.place_search || "";
+      document.getElementById("place_of_birth").value = state.place_of_birth || "";
+      if (state.topic) document.getElementById("topic").value = state.topic;
+      document.getElementById("question").value = state.question || "";
+      updateTopicFields();
+    } catch (e) {}
+  }
+}
+
+form.addEventListener("input", saveFormState);
+loadFormState();

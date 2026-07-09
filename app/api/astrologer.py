@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from app.dependencies import AuthState, get_current_user, RequireRole
+from app.storage.community_access_db import save_community_application, set_community_membership
 
 router = APIRouter()
 
@@ -32,6 +33,8 @@ def apply_for_astrologer(req: AstrologerApplyRequest, auth: AuthState = Depends(
         "sample_case_study": req.sample_case_study,
         "learning_goals": req.learning_goals,
     })
+    community_payload = req.model_dump()
+    community_payload["social_links"] = social_links
     data = {
         "user_id": auth.user_id,
         "experience_years": req.experience_years,
@@ -45,6 +48,7 @@ def apply_for_astrologer(req: AstrologerApplyRequest, auth: AuthState = Depends(
         "verification_status": "pending",
         "community_access": False,
     }).eq("id", auth.user_id).execute()
+    save_community_application(auth.client, auth.user_id, community_payload)
     return {"status": "success", "message": "Application submitted"}
 
 @router.post("/admin/verify-astrologer")
@@ -61,6 +65,13 @@ def verify_astrologer(user_id: str, action: str, auth: AuthState = Depends(Requi
         "role": role,
         "community_access": community_access,
     }).eq("id", user_id).execute()
+    set_community_membership(
+        auth.client,
+        user_id=user_id,
+        active=action == "approve",
+        admin_id=auth.user_id,
+        reason=f"Admin {action} from verification queue.",
+    )
     
     return {"status": "success", "message": f"Astrologer {status}"}
 
@@ -84,7 +95,9 @@ def get_pending_astrologers(auth: AuthState = Depends(RequireRole("admin"))):
             "experience_years": prof.get("experience_years", 0),
             "expertise_areas": prof.get("expertise_areas", []),
             "bio": prof.get("bio", ""),
-            "social_links": prof.get("social_links", {})
+            "social_links": prof.get("social_links", {}),
+            "created_at": prof.get("created_at"),
+            "updated_at": prof.get("updated_at"),
         })
         
     return {"pending": combined}

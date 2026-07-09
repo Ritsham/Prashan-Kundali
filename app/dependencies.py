@@ -4,6 +4,7 @@ load_dotenv()
 from fastapi import Header, HTTPException, Depends
 from supabase import create_client, Client, ClientOptions
 import os
+from app.storage.community_access_db import has_active_community_membership
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
@@ -20,7 +21,15 @@ def get_current_user(authorization: str = Header(None)) -> AuthState:
     token = authorization.split(" ")[1]
     try:
         # Initialize request-scoped Supabase client with user's JWT token
-        options = ClientOptions(headers={"Authorization": f"Bearer {token}"})
+        import httpx
+        timeout = httpx.Timeout(60.0)
+        custom_client = httpx.Client(timeout=timeout)
+        options = ClientOptions(
+            headers={"Authorization": f"Bearer {token}"},
+            httpx_client=custom_client,
+            storage_client_timeout=120,
+            postgrest_client_timeout=120
+        )
         client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options=options)
         
         # Verify the token against Supabase auth server
@@ -44,16 +53,24 @@ class RequireRole:
 
 class RequireVerifiedAstrologer:
     def __call__(self, auth_state: AuthState = Depends(get_current_user)):
+        membership = has_active_community_membership(auth_state.client, auth_state.user_id)
+        if membership is True:
+            return auth_state
+        if membership is False:
+            raise HTTPException(status_code=403, detail="Community access requires active Astro Community membership")
+
         res = auth_state.client.table("users").select("role, verification_status, community_access").eq("id", auth_state.user_id).execute()
         if not res.data:
-            raise HTTPException(status_code=403, detail="Community access requires verified astrologer status")
+            raise HTTPException(status_code=403, detail="Community access denied")
 
         user = res.data[0]
         is_verified_astrologer = (
             user.get("role") == "astrologer"
             and user.get("verification_status") == "verified"
-            and bool(user.get("community_access", True))
         )
-        if not is_verified_astrologer:
-            raise HTTPException(status_code=403, detail="Community access requires verified astrologer status")
+        
+        has_community_access = user.get("community_access") is True
+        
+        if not is_verified_astrologer and not has_community_access:
+            raise HTTPException(status_code=403, detail="Community access requires verified astrologer status or an approved community application")
         return auth_state

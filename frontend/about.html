@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>About - Kundali Studio</title>
+    <link rel="stylesheet" href="./styles.css?v=2" />
+      <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body>
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <main class="shell" id="main-app">
+
+
+      <section class="entry">
+        <!-- Celestial Background Elements -->
+        <div class="celestial-bg">
+          <div class="chakra-bg-container">
+            <svg class="chakra-svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="0.8" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="6" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="2" fill="currentColor" />
+              <circle cx="50" cy="50" r="18" stroke-dasharray="2,2" />
+              <circle cx="50" cy="50" r="44" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="47" />
+              <g stroke-width="0.6">
+                <line x1="50" y1="50" x2="50" y2="6" />
+                <line x1="50" y1="50" x2="50" y2="94" />
+                <line x1="50" y1="50" x2="6" y2="50" />
+                <line x1="50" y1="50" x2="94" y2="50" />
+                <line x1="50" y1="50" x2="19" y2="19" />
+                <line x1="50" y1="50" x2="81" y2="81" />
+                <line x1="50" y1="50" x2="19" y2="81" />
+                <line x1="50" y1="50" x2="81" y2="19" />
+              </g>
+            </svg>
+          </div>
+          <div class="planet planet-1"></div>
+          <div class="planet planet-2"></div>
+          <div class="constellation-overlay"></div>
+        </div>
+
+        <section id="about-platform" class="about-platform" style="position: relative; z-index: 10; margin-top: 60px;">
+          <div class="about-hero">
+            <p class="eyebrow">About our platform</p>
+            <h2>One astrology platform, two connected experiences</h2>
+            <p>
+              Astrology has been studied, practiced, and passed down through
+              generations. Our platform brings digital astrology tools and a
+              professional astrologer community together, so charts, questions,
+              interpretations, discussions, and knowledge can stay organized and
+              useful over time.
+            </p>
+          </div>
+
+          <div class="about-grid">
+            <article class="about-card">
+              <span class="about-kicker">Prashna Kundali</span>
+              <h3>Questions studied through the moment they arise</h3>
+              <p>
+                Prashna Kundali, also known as Horary Astrology, helps study a
+                specific question using the exact moment and location at which the
+                question is asked. It does not require birth details, and gives
+                users a structured astrological framework for exploring important
+                situations.
+              </p>
+            </article>
+
+            <article class="about-card">
+              <span class="about-kicker">Lagna Kundali</span>
+              <h3>Birth charts made easier to generate and explore</h3>
+              <p>
+                Lagna Kundali, or Birth Chart, is created from a person's date,
+                exact time, and place of birth. The platform helps users generate
+                and explore birth charts while preserving the depth needed for
+                serious astrological interpretation.
+              </p>
+            </article>
+
+            <article class="about-card">
+              <span class="about-kicker">Astro Community</span>
+              <h3>A professional knowledge network for astrologers</h3>
+              <p>
+                Astro Community is built around persistent professional
+                discussions, channel-organized posts, chart discussions,
+                professional responses, and focused threads where astrologers can
+                exchange interpretations and preserve valuable knowledge.
+              </p>
+            </article>
+          </div>
+
+          <div class="about-vision">
+            <h3>Our Vision</h3>
+            <p>
+              We believe technology should not replace astrologers. It should
+              provide better tools for creating charts, studying cases,
+              exchanging interpretations, discovering knowledge, and collaborating
+              with other practitioners.
+            </p>
+            <a href="/astro-community" class="about-link">Explore Astro Community</a>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script type="module">
+      import { initAuth } from './auth.js';
+      import { recordVisit } from './analytics.js';
+      initAuth();
+      recordVisit();
+    </script>
+  </body>
+</html>

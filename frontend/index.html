@@ -138,52 +138,75 @@
       </div>
     </div>
 
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+
     <!-- Main App -->
     <main class="shell" id="main-app">
-      <!-- Global Navbar -->
-      <nav class="global-navbar" aria-label="Main Navigation">
-        <div class="logo-text">
-          <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
-        </div>
-        <div class="nav-links">
-          <button type="button" id="nav-home" class="nav-btn active">
-            Home
-          </button>
-          <button type="button" id="nav-consultant" class="nav-btn" onclick="window.location.assign('/consultation')">
-            Consultant
-          </button>
-          <button type="button" id="nav-pricing" class="nav-btn">
-            Pricing
-          </button>
-          <button
-            type="button"
-            id="nav-community"
-            class="nav-btn"
-            onclick="window.location.href = './community.html'"
-          >
-            Community
-          </button>
-        </div>
-        <div class="nav-auth">
-          <button type="button" id="btn-login-header" class="nav-btn">
-            Sign In
-          </button>
-          <a
-            href="./dashboard.html"
-            id="btn-dashboard"
-            class="nav-link-btn hidden"
-            >Dashboard</a
-          >
-          <button
-            type="button"
-            id="btn-logout"
-            class="small-btn hidden"
-            title="Sign Out"
-          >
-            Sign Out
-          </button>
-        </div>
-      </nav>
 
       <!-- Today's Panchang Strip -->
       <div class="panchang-strip" aria-label="Today's Panchang Info">
@@ -309,6 +332,13 @@
                 data-mode="prashna"
               >
                 Prashna (Ask a Question)
+              </button>
+              <button
+                type="button"
+                class="btn-secondary mode-card"
+                data-matchmaking-link
+              >
+                Match Making
               </button>
             </div>
 
@@ -640,7 +670,7 @@
         <div class="result-head">
           <div>
             <p class="eyebrow">Generated chart</p>
-            <h2 id="chart-title">Chart</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;"><h2 id="chart-title">Chart</h2><button type="button" id="btn-share-community" class="secondary-action small hidden">Share to Community</button></div>
           </div>
 
           <div class="result-tabs-nav" id="result-tabs-nav">
@@ -1005,6 +1035,7 @@
       </section>
 
       <!-- App Footer -->
+
       <!-- Pricing View -->
       <section id="pricing-card" class="pricing-card hidden">
         <div class="pricing-header-section">
@@ -1132,7 +1163,7 @@
                 <a href="/apply.html">Prashna Astro Community (Astrologers)</a>
               </li>
               <li><a href="#">Privacy Policy</a></li>
-              <li><a href="#">About Us</a></li>
+              <li><a href="#about-platform" id="footer-about-link">About Us</a></li>
               <li><a href="#">Post-Consultation Policy</a></li>
             </ul>
 
@@ -1219,5 +1250,29 @@
     </main>
 
     <script type="module" src="./app.js"></script>
-  </body>
+  
+    <!-- Share to Community Modal -->
+    <div id="share-community-overlay" class="overlay hidden">
+        <div class="modal">
+            <header>
+                <h2>Share to Community</h2>
+                <button type="button" class="icon-btn close-btn" onclick="document.getElementById('share-community-overlay').classList.add('hidden')">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label>Select Channel</label>
+                    <select id="share-channel-select"></select>
+                </div>
+                <div class="form-row">
+                    <label>Add a comment</label>
+                    <textarea id="share-comment" rows="3" placeholder="What would you like to discuss about this chart?"></textarea>
+                </div>
+            </div>
+            <footer>
+                <button type="button" class="primary-action" id="btn-submit-share">Share Post</button>
+            </footer>
+        </div>
+    </div>
+
+</body>
 </html>

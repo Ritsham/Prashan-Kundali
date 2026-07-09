@@ -40,8 +40,10 @@ const factsEl = document.querySelector("#facts");
 const navHome = document.querySelector("#nav-home");
 const navConsultant = document.querySelector("#nav-consultant");
 const navPricing = document.querySelector("#nav-pricing");
+const navAbout = document.querySelector("#nav-about");
 const navCommunity = document.querySelector("#nav-community");
 const pricingCard = document.querySelector("#pricing-card");
+const aboutPlatform = document.querySelector("#about-platform");
 const interpretationCard = document.querySelector("#interpretation-card");
 const consultantsCard = document.querySelector("#consultants-card");
 const consultantsBody = document.querySelector("#consultants-body");
@@ -89,19 +91,56 @@ const submitButton = document.querySelector("#submit-button");
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
   initAuth();
+  recordVisit();
   bindUIEvents();
   initPricingUI();
   initChatExtend();
   initPaidConsultation();
+  
+  const savedProgression = sessionStorage.getItem("kundali_chart_progression");
+  if (savedProgression) {
+    try {
+      const state = JSON.parse(savedProgression);
+      if (state.mode) {
+        AppState.setMode(state.mode);
+        // Dispatch mode changed event if necessary
+        const evt = new CustomEvent('astro:modeChanged', { detail: state.mode });
+        document.dispatchEvent(evt);
+      }
+      if (state.chart) {
+        setTimeout(() => renderChart(state.chart, false), 200);
+      }
+    } catch(e) {}
+  }
+  
+  if (window.location.hash === "#about-platform") activeTab = "about";
+  if (window.location.hash === "#pricing") activeTab = "pricing";
   updateNavigation(false);
 });
 
-document.addEventListener('astro:authChanged', (e) => {
-  const session = e.detail;
-  document.querySelector("#btn-logout")?.classList.toggle("hidden", !session);
-  document.querySelector("#btn-dashboard")?.classList.toggle("hidden", !session);
-  document.querySelector("#btn-login-header")?.classList.toggle("hidden", !!session);
-});
+function recordVisit() {
+  try {
+    const keyName = "kundali_visitor_key";
+    let visitorKey = localStorage.getItem(keyName);
+    if (!visitorKey) {
+      visitorKey = `visitor_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(keyName, visitorKey);
+    }
+    fetch("/api/analytics/visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        visitor_key: visitorKey,
+        path: window.location.pathname || "/",
+        referrer: document.referrer || "",
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch (_err) {
+    // Analytics should never block chart usage.
+  }
+}
+
 
 document.addEventListener('astro:modeChanged', (e) => {
   const isLagna = e.detail === 'lagna';
@@ -130,6 +169,11 @@ document.addEventListener('astro:modeChanged', (e) => {
 // ==========================================
 function bindUIEvents() {
   modePanel.addEventListener("click", (e) => {
+    const matchmakingButton = e.target.closest("button[data-matchmaking-link]");
+    if (matchmakingButton) {
+      window.location.assign("/matchmaking.html");
+      return;
+    }
     const button = e.target.closest("button[data-mode]");
     if (button) AppState.setMode(button.dataset.mode);
   });
@@ -186,16 +230,22 @@ function bindUIEvents() {
     }
   });
 
-  navHome.addEventListener("click", () => { activeTab = "home"; updateNavigation(true); });
-  navConsultant.addEventListener("click", () => { window.location.href = "/consultation"; });
-  navPricing.addEventListener("click", () => { activeTab = "pricing"; updateNavigation(true); });
-  navCommunity?.addEventListener("click", (e) => {
-    if (!AppState.session) {
-      e.preventDefault();
-      document.querySelector("#auth-modal").classList.remove("hidden");
-      statusEl.textContent = "Please sign in to access the community.";
+  window.safeNavigate = function(url) {
+    if (activeChart) {
+      if (confirm("You have an active chart. Do you want to save this progression? Click OK to save, Cancel to discard.")) {
+        sessionStorage.setItem("kundali_chart_progression", JSON.stringify({ chart: activeChart, mode: AppState.activeMode }));
+      } else {
+        sessionStorage.removeItem("kundali_chart_progression");
+      }
     }
-  });
+    window.location.assign(url);
+  };
+
+  navHome.addEventListener("click", () => { activeTab = "home"; updateNavigation(true); });
+  navConsultant?.addEventListener("click", (e) => { e.preventDefault(); safeNavigate("/consultation.html"); });
+  navPricing?.addEventListener("click", () => { activeTab = "pricing"; updateNavigation(true); });
+  navAbout?.addEventListener("click", (e) => { e.preventDefault(); safeNavigate("/about.html"); });
+  navCommunity?.addEventListener("click", (e) => { e.preventDefault(); safeNavigate("/astro-community"); });
 
   placeSearchInput.addEventListener("input", () => {
     clearTimeout(_placeDebounce);
@@ -382,15 +432,20 @@ function updateNavigation(scroll = true) {
   const isHome = activeTab === "home";
   const isConsultant = activeTab === "consultant";
   const isPricing = activeTab === "pricing";
+  const isAbout = activeTab === "about";
   const hasResult = document.body.classList.contains("has-result");
 
   navHome.classList.toggle("active", isHome);
   navConsultant.classList.toggle("active", isConsultant);
   navPricing.classList.toggle("active", isPricing);
+  navAbout?.classList.toggle("active", isAbout);
+  pricingCard?.classList.toggle("hidden", !isPricing);
+  aboutPlatform?.classList.toggle("hidden", !isAbout);
 
   document.body.classList.toggle("view-home", isHome);
   document.body.classList.toggle("view-consultants", isConsultant);
   document.body.classList.toggle("view-pricing", isPricing);
+  document.body.classList.toggle("view-about", isAbout);
 
   if (scroll) {
     if (isHome && hasResult) {
@@ -399,6 +454,8 @@ function updateNavigation(scroll = true) {
       consultantsCard.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (isPricing) {
       pricingCard.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (isAbout) {
+      aboutPlatform.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
 }
@@ -406,7 +463,7 @@ function updateNavigation(scroll = true) {
 // ==========================================
 // 6. CHART RENDERING ENGINE
 // ==========================================
-function renderChart(chart) {
+function renderChart(chart, switchTab = true) {
   activeChart = chart;
   document.body.classList.add("has-result");
   resultEl.classList.remove("hidden");
@@ -438,9 +495,14 @@ function renderChart(chart) {
   renderTransit(chart.transit, isLagna);
   renderDasha(normalizeDasha(chart.dashas, chart.question.asked_at_utc));
   
-  activeTab = "home";
-  updateNavigation(true);
-  resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (switchTab) {
+    activeTab = "home";
+    updateNavigation(true);
+    resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  } else if (activeTab === "home") {
+    // Just scroll if they are on home tab already
+    resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function fact(label, value) {
@@ -1481,3 +1543,67 @@ function initPaidConsultation() {
     }, 1000);
   });
 }
+
+
+// Share to community logic
+let currentShareChart = null;
+
+async function openShareModal() {
+    if (!currentShareChart) return;
+    
+    // Check if user is verified astrologer (just fetch profile, backend enforces)
+    try {
+        const channels = await apiGet('/api/community/channels');
+        const select = document.getElementById('share-channel-select');
+        select.innerHTML = channels.map(c => `<option value="${c.slug}"># ${c.name}</option>`).join('');
+        document.getElementById('share-community-overlay').classList.remove('hidden');
+    } catch (e) {
+        alert("You must be an approved Astrologer to share to the community. Please apply first.");
+    }
+}
+
+document.getElementById('btn-share-community')?.addEventListener('click', openShareModal);
+
+document.getElementById('btn-submit-share')?.addEventListener('click', async () => {
+    const channel = document.getElementById('share-channel-select').value;
+    const comment = document.getElementById('share-comment').value;
+    
+    if (!channel || !comment) {
+        alert("Please select a channel and add a comment.");
+        return;
+    }
+    
+    document.getElementById('btn-submit-share').textContent = 'Sharing...';
+    
+    try {
+        const isLagna = currentShareChart.meta?.chart_type === 'lagna';
+        
+        // Use a standard API call to post (simulate WS or just standard POST if we add one)
+        // Since we only have WS for now, we'll need to create a POST /messages endpoint.
+        const res = await fetch(`/api/community/messages/${encodeURIComponent(channel)}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${AppState.session.access_token}`
+            },
+            body: JSON.stringify({
+                content: comment,
+                content_type: isLagna ? 'LAGNA_CASE' : 'PRASHNA_CASE',
+                chart_id: currentShareChart.meta?.id || currentShareChart.id || null
+            })
+        });
+        
+        if (res.ok) {
+            document.getElementById('share-community-overlay').classList.add('hidden');
+            document.getElementById('share-comment').value = '';
+            alert('Chart shared to community successfully!');
+        } else {
+            alert('Failed to share.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error sharing chart.');
+    } finally {
+        document.getElementById('btn-submit-share').textContent = 'Share Post';
+    }
+});

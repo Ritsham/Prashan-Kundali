@@ -247,17 +247,73 @@
       }
     }
   </style>
-</head>
-<body>
-  <header class="top-nav">
-    <div class="nav-logo">
-      <span class="logo-text">Prashna<span class="highlight">Astro</span></span>
-    </div>
-    <div class="nav-links">
-      <a href="/index.html" class="nav-btn">Home</a>
-      <a href="/community.html" class="nav-btn">Community</a>
-    </div>
-  </header>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+<body    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
 
   <main class="consult-page">
     <section class="consult-hero">
@@ -327,28 +383,18 @@
                 <label for="time_of_birth" id="time-label">Time of Birth</label>
                 <input id="time_of_birth" type="time" required>
               </div>
-              <div class="form-group full">
-                <label for="place_of_birth" id="place-label">Place of Birth</label>
-                <input id="place_of_birth" required placeholder="City, State, Country">
+              <div class="form-group full" style="position: relative;">
+                <label for="place_search" id="place-label">Place of Birth</label>
+                <input id="place_search" type="search" required placeholder="Search city..." autocomplete="off">
+                <div id="place-results" class="place-results" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 10; max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #d9d0c6; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 0; margin-top: 0;"></div>
+                <input type="hidden" id="place_of_birth">
               </div>
               <div class="form-group full">
                 <label for="question">Proposed Question</label>
                 <textarea id="question" required placeholder="Write the question you want the consultant to review."></textarea>
               </div>
-              <div class="form-group">
-                <label for="preferred_time">Preferred Time</label>
-                <input id="preferred_time" placeholder="Example: Tomorrow evening, Sunday 11 AM">
-              </div>
-              <div class="form-group">
-                <label for="payment_status">Payment Status</label>
-                <select id="payment_status">
-                  <option value="not_paid">Not paid</option>
-                  <option value="paid">Paid</option>
-                  <option value="pending">Payment pending</option>
-                </select>
-              </div>
             </div>
-            <button id="submit-btn" class="btn-submit" type="submit">Request Consultation</button>
+            <button id="submit-btn" class="btn-submit" type="submit">Book Consultation</button>
           </form>
         </div>
 
@@ -367,6 +413,12 @@
     </section>
   </main>
 
+  <script type="module">
+    import { initAuth } from './auth.js';
+    import { recordVisit } from './analytics.js';
+    initAuth();
+    recordVisit();
+  </script>
   <script src="/consultation.js"></script>
 </body>
 </html>

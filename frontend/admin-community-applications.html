@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Community Applications</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .admin-layout { display: flex; gap: 2rem; padding: 2rem; }
+        .sidebar { width: 250px; background: var(--bg-surface); padding: 1rem; border-radius: 8px; border: 1px solid var(--line); }
+        .main-content { flex: 1; }
+        .sidebar-link { display: block; padding: 0.75rem; color: var(--ink-main); text-decoration: none; margin-bottom: 0.5rem; border-radius: 4px; }
+        .sidebar-link:hover, .sidebar-link.active { background: #f0f0f0; font-weight: bold; }
+        
+        .tabs { display: flex; gap: 10px; margin-bottom: 1.5rem; border-bottom: 1px solid #ccc; padding-bottom: 10px; overflow-x: auto; }
+        .tab-btn { padding: 0.5rem 1rem; border: none; background: transparent; cursor: pointer; border-radius: 20px; font-weight: 500; }
+        .tab-btn.active { background: var(--ink-light); color: white; }
+        
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th, td { padding: 1rem; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f9f9f9; font-weight: 600; color: #555; }
+        tr:hover { background: #fdfdfd; }
+        
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .badge.PENDING { background: #fff3cd; color: #856404; }
+        .badge.APPROVED { background: #d4edda; color: #155724; }
+        .badge.REJECTED { background: #f8d7da; color: #721c24; }
+        .badge.NEEDS_MORE_INFORMATION { background: #cce5ff; color: #004085; }
+        .badge.SUSPENDED { background: #e2e3e5; color: #383d41; }
+        
+        .btn-view { padding: 0.4rem 0.8rem; background: var(--ink-light); color: white; text-decoration: none; border-radius: 4px; font-size: 0.85rem; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+
+    <div class="admin-layout">
+        <div class="sidebar">
+            <h3>Admin Panel</h3>
+            <div style="margin-top: 1rem;">
+                <a href="/admin/metrics" class="sidebar-link">Dashboard</a>
+                <a href="/admin/community-applications" class="sidebar-link active">Community Applications</a>
+                <!-- Other admin links could go here -->
+            </div>
+        </div>
+
+        <div class="main-content">
+            <h2>Community Applications</h2>
+            
+            <div class="tabs" id="status-tabs">
+                <button class="tab-btn active" data-status="ALL">All</button>
+                <button class="tab-btn" data-status="PENDING">Pending Review</button>
+                <button class="tab-btn" data-status="NEEDS_MORE_INFORMATION">Needs Info</button>
+                <button class="tab-btn" data-status="APPROVED">Approved</button>
+                <button class="tab-btn" data-status="REJECTED">Rejected</button>
+            </div>
+            
+            <div style="margin-bottom: 1rem; display: flex; gap: 10px;">
+                <input type="text" id="search-input" placeholder="Search by name or email..." style="padding: 0.5rem; width: 300px; border: 1px solid #ccc; border-radius: 4px;">
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Applicant</th>
+                            <th>Type</th>
+                            <th>Exp. & Systems</th>
+                            <th>Proofs</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="applications-table-body">
+                        <tr><td colspan="7" style="text-align: center;">Loading applications...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/admin-community-applications.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Moderation - Kundali Studio</title>
+    <link rel="stylesheet" href="./styles.css?v=2">
+    <style>
+        .report-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .report-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            color: var(--ink-dim);
+        }
+        .report-reason {
+            font-weight: 700;
+            color: var(--warning-base, #e67e22);
+            margin-bottom: 8px;
+        }
+        .report-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 12px;
+        }
+    </style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="logo-area">
+            <h1>Moderation</h1>
+        </div>
+        <nav class="header-nav">
+            <a href="/admin.html" class="nav-link">← Back to Admin</a>
+            <button type="button" id="btn-logout" class="nav-btn">Sign Out</button>
+        </nav>
+    </header>
+
+    <main class="app-main">
+        <section class="card" style="margin-top: 24px;">
+            <header class="card-head">
+                <div>
+                    <h2 class="card-title">Community Reports</h2>
+                    <p class="card-desc">Review and moderate reported posts in the Astro Community.</p>
+                </div>
+                <button type="button" id="btn-refresh" class="primary-btn">Refresh</button>
+            </header>
+            
+            <div id="reports-list">
+                <p>Loading reports...</p>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="./admin-community-moderation.js"></script>
+</body>
+</html>

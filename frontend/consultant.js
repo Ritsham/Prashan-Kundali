@@ -47,6 +47,8 @@ function selectItem(id) {
   if (!item) return;
   activeItem = item;
   renderQueue(queueData); // update active class
+  const snapshot = parseSnapshot(item.astrological_snapshot);
+  const matchBlock = snapshot.type === "matchmaking" ? renderMatchmakingCase(snapshot) : renderStandardChartCase(item);
   
   const main = document.getElementById("main-view");
   main.innerHTML = `
@@ -56,20 +58,10 @@ function selectItem(id) {
       
       <div class="question-box">
         <strong>Question:</strong><br/>
-        ${item.question_text}
+        ${escapeHtml(item.question_text)}
       </div>
 
-      <div class="chart-previews">
-        <div class="chart-box">
-          <strong>Lagna Chart Snapshot</strong><br/>
-          (Pre-calculated data available here)
-          <pre style="overflow:auto; height: 100px;">${JSON.stringify(item.astrological_snapshot.houses || item.astrological_snapshot, null, 2)}</pre>
-        </div>
-        <div class="chart-box">
-          <strong>Transits & Dashas</strong><br/>
-          (Pre-calculated data available here)
-        </div>
-      </div>
+      ${matchBlock}
 
       <h3 style="margin-top: 24px;">Your Answer</h3>
       <textarea id="answer-input" placeholder="Type your astrological reading and answer here..."></textarea>
@@ -79,6 +71,112 @@ function selectItem(id) {
         <button class="btn-danger" onclick="declineQuestion('${item.id}')">Decline (Refund User)</button>
       </div>
       <p id="action-status" style="margin-top: 12px; font-size:14px;"></p>
+    </div>
+  `;
+}
+
+function renderStandardChartCase(item) {
+  return `
+    <div class="chart-previews">
+      <div class="chart-box">
+        <strong>Lagna Chart Snapshot</strong><br/>
+        (Pre-calculated data available here)
+        <pre style="overflow:auto; height: 100px;">${escapeHtml(JSON.stringify(item.astrological_snapshot.houses || item.astrological_snapshot, null, 2))}</pre>
+      </div>
+      <div class="chart-box">
+        <strong>Transits & Dashas</strong><br/>
+        (Pre-calculated data available here)
+      </div>
+    </div>
+  `;
+}
+
+function renderMatchmakingCase(snapshot) {
+  const report = snapshot.report || {};
+  const boy = report.participants?.boy || {};
+  const girl = report.participants?.girl || {};
+  const ashtakoota = report.ashtakoota || {};
+  const summary = report.summary || {};
+  const dossier = report.dossier || {};
+  const boyChart = report.charts?.boy || {};
+  const girlChart = report.charts?.girl || {};
+  return `
+    <div class="question-box">
+      <strong>Matchmaking Case Summary:</strong><br/>
+      ${escapeHtml(summary.ai_summary || "Matchmaking report attached for review.")}
+    </div>
+    <div class="chart-previews">
+      <div class="chart-box">
+        <strong>Boy Details</strong>
+        <p>${escapeHtml(boy.name || "")}<br>${escapeHtml(boy.date_of_birth || "")} ${escapeHtml(boy.time_of_birth || "")}<br>${escapeHtml(boy.birth_place || "")}</p>
+        <p><strong>Lagna:</strong> ${escapeHtml(boyChart.lagna?.sign || "")}<br><strong>Moon:</strong> ${escapeHtml(boyChart.moon?.sign || "")}, ${escapeHtml(boyChart.moon?.nakshatra || "")} Pada ${escapeHtml(boyChart.moon?.pada || "")}</p>
+      </div>
+      <div class="chart-box">
+        <strong>Girl Details</strong>
+        <p>${escapeHtml(girl.name || "")}<br>${escapeHtml(girl.date_of_birth || "")} ${escapeHtml(girl.time_of_birth || "")}<br>${escapeHtml(girl.birth_place || "")}</p>
+        <p><strong>Lagna:</strong> ${escapeHtml(girlChart.lagna?.sign || "")}<br><strong>Moon:</strong> ${escapeHtml(girlChart.moon?.sign || "")}, ${escapeHtml(girlChart.moon?.nakshatra || "")} Pada ${escapeHtml(girlChart.moon?.pada || "")}</p>
+      </div>
+    </div>
+    <div class="question-box">
+      <strong>Guna Milan:</strong> ${escapeHtml(ashtakoota.total_score || 0)}/${escapeHtml(ashtakoota.max_score || 36)} (${escapeHtml(ashtakoota.category || "")})<br/>
+      <strong>Final Recommendation:</strong> ${escapeHtml(summary.final_recommendation || "")}
+    </div>
+    <div class="chart-box">
+      <strong>Dosha Analysis</strong>
+      <pre style="overflow:auto; max-height: 220px;">${escapeHtml(JSON.stringify(report.doshas || [], null, 2))}</pre>
+    </div>
+    ${renderConsultantDossier(dossier)}
+  `;
+}
+
+function renderConsultantDossier(dossier = {}) {
+  if (!Object.keys(dossier || {}).length) return "";
+  return `
+    <div class="question-box">
+      <strong>Marriage Compatibility Case File</strong><br/>
+      ${escapeHtml(dossier.astrologer_note || "Full auto-generated dossier attached.")}
+    </div>
+    <div class="chart-previews">
+      ${consultantInfoBox("Boy Information", dossier.couple_information?.boy)}
+      ${consultantInfoBox("Girl Information", dossier.couple_information?.girl)}
+    </div>
+    <div class="chart-box">
+      <strong>Charts to Review</strong>
+      <pre style="overflow:auto; max-height: 280px;">${escapeHtml(JSON.stringify(dossier.charts_to_send || {}, null, 2))}</pre>
+    </div>
+    <div class="chart-box">
+      <strong>Planetary Positions</strong>
+      <pre style="overflow:auto; max-height: 320px;">${escapeHtml(JSON.stringify(dossier.planetary_positions || {}, null, 2))}</pre>
+    </div>
+    <div class="chart-box">
+      <strong>Complete Guna Milan</strong>
+      <pre style="overflow:auto; max-height: 260px;">${escapeHtml(JSON.stringify(dossier.complete_guna_milan || [], null, 2))}</pre>
+    </div>
+    <div class="chart-box">
+      <strong>Detailed Dosha, 7th House, Karaka, Navamsa and Indicators</strong>
+      <pre style="overflow:auto; max-height: 420px;">${escapeHtml(JSON.stringify({
+        dosha_analysis: dossier.dosha_analysis || [],
+        marriage_house_analysis: dossier.marriage_house_analysis || {},
+        marriage_karakas: dossier.marriage_karakas || {},
+        navamsa_analysis: dossier.navamsa_analysis || {},
+        compatibility_indicators: dossier.compatibility_indicators || [],
+      }, null, 2))}</pre>
+    </div>
+  `;
+}
+
+function consultantInfoBox(title, person = {}) {
+  return `
+    <div class="chart-box">
+      <strong>${escapeHtml(title)}</strong>
+      <p>
+        ${escapeHtml(person?.name || "")}<br>
+        DOB: ${escapeHtml(person?.date_of_birth || "")}<br>
+        Time: ${escapeHtml(person?.time_of_birth || "")}<br>
+        Place: ${escapeHtml(person?.birth_place || "")}<br>
+        Age: ${escapeHtml(person?.age ?? "Not available")}<br>
+        Time accuracy: ${escapeHtml(person?.birth_time_accuracy || "")}
+      </p>
     </div>
   `;
 }
@@ -139,3 +237,22 @@ window.declineQuestion = async function(id) {
 
 fetchQueue();
 setInterval(fetchQueue, 5000);
+
+function parseSnapshot(value) {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return {};
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}

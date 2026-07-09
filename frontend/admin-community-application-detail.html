@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Application Detail</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .admin-layout { display: flex; gap: 2rem; padding: 2rem; }
+        .sidebar { width: 250px; background: var(--bg-surface); padding: 1rem; border-radius: 8px; border: 1px solid var(--line); height: fit-content; }
+        .main-content { flex: 1; display: flex; gap: 2rem; }
+        .app-content { flex: 2; }
+        .action-panel { flex: 1; background: var(--bg-surface); padding: 1.5rem; border-radius: 8px; border: 1px solid var(--line); height: fit-content; position: sticky; top: 2rem; }
+        
+        .sidebar-link { display: block; padding: 0.75rem; color: var(--ink-main); text-decoration: none; margin-bottom: 0.5rem; border-radius: 4px; }
+        .sidebar-link:hover, .sidebar-link.active { background: #f0f0f0; font-weight: bold; }
+        
+        .section-card { background: white; padding: 1.5rem; border-radius: 8px; border: 1px solid var(--line); margin-bottom: 1.5rem; }
+        .section-title { font-size: 1.1rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; margin-bottom: 1rem; color: #555; }
+        
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .info-label { font-size: 0.85rem; color: #777; font-weight: 600; text-transform: uppercase; }
+        .info-value { font-size: 1rem; margin-top: 0.25rem; }
+        
+        .badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 12px; font-size: 0.8rem; font-weight: bold; }
+        .badge.PENDING { background: #fff3cd; color: #856404; }
+        .badge.APPROVED { background: #d4edda; color: #155724; }
+        .badge.REJECTED { background: #f8d7da; color: #721c24; }
+        .badge.NEEDS_MORE_INFORMATION { background: #cce5ff; color: #004085; }
+        .badge.SUSPENDED { background: #e2e3e5; color: #383d41; }
+        
+        .proof-item { border: 1px solid #ddd; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; background: #fafafa; }
+        
+        .btn { padding: 0.75rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; margin-bottom: 0.5rem; text-align: center; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-warning { background: #ffc107; color: #333; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .action-form { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; }
+        .action-form.active { display: block; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
+        .form-group textarea, .form-group input { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .timeline-item { padding-left: 1.5rem; position: relative; margin-bottom: 1rem; }
+        .timeline-item::before { content: ""; position: absolute; left: 0; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: #ccc; }
+        .timeline-item::after { content: ""; position: absolute; left: 4px; top: 15px; bottom: -1rem; width: 2px; background: #eee; }
+        .timeline-item:last-child::after { display: none; }
+        .timeline-date { font-size: 0.8rem; color: #888; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+
+    <div class="admin-layout">
+        <div class="main-content">
+            <div class="app-content">
+                <h2 style="margin-bottom: 0.5rem;">Review Application</h2>
+                <div style="margin-bottom: 2rem;">
+                    <span id="app-status-badge" class="badge">Loading...</span>
+                    <span style="color: #666; margin-left: 10px;">ID: <span id="app-id"></span></span>
+                </div>
+
+                <div class="section-card">
+                    <div class="section-title">Applicant Information</div>
+                    <div class="info-grid">
+                        <div>
+                            <div class="info-label">Full Name</div>
+                            <div class="info-value" id="info-name"></div>
+                        </div>
+                        <div>
+                            <div class="info-label">Email</div>
+                            <div class="info-value"><a href="" id="info-email-link"><span id="info-email"></span></a></div>
+                        </div>
+                        <div>
+                            <div class="info-label">Mobile Number</div>
+                            <div class="info-value" id="info-mobile"></div>
+                        </div>
+                        <div>
+                            <div class="info-label">Location</div>
+                            <div class="info-value" id="info-location"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-card">
+                    <div class="section-title">Astrology Background</div>
+                    <div class="info-grid" style="margin-bottom: 1rem;">
+                        <div>
+                            <div class="info-label">Applicant Type</div>
+                            <div class="info-value" id="info-type"></div>
+                        </div>
+                        <div>
+                            <div class="info-label">Experience</div>
+                            <div class="info-value" id="info-exp"></div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <div class="info-label">Systems Practiced</div>
+                        <div class="info-value" id="info-systems"></div>
+                    </div>
+                    <div>
+                        <div class="info-label">Background Description</div>
+                        <div class="info-value" id="info-desc" style="white-space: pre-wrap; background: #f9f9f9; padding: 1rem; border-radius: 4px; margin-top: 0.5rem;"></div>
+                    </div>
+                </div>
+
+                <div class="section-card">
+                    <div class="section-title">Supporting Proofs</div>
+                    <div id="proofs-container">
+                        Loading proofs...
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <div class="info-label">Additional Information</div>
+                        <div class="info-value" id="info-additional" style="white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+
+                <div class="section-card">
+                    <div class="section-title">Review Timeline</div>
+                    <div id="timeline-container">
+                        Loading timeline...
+                    </div>
+                </div>
+            </div>
+
+            <div class="action-panel">
+                <h3>Admin Actions</h3>
+                <p style="font-size: 0.9rem; color: #666; margin-bottom: 1.5rem;">Select an action to update this application's status.</p>
+                
+                <button class="btn btn-success action-btn" data-action="APPROVE">Approve Application</button>
+                <button class="btn btn-warning action-btn" data-action="NEEDS_MORE_INFORMATION">Request More Info</button>
+                <button class="btn btn-danger action-btn" data-action="REJECT">Reject Application</button>
+                <button class="btn btn-secondary action-btn" data-action="SUSPENDED" style="display: none;" id="btn-suspend">Suspend Access</button>
+
+                <!-- Action Form -->
+                <div id="action-form-container" class="action-form">
+                    <h4 id="action-title" style="margin-bottom: 1rem;">Confirm Action</h4>
+                    <form id="statusUpdateForm">
+                        <input type="hidden" id="action-type">
+                        
+                        <div class="form-group" id="msg-group">
+                            <label id="msg-label">Message to Applicant (Optional)</label>
+                            <textarea id="action-message" rows="4" placeholder="Enter reason or requested info..."></textarea>
+                        </div>
+                        
+                        <div class="form-group" id="reapply-group" style="display: none;">
+                            <label style="display: flex; gap: 10px; font-weight: normal; align-items: center;">
+                                <input type="checkbox" id="allow-reapply" checked> Allow applicant to reapply
+                            </label>
+                            <div id="reapply-days-wrapper" style="margin-top: 0.5rem;">
+                                <label style="font-weight: normal; font-size: 0.85rem;">Days until they can reapply:</label>
+                                <input type="number" id="reapply-days" value="30" min="0" style="width: 80px; display: inline-block;">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-success" id="btn-confirm-action" style="margin-top: 1rem;">Confirm</button>
+                        <button type="button" class="btn btn-secondary" id="btn-cancel-action" style="background: #eee; color: #333;">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/admin-community-application-detail.js"></script>
+</body>
+</html>

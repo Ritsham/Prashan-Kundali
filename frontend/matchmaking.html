@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kundali Match Making - Kundali Studio</title>
+    <link rel="stylesheet" href="./styles.css?v=3" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+  <body class="matchmaking-page">
+    <div id="auth-modal" class="auth-modal hidden">
+      <div class="auth-backdrop" id="auth-backdrop"></div>
+      <div class="auth-panel">
+        <button type="button" id="btn-close-auth" class="btn-close-auth" aria-label="Close modal">&times;</button>
+        <h1>Sign in to continue</h1>
+        <p>Match reports and consultations are saved securely to your account.</p>
+        <button type="button" id="btn-login-google" class="btn-google-login">Sign in with Google</button>
+      </div>
+    </div>
+
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <main class="match-shell">
+
+      <section class="match-hero">
+        <p class="eyebrow">Marriage Kundali Match Making</p>
+        <h1>Generate a professional compatibility report and send it directly to an astrologer.</h1>
+        <p>
+          Enter both birth details once. The system calculates Guna Milan, Dosha indicators, charts, and an astrologer-ready summary so you do not need to explain the match again during consultation.
+        </p>
+      </section>
+
+      <section class="match-layout">
+        <form id="match-form" class="match-form-card" autocomplete="off">
+          <div class="match-form-head">
+            <h2>Birth Details</h2>
+            <p>Use exact time where possible. Approximate or unknown time will be marked for astrologer review.</p>
+          </div>
+
+          <div class="match-people-grid">
+            <fieldset class="match-person">
+              <legend>Boy Details</legend>
+              <label>Name<input name="boy_person_entry" type="search" data-person-name="boy" required maxlength="80" autocomplete="one-time-code" autocapitalize="words" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore /></label>
+              <label>Date of birth<input name="boy_date_of_birth" type="date" required /></label>
+              <label>Time of birth<input name="boy_time_of_birth" type="time" step="60" /></label>
+              <label>Birth place
+                <div class="match-place-wrap">
+                  <input name="boy_birth_place" data-place-input="boy" required autocomplete="off" placeholder="City, state, country" />
+                  <div class="match-place-results hidden" data-place-results="boy"></div>
+                  <input type="hidden" name="boy_place_name" data-place-name="boy" />
+                  <input type="hidden" name="boy_latitude" data-place-latitude="boy" />
+                  <input type="hidden" name="boy_longitude" data-place-longitude="boy" />
+                </div>
+              </label>
+              <label>Gender
+                <select name="boy_gender" required>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>Birth time accuracy
+                <select name="boy_birth_time_accuracy" required>
+                  <option value="exact">Exact</option>
+                  <option value="approximate">Approximate</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+            </fieldset>
+
+            <fieldset class="match-person">
+              <legend>Girl Details</legend>
+              <label>Name<input name="girl_person_entry" type="search" data-person-name="girl" required maxlength="80" autocomplete="one-time-code" autocapitalize="words" spellcheck="false" aria-autocomplete="none" data-lpignore="true" data-1p-ignore /></label>
+              <label>Date of birth<input name="girl_date_of_birth" type="date" required /></label>
+              <label>Time of birth<input name="girl_time_of_birth" type="time" step="60" /></label>
+              <label>Birth place
+                <div class="match-place-wrap">
+                  <input name="girl_birth_place" data-place-input="girl" required autocomplete="off" placeholder="City, state, country" />
+                  <div class="match-place-results hidden" data-place-results="girl"></div>
+                  <input type="hidden" name="girl_place_name" data-place-name="girl" />
+                  <input type="hidden" name="girl_latitude" data-place-latitude="girl" />
+                  <input type="hidden" name="girl_longitude" data-place-longitude="girl" />
+                </div>
+              </label>
+              <label>Gender
+                <select name="girl_gender" required>
+                  <option value="female">Female</option>
+                  <option value="male">Male</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>Birth time accuracy
+                <select name="girl_birth_time_accuracy" required>
+                  <option value="exact">Exact</option>
+                  <option value="approximate">Approximate</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+            </fieldset>
+          </div>
+
+          <div class="match-actions">
+            <button type="submit" id="btn-generate-match" class="btn-submit">Generate Match Report</button>
+            <p id="match-status" role="status"></p>
+          </div>
+        </form>
+
+        <aside class="match-info-card">
+          <h2>What the report includes</h2>
+          <ul>
+            <li>Guna Milan score out of 36</li>
+            <li>8 Koota breakdown with interpretations</li>
+            <li>Mangal, Nadi, Bhakoot, Gana, and Graha Maitri review points</li>
+            <li>Lagna, Moon sign, Nakshatra, Pada, and planetary snapshot</li>
+            <li>One-click astrologer consultation attachment</li>
+          </ul>
+          <p class="match-note">Astrology guidance is advisory. Marriage decisions should also consider consent, values, health, communication, and practical compatibility.</p>
+        </aside>
+      </section>
+
+      <section id="match-result" class="match-result hidden" aria-live="polite"></section>
+    </main>
+
+    <script type="module" src="./matchmaking.js?v=4"></script>
+  </body>
+</html>

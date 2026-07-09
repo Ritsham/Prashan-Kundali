@@ -4,6 +4,15 @@ import { showFlash } from './flash.js';
 
 let supabaseClient = null;
 
+// Prevent FOUC (Flash of Unauthenticated Content) by checking localStorage eagerly
+const hasToken = !!localStorage.getItem('supabase_token');
+if (hasToken) {
+  document.querySelector("#btn-logout")?.classList.remove("hidden");
+  document.querySelector("#btn-dashboard")?.classList.remove("hidden");
+  document.querySelector("#btn-profile")?.classList.remove("hidden");
+  document.querySelector("#btn-login-header")?.classList.add("hidden");
+}
+
 export async function initAuth() {
   try {
     const config = await API.get("/api/config", false);
@@ -51,6 +60,15 @@ function bindAuthUI() {
 
   document.querySelector("#auth-backdrop")?.addEventListener("click", () => {
     document.querySelector("#auth-modal").classList.add("hidden");
+  });
+
+  // Handle global navbar auth toggles
+  document.addEventListener('astro:authChanged', (e) => {
+    const session = e.detail;
+    document.querySelector("#btn-logout")?.classList.toggle("hidden", !session);
+    document.querySelector("#btn-dashboard")?.classList.toggle("hidden", !session);
+    document.querySelector("#btn-profile")?.classList.toggle("hidden", !session);
+    document.querySelector("#btn-login-header")?.classList.toggle("hidden", !!session);
   });
 }
 

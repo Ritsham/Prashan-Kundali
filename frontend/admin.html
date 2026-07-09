@@ -6,6 +6,108 @@
     <title>Admin Dashboard - Kundali Studio</title>
     <link rel="stylesheet" href="./styles.css?v=2">
     <style>
+        .admin-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 22px;
+            flex-wrap: wrap;
+        }
+        .admin-stats {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .admin-stat {
+            background: var(--bg-surface);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 12px 16px;
+            min-width: 150px;
+        }
+        .admin-stat span {
+            display: block;
+            color: var(--ink-dim);
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .admin-stat strong {
+            display: block;
+            margin-top: 4px;
+            color: var(--ink-light);
+            font-size: 1.35rem;
+        }
+        .btn-refresh {
+            min-height: 40px;
+            padding: 0 16px;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: var(--bg-surface);
+            color: var(--ink-light);
+            font-family: 'Inter', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 28px;
+        }
+        .metric-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 18px;
+            box-shadow: var(--shadow-gold);
+            min-height: 126px;
+        }
+        .metric-card span {
+            display: block;
+            color: var(--ink-dim);
+            font-size: 0.78rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .metric-card strong {
+            display: block;
+            margin-top: 10px;
+            color: var(--ink-light);
+            font-size: 1.9rem;
+            line-height: 1;
+        }
+        .metric-card small {
+            display: block;
+            margin-top: 10px;
+            color: var(--ink-dim);
+            line-height: 1.45;
+        }
+        .metric-card.revenue strong {
+            color: var(--saffron-gold);
+        }
+        .top-paths {
+            grid-column: span 2;
+        }
+        .top-paths-list {
+            margin-top: 10px;
+            display: grid;
+            gap: 7px;
+        }
+        .top-path-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            color: var(--ink-dim);
+            font-size: 0.88rem;
+        }
+        .top-path-row code {
+            color: var(--ink-light);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .pending-list {
             display: flex;
             flex-direction: column;
@@ -16,9 +118,10 @@
             padding: 24px 28px;
             border-radius: 16px;
             border: 1px solid var(--line);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 24px;
+            align-items: start;
             transition: all 0.2s ease;
         }
         .applicant-card:hover {
@@ -38,6 +141,37 @@
             margin: 8px 0;
             line-height: 1.5;
         }
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px 18px;
+            margin-top: 14px;
+        }
+        .detail-item {
+            border-top: 1px solid var(--line);
+            padding-top: 10px;
+        }
+        .detail-item.full {
+            grid-column: 1 / -1;
+        }
+        .detail-label {
+            display: block;
+            color: var(--ink-light);
+            font-size: 0.78rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+        }
+        .detail-value {
+            color: var(--ink-dim);
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .detail-value a {
+            color: var(--saffron-gold);
+            text-decoration: underline;
+        }
         .applicant-info strong {
             color: var(--ink-light);
             font-weight: 600;
@@ -46,6 +180,7 @@
             display: flex;
             gap: 12px;
             align-items: center;
+            flex-wrap: wrap;
         }
         .btn-approve, .btn-reject {
             font-family: 'Inter', sans-serif;
@@ -75,18 +210,106 @@
             color: var(--color-error);
             background: rgba(158, 51, 36, 0.1);
         }
+        .empty-state, .admin-error {
+            background: var(--bg-surface);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 28px;
+            color: var(--ink-dim);
+            text-align: center;
+        }
+        .admin-error {
+            color: var(--color-error);
+        }
+        @media (max-width: 760px) {
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            .top-paths {
+                grid-column: span 1;
+            }
+            .applicant-card {
+                grid-template-columns: 1fr;
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .action-btns {
+                width: 100%;
+            }
+            .btn-approve, .btn-reject {
+                flex: 1;
+            }
+        }
     </style>
-</head>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
 <body>
-    <nav class="global-navbar">
-        <div class="logo-text">
-            <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Admin</span> Studio
-        </div>
-        <div class="nav-links">
-            <a href="./index.html" class="nav-link-btn">Home</a>
-            <button type="button" id="btn-logout" class="small-btn">Logout</button>
-        </div>
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
     </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
 
     <main class="main-content">
         <div class="page-container">
@@ -94,27 +317,152 @@
                 <h1 class="page-title">Practitioner Verification Queue</h1>
                 <p class="page-subtitle">Verify practitioner profiles, credentials, bios, and websites before granting access to community boards.</p>
             </div>
+
+            <div class="admin-toolbar">
+                <div class="admin-stats">
+                    <div class="admin-stat">
+                        <span>Pending</span>
+                        <strong id="pending-count">0</strong>
+                    </div>
+                    <div class="admin-stat">
+                        <span>Access Rule</span>
+                        <strong>Verified</strong>
+                    </div>
+                </div>
+                <button type="button" id="btn-refresh" class="btn-refresh">Refresh Queue</button>
+            </div>
+
+            <section class="metrics-grid" id="metrics-grid" aria-label="Business metrics">
+                <div class="metric-card">
+                    <span>Live Users</span>
+                    <strong id="metric-live-users">0</strong>
+                    <small>Unique visitors active in the last 5 minutes.</small>
+                </div>
+                <div class="metric-card">
+                    <span>DAU</span>
+                    <strong id="metric-dau">0</strong>
+                    <small id="metric-visits-today">0 visits today</small>
+                </div>
+                <div class="metric-card">
+                    <span>Community Applications</span>
+                    <strong id="metric-community-apps">0</strong>
+                    <small id="metric-community-pending">0 pending review</small>
+                </div>
+                <div class="metric-card">
+                    <span>Consultant Leads</span>
+                    <strong id="metric-consultant-leads">0</strong>
+                    <small id="metric-consultant-pending">0 active or pending</small>
+                </div>
+                <div class="metric-card">
+                    <span>Paid Consultations</span>
+                    <strong id="metric-paid-consults">0</strong>
+                    <small id="metric-paid-queued">0 queued</small>
+                </div>
+                <div class="metric-card revenue">
+                    <span>Gross Revenue</span>
+                    <strong id="metric-gross-revenue">₹0</strong>
+                    <small id="metric-revenue-today">₹0 today</small>
+                </div>
+                <div class="metric-card revenue">
+                    <span>Platform Earnings</span>
+                    <strong id="metric-platform-earnings">₹0</strong>
+                    <small id="metric-consultant-earnings">₹0 consultant payout</small>
+                </div>
+                <div class="metric-card top-paths">
+                    <span>Top Pages Today</span>
+                    <div class="top-paths-list" id="metric-top-paths">
+                        <small>No traffic recorded yet.</small>
+                    </div>
+                </div>
+            </section>
             
             <div class="pending-list" id="pending-list">
                 <!-- Applications load here -->
+            </div>
+
+            <div class="page-header" style="margin-top: 48px;">
+                <h2 class="page-title">Consultation Requests</h2>
+                <p class="page-subtitle">Manage incoming consultation requests from users.</p>
+            </div>
+            
+            <div class="pending-list" id="consultations-list">
+                <!-- Consultations load here -->
             </div>
         </div>
     </main>
 
     <script type="module">
-        import { initLogout } from './auth-shared.js';
+        import { requireAuth, initLogout } from './auth-shared.js';
+        import { recordVisit } from './analytics.js';
         import { showFlash } from './flash.js';
 
-        async function loadPending() {
-            const token = localStorage.getItem('supabase_token');
-            if (!token) {
-                window.location.href = './index.html';
+        let adminToken = null;
+        let pendingApplications = [];
+        let consultationRequests = [];
+
+        async function loadMetrics() {
+            try {
+                const res = await fetch('/api/admin/metrics', {
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+                if (!res.ok) {
+                    const error = await res.json().catch(() => ({}));
+                    throw new Error(error.detail || 'Failed to load admin metrics.');
+                }
+                renderMetrics(await res.json());
+            } catch (err) {
+                console.error(err);
+                showFlash("Failed to load metrics: " + err.message, "error");
+            }
+        }
+
+        function renderMetrics(metrics) {
+            const traffic = metrics.traffic || {};
+            const community = metrics.community || {};
+            const consultations = metrics.consultations || {};
+            const earnings = metrics.earnings || {};
+
+            setText('metric-live-users', number(traffic.live_users));
+            setText('metric-dau', number(traffic.dau));
+            setText('metric-visits-today', `${number(traffic.visits_today)} visits today · ${number(traffic.visits_7d)} in 7 days`);
+            setText('metric-community-apps', number(community.applications_total));
+            setText('metric-community-pending', `${number(community.pending_applications)} pending review · ${number(community.approved_members)} approved members`);
+            setText('metric-consultant-leads', number(consultations.consultant_applications_total));
+            setText('metric-consultant-pending', `${number(consultations.consultant_applications_pending)} active or pending · ${number(consultations.consultant_applications_today)} today`);
+            setText('metric-paid-consults', number(consultations.paid_consultations_total));
+            setText('metric-paid-queued', `${number(consultations.paid_consultations_queued)} queued · ${number(consultations.paid_consultations_answered)} answered`);
+            setText('metric-gross-revenue', money(earnings.gross_revenue_total));
+            setText('metric-revenue-today', `${money(earnings.gross_revenue_today)} today`);
+            setText('metric-platform-earnings', money(earnings.platform_earnings_total));
+            setText('metric-consultant-earnings', `${money(earnings.consultant_earnings_total)} consultant payout`);
+            renderTopPaths(traffic.top_paths_today || []);
+        }
+
+        function renderTopPaths(paths) {
+            const box = document.getElementById('metric-top-paths');
+            box.innerHTML = '';
+            if (!paths.length) {
+                box.innerHTML = '<small>No traffic recorded yet.</small>';
                 return;
             }
+            paths.forEach((item) => {
+                const row = document.createElement('div');
+                row.className = 'top-path-row';
+                const code = document.createElement('code');
+                code.textContent = item.path || '/';
+                const count = document.createElement('span');
+                count.textContent = `${number(item.visits)} visits`;
+                row.append(code, count);
+                box.appendChild(row);
+            });
+        }
 
+        async function loadPending() {
+            const list = document.getElementById('pending-list');
+            list.innerHTML = '<div class="empty-state">Loading practitioner applications...</div>';
             try {
-                const res = await fetch('/api/admin/pending-astrologers', {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                const res = await fetch('/api/admin/applications', {
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
                 });
                 
                 if (res.status === 403) {
@@ -123,58 +471,334 @@
                     return;
                 }
 
+                if (!res.ok) {
+                    const error = await res.json().catch(() => ({}));
+                    throw new Error(error.detail || 'Failed to load pending applications.');
+                }
+
                 const data = await res.json();
-                const list = document.getElementById('pending-list');
+                pendingApplications = data.filter(app => app.status === 'PENDING') || [];
+                document.getElementById('pending-count').textContent = String(pendingApplications.length);
                 
-                if (!data.pending || data.pending.length === 0) {
-                    list.innerHTML = '<p class="text-muted" style="text-align: center; margin-top: 40px;">No pending applications in queue at the moment.</p>';
+                if (pendingApplications.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No pending applications in queue at the moment.</div>';
                     return;
                 }
 
-                list.innerHTML = data.pending.map(p => `
-                    <div class="applicant-card" id="card-${p.user_id}">
-                        <div class="applicant-info">
-                            <h3>${p.name || 'Unknown'} (${p.email})</h3>
-                            <p><strong>Experience:</strong> ${p.experience_years} years</p>
-                            <p><strong>Expertise:</strong> ${p.expertise_areas.join(', ')}</p>
-                            <p><strong>Bio:</strong> ${p.bio || 'N/A'}</p>
-                            <p><strong>Portal:</strong> ${p.social_links && p.social_links.website ? `<a href="${p.social_links.website}" target="_blank" style="color:var(--saffron-gold); text-decoration: underline;">${p.social_links.website}</a>` : 'N/A'}</p>
-                        </div>
-                        <div class="action-btns">
-                            <button class="btn-approve" onclick="verifyUser('${p.user_id}', 'approve')">Approve</button>
-                            <button class="btn-reject" onclick="verifyUser('${p.user_id}', 'reject')">Reject</button>
-                        </div>
-                    </div>
-                `).join('');
-
+                renderPendingList();
             } catch (err) {
                 console.error(err);
+                list.innerHTML = `<div class="admin-error">${escapeHtml(err.message)}</div>`;
                 showFlash("Failed to load queue: " + err.message, "error");
             }
         }
 
-        window.verifyUser = async function(userId, action) {
-            const token = localStorage.getItem('supabase_token');
+        function renderPendingList() {
+            const list = document.getElementById('pending-list');
+            list.innerHTML = '';
+            pendingApplications.forEach((p) => {
+                const card = document.createElement('div');
+                card.className = 'applicant-card';
+                card.id = `card-${p.id}`;
+                card.innerHTML = `
+                        <div class="applicant-info">
+                            <h3></h3>
+                            <p class="summary-line"></p>
+                            <div class="detail-grid"></div>
+                        </div>
+                        <div class="action-btns">
+                            <button class="btn-approve" type="button" data-action="approve">Approve</button>
+                            <button class="btn-reject" type="button" data-action="reject">Reject</button>
+                        </div>
+                `;
+
+                card.querySelector('h3').textContent = `${p.full_name || 'Unknown Applicant'} (${p.email || 'No email'})`;
+                card.querySelector('.summary-line').innerHTML = `<strong>Type:</strong> ${escapeHtml(p.applicant_type || 'N/A')} · <strong>Experience:</strong> ${escapeHtml(p.experience_range || 'N/A')} · <strong>Systems:</strong> ${escapeHtml((p.systems || []).join(', ') || 'N/A')}`;
+                card.querySelector('.detail-grid').append(
+                    detailItem('Phone', p.mobile_number || 'N/A'),
+                    detailItem('Location', `${p.state}, ${p.country}`),
+                    detailItem('Background', p.background_description || 'N/A', true),
+                    detailItem('Submitted', formatDate(p.created_at)),
+                    detailItem('Additional Info', p.additional_information || 'N/A', true)
+                );
+
+                card.querySelector('[data-action="approve"]').addEventListener('click', () => verifyUser(p.id, 'APPROVED'));
+                card.querySelector('[data-action="reject"]').addEventListener('click', () => verifyUser(p.id, 'REJECTED'));
+                list.appendChild(card);
+            });
+        }
+
+        function detailItem(label, value, full = false, link = false) {
+            const item = document.createElement('div');
+            item.className = `detail-item${full ? ' full' : ''}`;
+            const labelEl = document.createElement('span');
+            labelEl.className = 'detail-label';
+            labelEl.textContent = label;
+            const valueEl = document.createElement('div');
+            valueEl.className = 'detail-value';
+
+            if (link && typeof value === 'string' && isUrl(value)) {
+                const a = document.createElement('a');
+                a.href = value;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                a.textContent = value;
+                valueEl.appendChild(a);
+            } else if (link && Array.isArray(value)) {
+                if (!value.length) {
+                    valueEl.textContent = 'N/A';
+                } else {
+                    value.forEach((entry, index) => {
+                        if (index > 0) valueEl.appendChild(document.createTextNode('\n'));
+                        if (entry.url) {
+                            const a = document.createElement('a');
+                            a.href = entry.url;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.textContent = `${entry.label}: ${entry.url}`;
+                            valueEl.appendChild(a);
+                        } else {
+                            valueEl.appendChild(document.createTextNode(`${entry.label}: ${entry.value}`));
+                        }
+                    });
+                }
+            } else if (link && typeof value === 'string') {
+                valueEl.textContent = value || 'N/A';
+            } else {
+                valueEl.textContent = String(value || 'N/A');
+            }
+
+            item.append(labelEl, valueEl);
+            return item;
+        }
+
+        function setCardBusy(card, busy) {
+            (card?.querySelectorAll('button') || []).forEach((button) => {
+                button.disabled = busy;
+            });
+        }
+
+        function formatObjectLinks(links) {
+            return Object.entries(links || {})
+                .filter(([key, value]) => value && ![
+                    'full_name',
+                    'email',
+                    'whatsapp_no',
+                    'proof_document_name',
+                    'proof_document_base64',
+                    'proof_document_link',
+                    'sample_case_study',
+                    'learning_goals'
+                ].includes(key))
+                .map(([key, value]) => ({ label: key, value: String(value), url: isUrl(value) ? value : '' }));
+        }
+
+        function proofDocumentText(links) {
+            if (links?.proof_document_link) return links.proof_document_link;
+            if (links?.proof_document_name) return links.proof_document_name;
+            if (links?.proof_document_base64) return 'Document uploaded with application.';
+            return 'N/A';
+        }
+
+        function formatDate(value) {
+            if (!value) return 'N/A';
+            return new Date(value).toLocaleString([], {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        }
+
+        async function verifyUser(appId, status) {
+            const label = status === 'APPROVED' ? 'approve and grant Astro Community access' : 'reject this application';
+            if (!confirm(`Are you sure you want to ${label}?`)) return;
+
+            const card = document.getElementById(`card-${appId}`);
+            setCardBusy(card, true);
             try {
-                const res = await fetch(`/api/admin/verify-astrologer?user_id=${userId}&action=${action}`, {
+                const res = await fetch(`/api/admin/applications/${appId}/status`, {
                     method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { 'Authorization': `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: status, message: "" })
                 });
                 if (res.ok) {
-                    document.getElementById(`card-${userId}`).remove();
+                    pendingApplications = pendingApplications.filter((item) => item.id !== appId);
+                    document.getElementById('pending-count').textContent = String(pendingApplications.length);
+                    card?.remove();
+                    if (pendingApplications.length === 0) {
+                        document.getElementById('pending-list').innerHTML = '<div class="empty-state">No pending applications in queue at the moment.</div>';
+                    }
+                    showFlash(status === 'APPROVED' ? 'Astrologer approved and community access enabled.' : 'Application rejected.', 'success');
                 } else {
                     const data = await res.json();
                     alert(`Error: ${data.detail || 'Failed to update'}`);
+                    setCardBusy(card, false);
                 }
             } catch (err) {
                 console.error(err);
                 showFlash("Failed to update user: " + err.message, "error");
+                setCardBusy(card, false);
             }
-        };
+        }
 
-        document.addEventListener('DOMContentLoaded', () => {
+        function isUrl(value) {
+            return typeof value === 'string' && /^https?:\/\//i.test(value);
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;',
+            })[char]);
+        }
+
+        async function loadConsultations() {
+            const list = document.getElementById('consultations-list');
+            list.innerHTML = '<div class="empty-state">Loading consultation requests...</div>';
+            try {
+                const res = await fetch('/api/admin/consultations/requests', {
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+                
+                if (!res.ok) {
+                    const error = await res.json().catch(() => ({}));
+                    throw new Error(error.detail || 'Failed to load consultations.');
+                }
+
+                const data = await res.json();
+                consultationRequests = data.requests || [];
+                
+                if (consultationRequests.length === 0) {
+                    list.innerHTML = '<div class="empty-state">No consultation requests at the moment.</div>';
+                    return;
+                }
+
+                renderConsultationsList();
+            } catch (err) {
+                console.error(err);
+                list.innerHTML = `<div class="admin-error">${escapeHtml(err.message)}</div>`;
+                showFlash("Failed to load consultations: " + err.message, "error");
+            }
+        }
+
+        function renderConsultationsList() {
+            const list = document.getElementById('consultations-list');
+            list.innerHTML = '';
+            consultationRequests.forEach((req) => {
+                const card = document.createElement('div');
+                card.className = 'applicant-card';
+                card.id = `cons-${req.id}`;
+                card.innerHTML = `
+                        <div class="applicant-info">
+                            <h3></h3>
+                            <p class="summary-line"></p>
+                            <div class="detail-grid"></div>
+                            
+                            <div class="action-btns" style="margin-top: 16px;">
+                                <select class="status-select" style="padding: 8px; border-radius: 4px; border: 1px solid var(--line);">
+                                    <option value="pending">Pending</option>
+                                    <option value="accepted">Accepted</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="rejected">Rejected</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                                <input type="text" class="meeting-link" placeholder="Meeting Link" style="padding: 8px; border-radius: 4px; border: 1px solid var(--line);">
+                                <input type="text" class="scheduled-at" placeholder="Scheduled At (e.g., Tomorrow 10 AM)" style="padding: 8px; border-radius: 4px; border: 1px solid var(--line);">
+                                <button class="btn-approve update-btn" type="button">Update</button>
+                            </div>
+                        </div>
+                `;
+
+                card.querySelector('h3').textContent = `${req.user_name || 'Unknown'} (${req.user_email || 'No email'})`;
+                card.querySelector('.summary-line').innerHTML = `<strong>Topic:</strong> ${escapeHtml(req.topic || 'N/A')} · <strong>Status:</strong> ${escapeHtml(req.status)}`;
+                
+                let details = [
+                    detailItem('Question', req.question_text || 'N/A', true),
+                    detailItem('Submitted', formatDate(req.created_at)),
+                    detailItem('Last Updated', formatDate(req.updated_at)),
+                    detailItem('WhatsApp', req.whatsapp_no || 'N/A'),
+                    detailItem('DOB', req.birth_date || 'N/A'),
+                    detailItem('TOB', req.birth_time || 'N/A'),
+                    detailItem('Place', req.birth_place || 'N/A'),
+                    detailItem('Payment Ref', req.payment_ref || 'N/A')
+                ];
+                
+                card.querySelector('.detail-grid').append(...details);
+
+                const statusSelect = card.querySelector('.status-select');
+                statusSelect.value = req.status;
+                
+                const meetingLink = card.querySelector('.meeting-link');
+                meetingLink.value = req.meeting_link || '';
+                
+                const scheduledAt = card.querySelector('.scheduled-at');
+                scheduledAt.value = req.scheduled_at || '';
+
+                card.querySelector('.update-btn').addEventListener('click', () => updateConsultation(req.id, statusSelect.value, meetingLink.value, scheduledAt.value));
+                list.appendChild(card);
+            });
+        }
+
+        async function updateConsultation(id, status, meeting_link, scheduled_at) {
+            const card = document.getElementById(`cons-${id}`);
+            setCardBusy(card, true);
+            try {
+                const res = await fetch(`/api/admin/consultations/requests/${id}`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}` 
+                    },
+                    body: JSON.stringify({ status, meeting_link, scheduled_at })
+                });
+                if (res.ok) {
+                    showFlash('Consultation updated successfully.', 'success');
+                    loadConsultations();
+                } else {
+                    const data = await res.json();
+                    alert(`Error: ${data.detail || 'Failed to update'}`);
+                    setCardBusy(card, false);
+                }
+            } catch (err) {
+                console.error(err);
+                showFlash("Failed to update consultation: " + err.message, "error");
+                setCardBusy(card, false);
+            }
+        }
+
+        function setText(id, value) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        }
+
+        function number(value) {
+            return new Intl.NumberFormat('en-IN').format(Number(value || 0));
+        }
+
+        function money(value) {
+            return `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number(value || 0))}`;
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            recordVisit();
+            const auth = await requireAuth();
+            if (!auth) return;
+            adminToken = auth.session.access_token;
             initLogout('btn-logout');
+            document.getElementById('btn-refresh').addEventListener('click', () => {
+                loadMetrics();
+                loadPending();
+                loadConsultations();
+            });
+            loadMetrics();
             loadPending();
+            loadConsultations();
         });
     </script>
 </body>

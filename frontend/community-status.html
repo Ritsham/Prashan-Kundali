@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application Status - Astrologer Community</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .status-container { max-width: 600px; margin: 3rem auto; padding: 2rem; background: var(--bg-surface); border: 1px solid var(--line); border-radius: 8px; text-align: center; }
+        .status-badge { display: inline-block; padding: 0.5rem 1rem; border-radius: 20px; font-weight: bold; margin-bottom: 1rem; }
+        .status-badge.PENDING { background: #fff3cd; color: #856404; }
+        .status-badge.APPROVED { background: #d4edda; color: #155724; }
+        .status-badge.REJECTED { background: #f8d7da; color: #721c24; }
+        .status-badge.NEEDS_MORE_INFORMATION { background: #cce5ff; color: #004085; }
+        .status-details { text-align: left; background: #f9f9f9; padding: 1rem; border-radius: 4px; margin: 1.5rem 0; font-size: 0.9rem; }
+        .status-details div { margin-bottom: 0.5rem; }
+        .status-details strong { display: inline-block; width: 150px; }
+        .btn { padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; display: inline-block; text-decoration: none; }
+        .btn-primary { background: var(--ink-light); color: white; }
+        .btn-outline { background: transparent; border: 1px solid var(--ink-light); color: var(--ink-light); }
+        .more-info-form { text-align: left; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #eee; display: none; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        .form-group textarea, .form-group input { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+
+    <main class="main-content">
+        <div class="status-container" id="status-card" style="display: none;">
+            <h2 id="status-title" style="margin-bottom: 0.5rem;">Application Status</h2>
+            <div id="status-badge" class="status-badge">Loading...</div>
+            
+            <p id="status-message" style="margin-bottom: 1rem; color: #555; line-height: 1.5;"></p>
+            
+            <div class="status-details">
+                <div><strong>Application ID:</strong> <span id="app-id"></span></div>
+                <div><strong>Submitted Date:</strong> <span id="app-date"></span></div>
+                <div id="est-time-row"><strong>Estimated Review:</strong> 2–3 Days</div>
+            </div>
+            
+            <!-- Dynamic Actions -->
+            <div id="action-buttons" style="margin-top: 1.5rem; display: flex; gap: 10px; justify-content: center;">
+                <button class="btn btn-outline" id="btn-support">Need Help? Contact Support</button>
+                <a href="/astro-community" class="btn btn-primary" id="btn-enter-community" style="display: none;">Enter Community</a>
+                <button class="btn btn-primary" id="btn-reapply" style="display: none;">Apply Again</button>
+            </div>
+            
+            <!-- Needs More Information Form -->
+            <div class="more-info-form" id="more-info-section">
+                <h3 style="margin-bottom: 1rem;">Submit Additional Information</h3>
+                <form id="moreInfoForm">
+                    <div class="form-group">
+                        <label>Your Response</label>
+                        <textarea id="more-info-text" rows="4" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Supporting Link (Optional)</label>
+                        <input type="url" id="more-info-link" placeholder="https://...">
+                    </div>
+                    <div class="form-group">
+                        <label>Additional Proof File (Optional, max 10MB)</label>
+                        <input type="file" id="more-info-file" accept=".pdf,.jpg,.jpeg,.png">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="btn-submit-more-info">Submit Additional Information</button>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="/community-status.js"></script>
+</body>
+</html>

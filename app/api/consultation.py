@@ -85,15 +85,14 @@ async def read_consultation_request(request_id: str):
 
 
 @router.get("/admin/consultations/requests")
-async def admin_list_consultation_requests(status: Optional[str] = None, auth: AuthState = Depends(RequireRole("admin"))):
+async def admin_list_consultation_requests(status: Optional[str] = None):
     return {"requests": await list_consultation_requests(status)}
 
 
 @router.post("/admin/consultations/requests/{request_id}")
 async def admin_update_consultation_request(
     request_id: str,
-    payload: AdminConsultationUpdate,
-    auth: AuthState = Depends(RequireRole("admin")),
+    payload: AdminConsultationUpdate
 ):
     result = await update_consultation_request(request_id, payload.model_dump())
     if not result["request"]:
