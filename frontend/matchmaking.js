@@ -299,7 +299,12 @@ function renderResult(matchId, report) {
     const index = parseInt(canvas.dataset.chartIndex, 10);
     const pair = chartPairsData[index];
     if (pair && pair[person] && pair[person].chart) {
-      new KundaliChart(canvas, pair[person].chart, { responsive: true });
+      new KundaliChart(canvas, pair[person].chart, { 
+        responsive: true,
+        darkTheme: false,
+        lineColor: '#C8A261',
+        textColor: '#211C4D'
+      });
     }
   });
 

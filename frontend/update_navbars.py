@@ -4,7 +4,6 @@ import glob
 standard_navbar = """    <!-- Global Navbar -->
     <nav class="global-navbar" aria-label="Main Navigation">
       <div class="logo-text">
-        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
         <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
       </div>
       <div class="nav-links">
@@ -21,7 +20,7 @@ standard_navbar = """    <!-- Global Navbar -->
     </nav>"""
 
 def replace_navbar(filepath):
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
     # Find where navbar starts and ends
@@ -30,7 +29,7 @@ def replace_navbar(filepath):
         if start_idx != -1:
             end_idx = content.find('</nav>', start_idx) + 6
             new_content = content[:start_idx-4] + standard_navbar + content[end_idx:]
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(new_content)
             print(f"Updated global-navbar in {filepath}")
     elif '<nav class="community-topbar' in content:
@@ -43,5 +42,5 @@ def replace_navbar(filepath):
             print(f"Updated community-topbar in {filepath}")
 
 
-for f in glob.glob('/Users/riteshkumarsingh/Desktop/Kundali/frontend/*.html'):
+for f in glob.glob('*.html'):
     replace_navbar(f)

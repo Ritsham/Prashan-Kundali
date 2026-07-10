@@ -4,17 +4,74 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Astro Community - Kundali Studio</title>
-    <link rel="stylesheet" href="./styles.css?v=2">
-    <link rel="stylesheet" href="./community.css?v=3">
+    <link rel="stylesheet" href="./styles.css?v=10" />
+
     <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   </head>
 <body>
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="./index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="./consultation.html" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="./index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="./about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="./astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='./profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+
     <section id="community-landing" class="community-landing">
+        <!-- Celestial Background Elements -->
+        <div class="celestial-bg" style="position: absolute; inset: 0; z-index: 0; pointer-events: none;">
+          <div class="chakra-bg-container" style="opacity: 0.04; color: var(--maroon);">
+            <svg class="chakra-svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="0.8" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="50" cy="50" r="6" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="2" fill="currentColor" />
+              <circle cx="50" cy="50" r="18" stroke-dasharray="2,2" />
+              <circle cx="50" cy="50" r="44" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="47" />
+              <g stroke-width="0.6">
+                <line x1="50" y1="50" x2="50" y2="6" />
+                <line x1="50" y1="50" x2="50" y2="94" />
+                <line x1="50" y1="50" x2="6" y2="50" />
+                <line x1="50" y1="50" x2="94" y2="50" />
+                <line x1="50" y1="50" x2="19" y2="19" />
+                <line x1="50" y1="50" x2="81" y2="81" />
+                <line x1="50" y1="50" x2="19" y2="81" />
+                <line x1="50" y1="50" x2="81" y2="19" />
+              </g>
+            </svg>
+          </div>
+          <div class="planet planet-1"></div>
+          <div class="planet planet-2"></div>
+        </div>
 
-
-        <div class="landing-hero">
+        <div class="landing-hero" style="position: relative; z-index: 10;">
             <div class="hero-copy">
                 <p class="eyebrow">Private professional network</p>
                 <h1>A Professional Community Built for Astrologers</h1>
@@ -102,7 +159,7 @@
 
             <div class="sidebar-foot">
                 <button type="button" data-view="profile" class="text-btn" style="text-align: left;">User Profile / Settings</button>
-                <a href="./index.html">Back to Main Website</a>
+
             </div>
         </aside>
 
@@ -230,7 +287,9 @@
     </div>
 
     <script type="module">
+        import { initAuth } from './auth.js';
         import { recordVisit } from './analytics.js';
+        initAuth();
         recordVisit();
     </script>
     <script type="module" src="./community.js?v=3"></script>

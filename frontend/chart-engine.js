@@ -6,7 +6,9 @@ export class KundaliChart {
     this.options = {
       fontFamily: options.fontFamily || '"Roboto", sans-serif',
       lineColor: options.lineColor || '#f9c5af',
+      textColor: options.textColor || '#241f1a',
       lineWidth: options.lineWidth || 1.5,
+      darkTheme: options.darkTheme || false,
       ...options
     };
 
@@ -16,19 +18,24 @@ export class KundaliChart {
     // Based on the image
     this.planetColors = {
       Sun: '#e63946', // Red
-      Moon: '#a8dadc', // Light Blue
+      Moon: options.darkTheme ? '#b3e5fc' : '#a8dadc', // Light Blue (made slightly more vibrant for dark theme)
       Mars: '#2a9d8f', // Green
-      Mercury: '#457b9d', // Blue
+      Mercury: options.darkTheme ? '#4fc3f7' : '#457b9d', // Blue (slightly lighter for dark theme)
       Jupiter: '#9d4edd', // Purple
       Venus: '#2a9d8f', // Green
       Saturn: '#e76f51', // Orange/Red
       Rahu: '#c1121f', // Dark Red
       Ketu: '#b0891d', // Golden
       Uranus: '#e63946', // Red
-      Neptune: '#1d3557', // Dark Blue
-      Pluto: '#000000', // Black
-      Asc: '#000000'
+      Neptune: options.darkTheme ? '#90caf9' : '#1d3557', // Dark Blue -> Light Blue for dark theme
+      Pluto: options.darkTheme ? '#ffffff' : '#000000', // White for dark theme
+      Asc: options.darkTheme ? '#ffb74d' : '#000000'   // Warm Gold for dark theme
     };
+    
+    // Merge custom planet colors if provided
+    if (options.planetColors) {
+      this.planetColors = { ...this.planetColors, ...options.planetColors };
+    }
 
     this.planetShort = { Asc: "Asc", Sun: "Su", Moon: "Mo", Mars: "Ma", Mercury: "Me", Jupiter: "Ju", Venus: "Ve", Saturn: "Sa", Rahu: "Ra", Ketu: "Ke", Uranus: "Ur", Neptune: "Ne", Pluto: "Pl" };
 
@@ -164,7 +171,7 @@ export class KundaliChart {
 
       // ── 1. Rashi number ──────────────────────────────────────────────────────
       this.ctx.font      = `bold ${numSize}px ${this.options.fontFamily}`;
-      this.ctx.fillStyle = '#241f1a';
+      this.ctx.fillStyle = this.options.textColor;
       this.ctx.fillText(signNum, cx, numY);
 
       // ── 2. Planet abbreviations (max 2 per row, individually coloured) ───────
@@ -179,12 +186,12 @@ export class KundaliChart {
           const p2 = bodies[j + 1];
 
           if (p2) {
-            this.ctx.fillStyle = this.planetColors[p1] || '#555';
+            this.ctx.fillStyle = this.planetColors[p1] || this.options.textColor;
             this.ctx.fillText(this.planetShort[p1] || p1, cx - pColOffset, rowY);
-            this.ctx.fillStyle = this.planetColors[p2] || '#555';
+            this.ctx.fillStyle = this.planetColors[p2] || this.options.textColor;
             this.ctx.fillText(this.planetShort[p2] || p2, cx + pColOffset, rowY);
           } else {
-            this.ctx.fillStyle = this.planetColors[p1] || '#555';
+            this.ctx.fillStyle = this.planetColors[p1] || this.options.textColor;
             this.ctx.fillText(this.planetShort[p1] || p1, cx, rowY);
           }
           rowY += lineH;
@@ -215,7 +222,7 @@ export class KundaliChart {
       const y = startY + row * lineHeight;
 
       const shortName = this.planetShort[planet] || planet;
-      this.ctx.fillStyle = this.planetColors[planet] || '#333';
+      this.ctx.fillStyle = this.planetColors[planet] || this.options.textColor;
       this.ctx.fillText(shortName, x, y);
     });
   }

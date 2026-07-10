@@ -131,6 +131,105 @@ async def websocket_consultation(websocket: WebSocket, booking_id: str):
     except WebSocketDisconnect:
         manager.disconnect(websocket, f"consultation_{booking_id}")
 
+# Today's Panchang API Endpoint (cached)
+import httpx
+from datetime import datetime, timedelta
+
+panchang_cache = {}
+
+@app.get("/api/panchang")
+async def get_panchang(lat: float = 28.6139, lng: float = 77.2090, date_str: str = None, tz_offset: str = "+05:30"):
+    if not date_str:
+        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        
+    cache_key = f"{date_str}_{round(lat, 2)}_{round(lng, 2)}_{tz_offset}"
+    if cache_key in panchang_cache:
+        return panchang_cache[cache_key]
+        
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except Exception:
+        dt = datetime.utcnow()
+        
+    formatted_date_slash = dt.strftime("%d/%m/%Y")
+    
+    tithi_name = "Shukla Ekadashi"
+    nakshatra_name = "Anuradha"
+    sunrise_time = "05:24 AM"
+    sunset_time = "07:12 PM"
+    muhurat_time = "11:45 AM - 12:35 PM"
+    
+    async with httpx.AsyncClient() as client:
+        # 1. Fetch Tithi (LunarDay)
+        try:
+            tithi_url = f"https://api.vedastro.org/api/Calculate/LunarDay/Location/{lat},{lng}/Time/06:00/{formatted_date_slash}/{tz_offset}/Ayanamsa/LAHIRI"
+            resp = await client.get(tithi_url, timeout=12.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("Status") == "Pass":
+                    ld = data["Payload"]["LunarDay"]
+                    tithi_name = f"{ld['Paksha']} {ld['Name']}"
+        except Exception as e:
+            print(f"Error fetching Tithi from VedAstro: {e}")
+            
+        # 2. Fetch Nakshatra (MoonConstellation)
+        try:
+            nakshatra_url = f"https://api.vedastro.org/api/Calculate/MoonConstellation/Location/{lat},{lng}/Time/06:00/{formatted_date_slash}/{tz_offset}/Ayanamsa/LAHIRI"
+            resp = await client.get(nakshatra_url, timeout=12.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get("Status") == "Pass":
+                    nakshatra_name = data["Payload"]["MoonConstellation"]
+        except Exception as e:
+            print(f"Error fetching Nakshatra from VedAstro: {e}")
+            
+        # 3. Fetch Sunrise/Sunset
+        try:
+            sunrise_url = f"https://api.sunrise-sunset.org/json?lat={lat}&lng={lng}&date={date_str}&formatted=1"
+            resp = await client.get(sunrise_url, timeout=10.0)
+            if resp.status_code == 200:
+                s_data = resp.json()
+                if s_data.get("status") == "OK":
+                    results = s_data["results"]
+                    sunrise_utc_str = results["sunrise"]
+                    sunset_utc_str = results["sunset"]
+                    
+                    # Parse timezone offset (e.g. +05:30)
+                    sign = 1 if tz_offset[0] == '+' else -1
+                    hours = int(tz_offset[1:3])
+                    minutes = int(tz_offset[4:6])
+                    td = timedelta(hours=hours, minutes=minutes) * sign
+                    
+                    # Parse UTC times
+                    sunrise_utc = datetime.strptime(f"{date_str} {sunrise_utc_str}", "%Y-%m-%d %I:%M:%S %p")
+                    sunset_utc = datetime.strptime(f"{date_str} {sunset_utc_str}", "%Y-%m-%d %I:%M:%S %p")
+                    
+                    # Convert to local
+                    sunrise_local = sunrise_utc + td
+                    sunset_local = sunset_utc + td
+                    
+                    sunrise_time = sunrise_local.strftime("%I:%M %p")
+                    sunset_time = sunset_local.strftime("%I:%M %p")
+                    
+                    # Compute Abhijit Muhurat
+                    local_noon = sunrise_local + (sunset_local - sunrise_local) / 2
+                    muhurat_start = local_noon - timedelta(minutes=24)
+                    muhurat_end = local_noon + timedelta(minutes=24)
+                    muhurat_time = f"{muhurat_start.strftime('%I:%M %p')} - {muhurat_end.strftime('%I:%M %p')}"
+        except Exception as e:
+            print(f"Error fetching Sunrise/Sunset: {e}")
+            
+    payload = {
+        "tithi": tithi_name,
+        "nakshatra": nakshatra_name,
+        "sunrise": sunrise_time,
+        "sunset": sunset_time,
+        "muhurat": muhurat_time
+    }
+    
+    panchang_cache[cache_key] = payload
+    return payload
+
 app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
 
 if __name__ == "__main__":

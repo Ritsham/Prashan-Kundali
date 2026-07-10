@@ -4,19 +4,18 @@ import glob
 standard_navbar = """    <!-- Global Navbar -->
     <nav class="global-navbar" aria-label="Main Navigation">
       <div class="logo-text">
-        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
         <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
       </div>
       <div class="nav-links">
-        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
-        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
-        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
-        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
-        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+        <a href="./index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="./consultation.html" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="./index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="./about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="./astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
-        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='./profile.html'">Profile</button>
         <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
         <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
       </div>
@@ -37,7 +36,7 @@ standard_navbar = """    <!-- Global Navbar -->
     </script>"""
 
 def replace_navbar(filepath):
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
     if '<nav class="global-navbar' in content:
@@ -45,10 +44,10 @@ def replace_navbar(filepath):
         if start_idx != -1:
             end_idx = content.find('</nav>', start_idx) + 6
             new_content = content[:start_idx-4] + standard_navbar + content[end_idx:]
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(new_content)
             print(f"Updated global-navbar in {filepath}")
 
 
-for f in glob.glob('/Users/riteshkumarsingh/Desktop/Kundali/frontend/*.html'):
+for f in glob.glob('*.html'):
     replace_navbar(f)

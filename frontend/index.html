@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kundali Studio - Vedic Prashna & Lagna Horoscope</title>
-    <link rel="stylesheet" href="./styles.css?v=2" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
       // Global error handler to help debug frontend crashes.
@@ -143,25 +143,39 @@
     <!-- Global Navbar -->
     <!-- Global Navbar -->
     <!-- Global Navbar -->
+    <!-- Global Navbar -->
     <nav class="global-navbar" aria-label="Main Navigation">
       <div class="logo-text">
-        <button class="nav-btn" onclick="history.back()" style="margin-right: 8px; font-family: 'Inter', sans-serif; background: transparent; border: none; cursor: pointer; color: var(--ink-light);">&larr; Back</button>
         <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
       </div>
       <div class="nav-links">
-        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
-        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
-        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
-        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
-        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+        <a href="./index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="./consultation.html" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="./index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="./about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="./astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
-        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='./profile.html'">Profile</button>
         <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
         <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
       </div>
     </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const path = window.location.pathname;
@@ -210,25 +224,69 @@
 
       <!-- Today's Panchang Strip -->
       <div class="panchang-strip" aria-label="Today's Panchang Info">
-        <!-- TODO: wire to real panchang API/backend -->
-        <div class="panchang-item">
-          <span class="panchang-label">तिथि (Tithi)</span>
-          <span class="panchang-val">Shukla Ekadashi</span>
-        </div>
-        <div class="panchang-divider"></div>
-        <div class="panchang-item">
-          <span class="panchang-label">नक्षत्र (Nakshatra)</span>
-          <span class="panchang-val">Anuradha</span>
-        </div>
-        <div class="panchang-divider"></div>
-        <div class="panchang-item">
-          <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
-          <span class="panchang-val">05:24 AM / 07:12 PM</span>
-        </div>
-        <div class="panchang-divider"></div>
-        <div class="panchang-item">
-          <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
-          <span class="panchang-val">11:45 AM - 12:35 PM</span>
+        <div class="panchang-track" id="panchang-track">
+          <div class="panchang-item">
+            <span class="panchang-label">तिथि (Tithi)</span>
+            <span class="panchang-val">Shukla Ekadashi</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+            <span class="panchang-val">Anuradha</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+            <span class="panchang-val">05:24 AM / 07:12 PM</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+            <span class="panchang-val">11:45 AM - 12:35 PM</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <!-- Loop duplicate 2 -->
+          <div class="panchang-item">
+            <span class="panchang-label">तिथि (Tithi)</span>
+            <span class="panchang-val">Shukla Ekadashi</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+            <span class="panchang-val">Anuradha</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+            <span class="panchang-val">05:24 AM / 07:12 PM</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+            <span class="panchang-val">11:45 AM - 12:35 PM</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <!-- Loop duplicate 3 -->
+          <div class="panchang-item">
+            <span class="panchang-label">तिथि (Tithi)</span>
+            <span class="panchang-val">Shukla Ekadashi</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+            <span class="panchang-val">Anuradha</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+            <span class="panchang-val">05:24 AM / 07:12 PM</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+            <span class="panchang-val">11:45 AM - 12:35 PM</span>
+          </div>
+          <div class="panchang-divider"></div>
         </div>
       </div>
 
@@ -1274,5 +1332,233 @@
         </div>
     </div>
 
+    <!-- Floating Popups Section -->
+    <div id="popup-astro-community" class="floating-popup popup-left">
+      <div class="popup-card">
+        <div class="popup-watermark">ॐ</div>
+        <button type="button" class="popup-close" aria-label="Close popup">&times;</button>
+        <div class="popup-icon-wrapper">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10" stroke-dasharray="3 3"/>
+            <circle cx="12" cy="12" r="6"/>
+            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+            <line x1="12" y1="2" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+          </svg>
+        </div>
+        <div class="popup-content">
+          <h4>Join Our Growing Astrologer Community</h4>
+          <p>Connect with verified astrologers and enthusiasts.</p>
+        </div>
+      </div>
+      <div class="popup-mini">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10" stroke-dasharray="3 3"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2" fill="currentColor"/>
+          <line x1="12" y1="2" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <div class="popup-tooltip">Join Community</div>
+    </div>
+
+    <div id="popup-whatsapp" class="floating-popup popup-right">
+      <div class="popup-card">
+        <div class="popup-watermark">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"/>
+          </svg>
+        </div>
+        <button type="button" class="popup-close" aria-label="Close popup">&times;</button>
+        <div class="popup-icon-wrapper">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"/>
+          </svg>
+        </div>
+        <div class="popup-content">
+          <h4>Get Astrology Updates First</h4>
+          <p>Join our WhatsApp channel for early updates and insights.</p>
+        </div>
+      </div>
+      <div class="popup-mini">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"/>
+        </svg>
+      </div>
+      <div class="popup-tooltip">WhatsApp Updates</div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const popupLeft = document.getElementById("popup-astro-community");
+        const popupRight = document.getElementById("popup-whatsapp");
+
+        // Show both popups immediately (no delay)
+        popupLeft.classList.add("visible");
+        popupRight.classList.add("visible");
+
+        function minimizePopup(popup) {
+          if (popup.classList.contains("visible") && !popup.classList.contains("minimized")) {
+            popup.classList.add("minimized");
+          }
+        }
+
+        // Minimize immediately on scroll > 100px
+        window.addEventListener("scroll", () => {
+          if (window.scrollY > 100) {
+            minimizePopup(popupLeft);
+            minimizePopup(popupRight);
+          }
+        });
+
+        // Setup hover behavior for a popup
+        function setupHoverBehavior(popup, targetLink, openInNewTab) {
+          const card = popup.querySelector(".popup-card");
+          const mini = popup.querySelector(".popup-mini");
+          const closeBtn = popup.querySelector(".popup-close");
+          let leaveTimeout = null;
+
+          function clearTimeouts() {
+            if (leaveTimeout) {
+              clearTimeout(leaveTimeout);
+              leaveTimeout = null;
+            }
+          }
+
+          function expand() {
+            clearTimeouts();
+            popup.classList.remove("minimized");
+          }
+
+          function startLeaveTimer() {
+            clearTimeouts();
+            leaveTimeout = setTimeout(() => {
+              minimizePopup(popup);
+            }, 2000);
+          }
+
+          // Expand on mouseenter
+          mini.addEventListener("mouseenter", expand);
+          card.addEventListener("mouseenter", expand);
+
+          // Start 2s collapse timer on mouseleave
+          mini.addEventListener("mouseleave", startLeaveTimer);
+          card.addEventListener("mouseleave", startLeaveTimer);
+
+          // Click handler for card (navigation)
+          card.addEventListener("click", (e) => {
+            if (e.target.closest(".popup-close")) return;
+            if (openInNewTab) {
+              window.open(targetLink, "_blank");
+            } else {
+              window.location.href = targetLink;
+            }
+          });
+
+          // Click handler for mini icon (navigation)
+          mini.addEventListener("click", () => {
+            if (openInNewTab) {
+              window.open(targetLink, "_blank");
+            } else {
+              window.location.href = targetLink;
+            }
+          });
+
+          // Close button click collapses immediately
+          closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            clearTimeouts();
+            minimizePopup(popup);
+          });
+        }
+
+        setupHoverBehavior(popupLeft, "./astro-community", false);
+        setupHoverBehavior(popupRight, "https://whatsapp.com/channel/0029Vb8ZvHsKbYMLie7XIk0A", true);
+
+        // Fetch and load live Panchang data into the ticker
+        async function loadPanchang() {
+          const track = document.getElementById("panchang-track");
+          if (!track) return;
+
+          // Compute timezone offset (+HH:MM format)
+          const offsetMinutes = -new Date().getTimezoneOffset();
+          const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+          const offsetMins = Math.abs(offsetMinutes) % 60;
+          const offsetSign = offsetMinutes >= 0 ? '+' : '-';
+          const tzOffset = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMins).padStart(2, '0')}`;
+
+          // Default fallback coordinates (New Delhi)
+          let lat = 28.6139;
+          let lng = 77.2090;
+
+          // Try browser geolocation
+          try {
+            const pos = await new Promise((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3500 });
+            });
+            lat = pos.coords.latitude;
+            lng = pos.coords.longitude;
+          } catch (e) {
+            console.log("Panchang geolocation skipped/denied; using default (New Delhi).");
+          }
+
+          // Cache logic to avoid duplicate calls on page reloads (rate limits)
+          const todayStr = new Date().toISOString().split('T')[0];
+          const cacheKey = `panchang_${todayStr}_${lat.toFixed(2)}_${lng.toFixed(2)}`;
+          let data = null;
+
+          try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+              data = JSON.parse(cached);
+            }
+          } catch (e) {
+            console.warn("Panchang cache read failed:", e);
+          }
+
+          if (!data) {
+            try {
+              const res = await fetch(`/api/panchang?lat=${lat}&lng=${lng}&tz_offset=${encodeURIComponent(tzOffset)}&date_str=${todayStr}`);
+              if (res.ok) {
+                data = await res.json();
+                localStorage.setItem(cacheKey, JSON.stringify(data));
+              }
+            } catch (e) {
+              console.error("Error fetching live Panchang data:", e);
+            }
+          }
+
+          if (data) {
+            const itemsHTML = `
+              <div class="panchang-item">
+                <span class="panchang-label">तिथि (Tithi)</span>
+                <span class="panchang-val">${data.tithi}</span>
+              </div>
+              <div class="panchang-divider"></div>
+              <div class="panchang-item">
+                <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+                <span class="panchang-val">${data.nakshatra}</span>
+              </div>
+              <div class="panchang-divider"></div>
+              <div class="panchang-item">
+                <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+                <span class="panchang-val">${data.sunrise} / ${data.sunset}</span>
+              </div>
+              <div class="panchang-divider"></div>
+              <div class="panchang-item">
+                <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+                <span class="panchang-val">${data.muhurat}</span>
+              </div>
+              <div class="panchang-divider"></div>
+            `;
+            // Duplicate three times for infinite loop overlap coverage
+            track.innerHTML = itemsHTML + itemsHTML + itemsHTML;
+          }
+        }
+
+        loadPanchang();
+      });
+    </script>
 </body>
 </html>
