@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kundali Studio - Vedic Prashna & Lagna Horoscope</title>
-    <link rel="stylesheet" href="./styles.css?v=10" />
+    <link rel="stylesheet" href="./styles.css?v=12" />
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
       // Global error handler to help debug frontend crashes.
@@ -1348,19 +1348,9 @@
         </div>
         <div class="popup-content">
           <h4>Join Our Growing Astrologer Community</h4>
-          <p>Connect with verified astrologers and enthusiasts.</p>
+          <p>Connect with verified astrologers and enthusiasts. <b style="color: rgb(97, 54, 54); font-size:large;">Only for Astrologers</b></div>p>
         </div>
       </div>
-      <div class="popup-mini">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="12" cy="12" r="10" stroke-dasharray="3 3"/>
-          <circle cx="12" cy="12" r="6"/>
-          <circle cx="12" cy="12" r="2" fill="currentColor"/>
-          <line x1="12" y1="2" x2="12" y2="22"/>
-          <line x1="2" y1="12" x2="22" y2="12"/>
-        </svg>
-      </div>
-      <div class="popup-tooltip">Join Community</div>
     </div>
 
     <div id="popup-whatsapp" class="floating-popup popup-right">
@@ -1381,12 +1371,6 @@
           <p>Join our WhatsApp channel for early updates and insights.</p>
         </div>
       </div>
-      <div class="popup-mini">
-        <svg viewBox="0 0 24 24" fill="currentColor">
-          <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"/>
-        </svg>
-      </div>
-      <div class="popup-tooltip">WhatsApp Updates</div>
     </div>
 
     <script>
@@ -1398,53 +1382,10 @@
         popupLeft.classList.add("visible");
         popupRight.classList.add("visible");
 
-        function minimizePopup(popup) {
-          if (popup.classList.contains("visible") && !popup.classList.contains("minimized")) {
-            popup.classList.add("minimized");
-          }
-        }
-
-        // Minimize immediately on scroll > 100px
-        window.addEventListener("scroll", () => {
-          if (window.scrollY > 100) {
-            minimizePopup(popupLeft);
-            minimizePopup(popupRight);
-          }
-        });
-
-        // Setup hover behavior for a popup
-        function setupHoverBehavior(popup, targetLink, openInNewTab) {
+        // Setup click behavior for popups
+        function setupPopupBehavior(popup, targetLink, openInNewTab) {
           const card = popup.querySelector(".popup-card");
-          const mini = popup.querySelector(".popup-mini");
           const closeBtn = popup.querySelector(".popup-close");
-          let leaveTimeout = null;
-
-          function clearTimeouts() {
-            if (leaveTimeout) {
-              clearTimeout(leaveTimeout);
-              leaveTimeout = null;
-            }
-          }
-
-          function expand() {
-            clearTimeouts();
-            popup.classList.remove("minimized");
-          }
-
-          function startLeaveTimer() {
-            clearTimeouts();
-            leaveTimeout = setTimeout(() => {
-              minimizePopup(popup);
-            }, 2000);
-          }
-
-          // Expand on mouseenter
-          mini.addEventListener("mouseenter", expand);
-          card.addEventListener("mouseenter", expand);
-
-          // Start 2s collapse timer on mouseleave
-          mini.addEventListener("mouseleave", startLeaveTimer);
-          card.addEventListener("mouseleave", startLeaveTimer);
 
           // Click handler for card (navigation)
           card.addEventListener("click", (e) => {
@@ -1456,25 +1397,15 @@
             }
           });
 
-          // Click handler for mini icon (navigation)
-          mini.addEventListener("click", () => {
-            if (openInNewTab) {
-              window.open(targetLink, "_blank");
-            } else {
-              window.location.href = targetLink;
-            }
-          });
-
-          // Close button click collapses immediately
+          // Close button click hides the popup completely
           closeBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            clearTimeouts();
-            minimizePopup(popup);
+            popup.classList.add("hidden");
           });
         }
 
-        setupHoverBehavior(popupLeft, "./astro-community", false);
-        setupHoverBehavior(popupRight, "https://whatsapp.com/channel/0029Vb8ZvHsKbYMLie7XIk0A", true);
+        setupPopupBehavior(popupLeft, "./astro-community", false);
+        setupPopupBehavior(popupRight, "https://whatsapp.com/channel/0029Vb8ZvHsKbYMLie7XIk0A", true);
 
         // Fetch and load live Panchang data into the ticker
         async function loadPanchang() {

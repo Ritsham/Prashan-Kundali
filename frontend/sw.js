@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kundali-studio-cache-v10';
+const CACHE_NAME = 'kundali-studio-cache-v12';
 const urlsToCache = [
   '/',
   '/index.html',
