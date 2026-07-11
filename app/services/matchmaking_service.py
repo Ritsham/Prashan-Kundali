@@ -235,7 +235,6 @@ def compact_chart(chart: dict[str, Any]) -> dict[str, Any]:
         "divisional_charts": {
             code: value
             for code, value in (chart.get("divisional_charts") or {}).items()
-            if code in {"D1", "D9"}
         },
     }
 
@@ -249,6 +248,7 @@ def build_matchmaking_dossier(
     doshas: list[dict[str, Any]],
     summary: dict[str, Any],
 ) -> dict[str, Any]:
+    additional_divisional_charts = paired_divisional_case_summaries(boy_chart, girl_chart)
     return {
         "title": "Marriage Compatibility Case File",
         "couple_information": {
@@ -272,7 +272,8 @@ def build_matchmaking_dossier(
                     "name": "Girl Bhava Chalit Chart",
                     "purpose": "House cusps and planet occupation by house.",
                     "chart": build_d1(girl_chart.get("planets", []), girl_chart.get("lagna", {})) if girl_chart else {},
-                }
+                },
+                *additional_divisional_charts,
             ],
             "optional": [],
         },
@@ -357,6 +358,41 @@ def divisional_case_summary(name: str, chart: dict[str, Any], purpose: str) -> d
         "lagna": sign_holding(d9, "Asc"),
         "venus": sign_holding(d9, "Venus"),
         "jupiter": sign_holding(d9, "Jupiter"),
+    }
+
+
+def paired_divisional_case_summaries(boy_chart: dict[str, Any], girl_chart: dict[str, Any]) -> list[dict[str, Any]]:
+    boy_divisions = boy_chart.get("divisional_charts") or {}
+    girl_divisions = girl_chart.get("divisional_charts") or {}
+    codes = sorted(
+        (set(boy_divisions.keys()) | set(girl_divisions.keys())) - {"D1", "D9"},
+        key=divisional_sort_value,
+    )
+    summaries: list[dict[str, Any]] = []
+    for code in codes:
+        summaries.append(generic_divisional_case_summary(f"Boy {code} Chart", boy_chart, code))
+        summaries.append(generic_divisional_case_summary(f"Girl {code} Chart", girl_chart, code))
+    return summaries
+
+
+def divisional_sort_value(code: str) -> tuple[int, str]:
+    try:
+        return (int(str(code).lstrip("D")), str(code))
+    except ValueError:
+        return (999, str(code))
+
+
+def generic_divisional_case_summary(name: str, chart: dict[str, Any], code: str) -> dict[str, Any]:
+    raw = (chart.get("divisional_charts") or {}).get(code, {})
+    divisional_chart = raw.get("chart", raw) if isinstance(raw, dict) and "chart" in raw else raw
+    title = raw.get("title") if isinstance(raw, dict) else ""
+    return {
+        "name": name,
+        "purpose": title or "Additional divisional chart for astrologer review.",
+        "chart": divisional_chart or {},
+        "lagna": sign_holding(divisional_chart, "Asc") if isinstance(divisional_chart, dict) else "",
+        "venus": sign_holding(divisional_chart, "Venus") if isinstance(divisional_chart, dict) else "",
+        "jupiter": sign_holding(divisional_chart, "Jupiter") if isinstance(divisional_chart, dict) else "",
     }
 
 

@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
+from app.config import get_supabase_url
 from app.storage.database import (
     get_chart,
     get_consultant_booking,
@@ -162,7 +163,7 @@ def supabase_booking_payload(booking: dict) -> dict:
 
 
 def sync_supabase(table: str, payload: dict) -> dict:
-    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    url = get_supabase_url()
     key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
     if not url or not key:
         return {"enabled": False, "reason": "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY to sync."}

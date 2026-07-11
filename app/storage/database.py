@@ -6,17 +6,22 @@ from typing import Optional
 from uuid import uuid4
 from supabase import create_client, Client
 import os
+from app.config import get_supabase_url
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_URL = get_supabase_url()
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 # Initialize Supabase Client safely
 supabase = None
-if SUPABASE_URL and SUPABASE_ANON_KEY and "your-" not in SUPABASE_URL and "your-" not in SUPABASE_ANON_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-    except Exception as e:
-        print(f"Warning: Failed to initialize Supabase client: {e}")
+if SUPABASE_URL:
+    # Use Service Role Key to bypass RLS if available, otherwise fallback to Anon Key
+    key_to_use = SUPABASE_SERVICE_ROLE_KEY if SUPABASE_SERVICE_ROLE_KEY else SUPABASE_ANON_KEY
+    if key_to_use and "your-" not in SUPABASE_URL and "your-" not in key_to_use:
+        try:
+            supabase = create_client(SUPABASE_URL, key_to_use)
+        except Exception as e:
+            print(f"Warning: Failed to initialize Supabase client: {e}")
 
 def init_db() -> None:
     # No-op since Supabase handles the database schema remotely
@@ -60,6 +65,8 @@ def save_prashna_chart(db: Client, chart: dict, user_id: str) -> str:
     return chart_id
 
 def update_prashna_chart(db: Client, chart_id: str, chart: dict) -> None:
+    if not db:
+        return
     data = {
         "chart_json": json.dumps(chart)
     }

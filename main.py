@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from app.config import get_supabase_url
 
 from app.api.prashna import router as prashna_router
 from app.api.consultants import router as consultants_router
@@ -23,7 +24,7 @@ app = FastAPI(title="Prashna Kundli MVP", version="0.1.0")
 
 ADMIN_ORIGINS = [
     origin.strip()
-    for origin in os.getenv("ADMIN_CORS_ORIGINS", "http://127.0.0.1:8088,http://localhost:8088").split(",")
+    for origin in os.getenv("ADMIN_CORS_ORIGINS", "http://127.0.0.1:8088,http://localhost:8088,http://localhost:3000,http://127.0.0.1:3000,*").split(",")
     if origin.strip()
 ]
 
@@ -46,7 +47,7 @@ async def startup() -> None:
 @app.get("/api/config")
 def get_config():
     return {
-        "supabaseUrl": os.getenv("SUPABASE_URL", ""),
+        "supabaseUrl": get_supabase_url(),
         "supabaseAnonKey": os.getenv("SUPABASE_ANON_KEY", "")
     }
 
@@ -54,43 +55,45 @@ def get_config():
 @app.get("/consultation", include_in_schema=False)
 def consultation_page():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/consultation.html")
+    return FileResponse("frontend_old/consultation.html")
 
 
 @app.get("/astro-community", include_in_schema=False)
 def astro_community_page():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/community.html")
+    if os.path.isfile("frontend/dist/index.html"):
+        return FileResponse("frontend/dist/index.html")
+    return FileResponse("frontend_old/community.html")
 
 @app.get("/matchmaking", include_in_schema=False)
 def matchmaking_page():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/matchmaking.html")
+    return FileResponse("frontend_old/matchmaking.html")
 
 @app.get("/matchmaking-booking", include_in_schema=False)
 def matchmaking_booking_page():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/matchmaking-booking.html")
+    return FileResponse("frontend_old/matchmaking-booking.html")
 
 @app.get("/community/apply", include_in_schema=False)
 def community_apply_page():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/apply.html")
+    return FileResponse("frontend_old/apply.html")
 
 @app.get("/community/application-status", include_in_schema=False)
 def community_status_page():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/community-status.html")
+    return FileResponse("frontend_old/community-status.html")
 
 @app.get("/admin/community-applications", include_in_schema=False)
 def admin_community_apps_list():
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/admin-community-applications.html")
+    return FileResponse("frontend_old/admin-community-applications.html")
 
 @app.get("/admin/community-applications/{app_id}", include_in_schema=False)
 def admin_community_apps_detail(app_id: str):
     from fastapi.responses import FileResponse
-    return FileResponse("frontend/admin-community-application-detail.html")
+    return FileResponse("frontend_old/admin-community-application-detail.html")
 
 
 app.include_router(prashna_router, prefix="/api")
@@ -134,6 +137,7 @@ async def websocket_consultation(websocket: WebSocket, booking_id: str):
 # Today's Panchang API Endpoint (cached)
 import httpx
 from datetime import datetime, timedelta
+from fastapi.responses import FileResponse
 
 panchang_cache = {}
 
@@ -230,9 +234,31 @@ async def get_panchang(lat: float = 28.6139, lng: float = 77.2090, date_str: str
     panchang_cache[cache_key] = payload
     return payload
 
-app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")
+# Mount static assets for the React App
+
+# Note: The old frontend_old/ styles.css and chart-engine.js might be loaded from root
+app.mount("/frontend_old", StaticFiles(directory="frontend_old"), name="frontend_old")
+
+# Mount new React app assets
+app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
+
+
+
+# Catch-all route for SPA routing
+@app.get("/", include_in_schema=False)
+async def serve_root_spa():
+    return FileResponse("frontend_old/index.html")
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa(full_path: str):
+    # If the file exists in old frontend root (like styles.css), serve it
+    old_file_path = os.path.join("frontend_old", full_path)
+    if os.path.isfile(old_file_path):
+        return FileResponse(old_file_path)
+    
+    # Otherwise, return the old frontend entry point
+    return FileResponse("frontend_old/index.html")
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.dependencies import AuthState, get_current_user, RequireRole
 from app.storage.community_access_db import save_community_application, set_community_membership
+from app.storage.database import supabase
 
 router = APIRouter()
 
@@ -19,6 +20,10 @@ class AstrologerApplyRequest(BaseModel):
     proof_document_link: Optional[str] = None
     sample_case_study: Optional[str] = None
     learning_goals: Optional[str] = None
+
+
+class AstrologerApplicationUpdateRequest(BaseModel):
+    status: str
 
 @router.post("/astrologer/apply")
 def apply_for_astrologer(req: AstrologerApplyRequest, auth: AuthState = Depends(get_current_user)):
@@ -60,13 +65,14 @@ def verify_astrologer(user_id: str, action: str, auth: AuthState = Depends(Requi
     role = "astrologer" if action == "approve" else "user"
     community_access = action == "approve"
     
-    auth.client.table("users").update({
+    db = auth.client or supabase
+    db.table("users").update({
         "verification_status": status,
         "role": role,
         "community_access": community_access,
     }).eq("id", user_id).execute()
     set_community_membership(
-        auth.client,
+        db,
         user_id=user_id,
         active=action == "approve",
         admin_id=auth.user_id,
@@ -77,27 +83,75 @@ def verify_astrologer(user_id: str, action: str, auth: AuthState = Depends(Requi
 
 @router.get("/admin/pending-astrologers")
 def get_pending_astrologers(auth: AuthState = Depends(RequireRole("admin"))):
-    res = auth.client.table("users").select("id, name, email").eq("verification_status", "pending").execute()
-    if not res.data:
+    try:
+        db = auth.client or supabase
+        res = db.table("users").select("id, name, email").eq("verification_status", "pending").execute()
+        if not res.data:
+            return {"pending": []}
+            
+        user_ids = [u["id"] for u in res.data]
+        prof_res = db.table("astrologer_profiles").select("*").in_("user_id", user_ids).execute()
+        
+        profiles_by_user = {p["user_id"]: p for p in (prof_res.data or [])}
+        combined = []
+        for u in res.data:
+            prof = profiles_by_user.get(u["id"], {})
+            combined.append({
+                "user_id": u["id"],
+                "name": u.get("name", "Unknown"),
+                "email": u.get("email", ""),
+                "experience_years": prof.get("experience_years", 0),
+                "expertise_areas": prof.get("expertise_areas", []),
+                "bio": prof.get("bio", ""),
+                "social_links": prof.get("social_links", {}),
+                "created_at": prof.get("created_at"),
+                "updated_at": prof.get("updated_at"),
+            })
+            
+        return {"pending": combined}
+    except Exception as exc:
+        print(f"Warning: get_pending_astrologers failed: {exc}")
         return {"pending": []}
-        
-    user_ids = [u["id"] for u in res.data]
-    prof_res = auth.client.table("astrologer_profiles").select("*").in_("user_id", user_ids).execute()
-    
-    profiles_by_user = {p["user_id"]: p for p in prof_res.data}
-    combined = []
-    for u in res.data:
-        prof = profiles_by_user.get(u["id"], {})
-        combined.append({
-            "user_id": u["id"],
-            "name": u.get("name", "Unknown"),
-            "email": u.get("email", ""),
-            "experience_years": prof.get("experience_years", 0),
-            "expertise_areas": prof.get("expertise_areas", []),
-            "bio": prof.get("bio", ""),
-            "social_links": prof.get("social_links", {}),
-            "created_at": prof.get("created_at"),
-            "updated_at": prof.get("updated_at"),
+
+
+@router.get("/admin/astrologers/applications")
+def get_astrologer_applications_for_admin(auth: AuthState = Depends(RequireRole("admin"))):
+    pending = get_pending_astrologers(auth).get("pending", [])
+    applications = []
+    for item in pending:
+        social = item.get("social_links") or {}
+        expertise = item.get("expertise_areas") or []
+        applications.append({
+            "id": item.get("user_id"),
+            "name": social.get("full_name") or item.get("name") or "Unknown",
+            "email": social.get("email") or item.get("email") or "",
+            "phone": social.get("whatsapp_no") or "",
+            "experience": item.get("experience_years") or 0,
+            "expertise": ", ".join(expertise) if isinstance(expertise, list) else str(expertise or ""),
+            "bio": item.get("bio") or social.get("sample_case_study") or social.get("learning_goals") or "",
+            "status": "pending",
+            "created_at": item.get("created_at") or item.get("updated_at"),
         })
-        
-    return {"pending": combined}
+    return {"applications": applications}
+
+
+@router.post("/admin/astrologers/applications/{user_id}")
+def update_astrologer_application_for_admin(
+    user_id: str,
+    payload: AstrologerApplicationUpdateRequest,
+    auth: AuthState = Depends(RequireRole("admin")),
+):
+    status = payload.status.lower()
+    if status in {"approved", "approve"}:
+        return verify_astrologer(user_id=user_id, action="approve", auth=auth)
+    if status in {"rejected", "reject"}:
+        return verify_astrologer(user_id=user_id, action="reject", auth=auth)
+    if status == "pending":
+        db = auth.client or supabase
+        db.table("users").update({
+            "role": "astrologer",
+            "verification_status": "pending",
+            "community_access": False,
+        }).eq("id", user_id).execute()
+        return {"status": "success", "message": "Astrologer application reverted to pending"}
+    raise HTTPException(status_code=400, detail="Invalid status")

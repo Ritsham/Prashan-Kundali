@@ -5,14 +5,21 @@ import logging
 import os
 from supabase import create_client, ClientOptions
 
+from app.config import get_supabase_url
 from app.storage.community_db import (
     get_channels,
     save_message,
     get_messages,
     delete_message,
+    update_message,
     star_message,
     save_thread_reply,
     get_thread_replies,
+    toggle_reaction,
+    set_saved_message,
+    get_saved_messages,
+    mark_channel_read,
+    update_message_author_name,
 )
 from app.dependencies import AuthState, RequireVerifiedAstrologer, get_current_user
 from app.storage.community_access_db import has_active_community_membership
@@ -22,9 +29,9 @@ router = APIRouter(prefix="/community", tags=["community"])
 logger = logging.getLogger(__name__)
 
 
-def websocket_has_verified_access(token: str) -> bool:
+def get_websocket_auth_context(token: str) -> Optional[Dict[str, str]]:
     if not token:
-        return False
+        return None
     try:
         import httpx
         timeout = httpx.Timeout(60.0)
@@ -35,16 +42,33 @@ def websocket_has_verified_access(token: str) -> bool:
             storage_client_timeout=120,
             postgrest_client_timeout=120
         )
-        client = create_client(os.getenv("SUPABASE_URL", ""), os.getenv("SUPABASE_ANON_KEY", ""), options=options)
+        client = create_client(get_supabase_url(), os.getenv("SUPABASE_ANON_KEY", ""), options=options)
         user_res = client.auth.get_user(token)
         if not user_res or not user_res.user:
-            return False
-        membership = has_active_community_membership(client, user_res.user.id)
+            return None
+
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        if not service_role_key:
+            logger.error("Community websocket auth failed: missing SUPABASE_SERVICE_ROLE_KEY")
+            return None
+        admin_options = ClientOptions(
+            headers={"Authorization": f"Bearer {service_role_key}"},
+            httpx_client=httpx.Client(timeout=httpx.Timeout(60.0)),
+        )
+        admin_client = create_client(get_supabase_url(), service_role_key, options=admin_options)
+
+        membership = has_active_community_membership(admin_client, user_res.user.id)
         if membership is not None:
-            return membership
-        profile_res = client.table("users").select("role, verification_status, community_access").eq("id", user_res.user.id).execute()
+            if not membership:
+                return None
+            metadata = getattr(user_res.user, "user_metadata", None) or {}
+            return {
+                "user_id": user_res.user.id,
+                "display_name": metadata.get("full_name") or metadata.get("name") or (user_res.user.email or "Astrologer").split("@")[0],
+            }
+        profile_res = admin_client.table("users").select("full_name, role, verification_status, community_access").eq("id", user_res.user.id).execute()
         if not profile_res.data:
-            return False
+            return None
         profile = profile_res.data[0]
         
         is_verified_astrologer = (
@@ -52,26 +76,55 @@ def websocket_has_verified_access(token: str) -> bool:
             and profile.get("verification_status") == "verified"
         )
         has_community_access = profile.get("community_access") is True
-        
-        return is_verified_astrologer or has_community_access
+        if not is_verified_astrologer and not has_community_access:
+            return None
+
+        return {
+            "user_id": user_res.user.id,
+            "display_name": profile.get("full_name") or (getattr(user_res.user, "user_metadata", None) or {}).get("full_name") or (getattr(user_res.user, "user_metadata", None) or {}).get("name") or (user_res.user.email or "Astrologer").split("@")[0],
+        }
     except Exception as exc:
         logger.error("Community websocket auth failed: %s", exc)
-        return False
+        return None
+
+
+def websocket_has_verified_access(token: str) -> bool:
+    return get_websocket_auth_context(token) is not None
+
+
+def resolve_display_name(auth: AuthState) -> str:
+    try:
+        res = auth.client.table("users").select("full_name,email").eq("id", auth.user_id).limit(1).execute()
+        if res.data:
+            user = res.data[0]
+            metadata_name = auth.user_metadata.get("full_name") or auth.user_metadata.get("name")
+            return user.get("full_name") or metadata_name or (user.get("email") or auth.email or auth.user_id).split("@")[0]
+    except Exception as exc:
+        logger.error("Community display name lookup failed: %s", exc)
+    return auth.user_metadata.get("full_name") or auth.user_metadata.get("name") or (auth.email or auth.user_id).split("@")[0]
 
 class ConnectionManager:
     def __init__(self):
         # Maps channel names to a list of active websocket connections
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.total_connections: int = 0
 
     async def connect(self, websocket: WebSocket, channel_name: str):
         await websocket.accept()
         if channel_name not in self.active_connections:
             self.active_connections[channel_name] = []
         self.active_connections[channel_name].append(websocket)
+        self.total_connections += 1
+        # Send the count directly to this socket first (guaranteed delivery)
+        await websocket.send_text(json.dumps({"type": "online_count", "count": self.total_connections}))
+        # Also broadcast to all others
+        await self.broadcast_all(json.dumps({"type": "online_count", "count": self.total_connections}))
 
-    def disconnect(self, websocket: WebSocket, channel_name: str):
-        if channel_name in self.active_connections:
+    async def disconnect(self, websocket: WebSocket, channel_name: str):
+        if channel_name in self.active_connections and websocket in self.active_connections[channel_name]:
             self.active_connections[channel_name].remove(websocket)
+            self.total_connections = max(0, self.total_connections - 1)
+            await self.broadcast_all(json.dumps({"type": "online_count", "count": self.total_connections}))
 
     async def broadcast(self, message: str, channel_name: str):
         if channel_name in self.active_connections:
@@ -81,6 +134,13 @@ class ConnectionManager:
                 except Exception as e:
                     logger.error(f"Error sending message to websocket: {e}")
 
+    async def broadcast_all(self, message: str):
+        for connections in self.active_connections.values():
+            for connection in connections:
+                try:
+                    await connection.send_text(message)
+                except Exception as e:
+                    logger.error(f"Error sending message to websocket: {e}")
 
 manager = ConnectionManager()
 
@@ -91,8 +151,14 @@ async def api_get_channels(auth: AuthState = Depends(RequireVerifiedAstrologer()
 
 
 @router.get("/messages/{channel_name}")
-async def api_get_messages(channel_name: str, limit: int = 50, cursor: str = None, auth: AuthState = Depends(RequireVerifiedAstrologer())):
-    return await get_messages(channel_name, limit, cursor)
+async def api_get_messages(
+    channel_name: str,
+    limit: int = 50,
+    cursor: str = None,
+    search: str = None,
+    auth: AuthState = Depends(RequireVerifiedAstrologer()),
+):
+    return await get_messages(channel_name, limit, cursor, search)
 
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, UploadFile, File
@@ -225,10 +291,13 @@ async def submit_more_info(payload: MoreInfoPayload, auth: AuthState = Depends(g
 @router.websocket("/ws/{channel_name}")
 async def websocket_endpoint(websocket: WebSocket, channel_name: str):
     token = websocket.query_params.get("token", "")
-    if not websocket_has_verified_access(token):
+    auth_context = get_websocket_auth_context(token)
+    if not auth_context:
         await websocket.close(code=1008)
         return
     await manager.connect(websocket, channel_name)
+    await websocket.send_text(json.dumps({"type": "connection_ready", "channel_name": channel_name}))
+    await websocket.send_text(json.dumps({"type": "channel_subscribed", "channel_name": channel_name}))
     try:
         while True:
             data = await websocket.receive_text()
@@ -237,16 +306,23 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                 action = payload.get("action")
                 
                 if action == "send_message":
+                    if channel_name == "announcements":
+                        await websocket.send_text(json.dumps({"type": "error", "message": "Only admins can post in announcements."}))
+                        continue
+                    
                     saved_msg = await save_message(
                         channel_name=channel_name,
-                        user_name=payload.get("user_name", "Anonymous"),
+                        user_name=auth_context["display_name"],
                         content=payload.get("content", ""),
                         image_base64=payload.get("image_base64"),
                         content_type=payload.get("content_type", "STANDARD"),
-                        chart_id=payload.get("chart_id")
+                        chart_id=payload.get("chart_id"),
+                        sender_id=auth_context["user_id"],
+                        reply_to_message_id=payload.get("reply_to_message_id"),
+                        client_id=payload.get("client_id"),
                     )
                     await manager.broadcast(
-                        json.dumps({"type": "new_message", "data": saved_msg}), 
+                        json.dumps({"type": "message_created", "data": saved_msg}), 
                         channel_name
                     )
                 
@@ -254,15 +330,16 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                 elif action == "toggle_reaction":
                     msg_id = payload.get("message_id")
                     reaction_type = payload.get("reaction_type")
-                    user_id = payload.get("user_id") # Normally from auth token, trusting payload over WS for now
+                    user_id = auth_context["user_id"]
+                    added = await toggle_reaction(msg_id, user_id, reaction_type)
                     await manager.broadcast(
-                        json.dumps({"type": "reaction_updated", "message_id": msg_id, "reaction_type": reaction_type, "user_id": user_id}),
+                        json.dumps({"type": "reaction_added" if added else "reaction_removed", "message_id": msg_id, "reaction_type": reaction_type, "user_id": user_id}),
                         channel_name
                     )
 
                 elif action == "delete_message":
                     msg_id = payload.get("message_id")
-                    await delete_message(msg_id)
+                    await delete_message(msg_id, auth_context["user_id"])
                     await manager.broadcast(
                         json.dumps({"type": "message_deleted", "message_id": msg_id}),
                         channel_name
@@ -272,56 +349,46 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                     msg_id = payload.get("message_id")
                     await star_message(msg_id)
                     await manager.broadcast(
-                        json.dumps({"type": "message_starred", "message_id": msg_id}),
+                        json.dumps({"type": "reaction_added", "message_id": msg_id, "reaction_type": "star"}),
                         channel_name
                     )
                     
                 elif action == "send_thread_reply":
                     saved_reply = await save_thread_reply(
                         parent_message_id=payload.get("parent_message_id"),
-                        user_name=payload.get("user_name", "Anonymous"),
+                        user_name=auth_context["display_name"],
                         content=payload.get("content", ""),
-                        image_base64=payload.get("image_base64")
+                        image_base64=payload.get("image_base64"),
+                        sender_id=auth_context["user_id"],
                     )
                     await manager.broadcast(
-                        json.dumps({"type": "new_thread_reply", "data": saved_reply}),
+                        json.dumps({"type": "thread_reply_created", "data": saved_reply}),
                         channel_name
                     )
+                elif action == "typing_started":
+                    await manager.broadcast(json.dumps({"type": "typing_started", "user_id": auth_context["user_id"], "display_name": auth_context["display_name"]}), channel_name)
+                elif action == "typing_stopped":
+                    await manager.broadcast(json.dumps({"type": "typing_stopped", "user_id": auth_context["user_id"], "display_name": auth_context["display_name"]}), channel_name)
             except json.JSONDecodeError:
                 logger.error("Received non-JSON message over websocket")
             except Exception as e:
                 logger.error(f"Error processing websocket message: {e}")
                 
     except WebSocketDisconnect:
-        manager.disconnect(websocket, channel_name)
+        await manager.disconnect(websocket, channel_name)
 
 from app.dependencies import RequireRole
 
 @router.get("/admin/applications")
 async def admin_list_applications(auth: AuthState = Depends(RequireRole("admin"))):
     try:
-        app_res = auth.client.table("community_applications").select("*").order("created_at", desc=True).execute()
+        app_res = auth.client.table("community_applications").select("*, community_application_systems(system_name), community_application_proofs(*)").order("created_at", desc=True).execute()
         apps = app_res.data
         
-        sys_res = auth.client.table("community_application_systems").select("*").execute()
-        proof_res = auth.client.table("community_application_proofs").select("application_id").execute()
-        
-        systems_by_app = {}
-        for s in sys_res.data:
-            sys_name = s["system_name"]
-            app_id = s["application_id"]
-            if app_id not in systems_by_app:
-                systems_by_app[app_id] = []
-            systems_by_app[app_id].append(sys_name)
-            
-        proof_counts = {}
-        for p in proof_res.data:
-            app_id = p["application_id"]
-            proof_counts[app_id] = proof_counts.get(app_id, 0) + 1
-            
         for app in apps:
-            app["systems"] = systems_by_app.get(app["id"], [])
-            app["proofs_count"] = proof_counts.get(app["id"], 0)
+            app["systems"] = [s["system_name"] for s in app.get("community_application_systems", [])]
+            app["proofs_count"] = len(app.get("community_application_proofs", []))
+            app["proofs"] = app.get("community_application_proofs", [])
             
         return apps
     except Exception as exc:
@@ -379,13 +446,21 @@ async def admin_update_application_status(app_id: str, payload: AdminStatusUpdat
         
         auth.client.table("community_applications").update(update_data).eq("id", app_id).execute()
         
+        # Validate admin_id is UUID (since mock-admin token sets it to non-UUID)
+        import uuid
+        try:
+            uuid.UUID(str(auth.user_id))
+            admin_uuid = auth.user_id
+        except ValueError:
+            admin_uuid = "00000000-0000-0000-0000-000000000000"
+
         # Log the review
         auth.client.table("community_application_reviews").insert({
             "application_id": app_id,
-            "admin_id": auth.user_id,
+            "admin_id": admin_uuid,
             "previous_status": current_status,
             "new_status": payload.status,
-            "admin_notes": payload.message
+            "internal_note": payload.message
         }).execute()
         
         # If APPROVED, update user's community_access
@@ -420,15 +495,126 @@ async def admin_update_application_status(app_id: str, payload: AdminStatusUpdat
         return {"message": f"Application status updated to {payload.status}"}
     except Exception as exc:
         logger.error(f"Failed to update application status: {exc}")
-        raise HTTPException(status_code=500, detail="Failed to update application status.")
+        import traceback
+        raise HTTPException(status_code=500, detail=f"Failed to update application status: {str(exc)}\n{traceback.format_exc()}")
+
+
+@router.get("/admin/astrologers/applications")
+async def admin_list_astrologer_applications_compat(auth: AuthState = Depends(RequireRole("admin"))):
+    apps = await admin_list_applications(auth)
+    formatted = []
+    for app in apps:
+        systems = app.get("systems") or app.get("expertise_areas") or []
+        if isinstance(systems, str):
+            expertise = systems
+        else:
+            expertise = ", ".join(systems)
+            
+        proofs = []
+        for proof in app.get("proofs") or []:
+            file_url = proof.get("file_url")
+            if file_url and not file_url.startswith("http"):
+                try:
+                    signed = auth.client.storage.from_("community-proofs").create_signed_url(file_url, 3600 * 24)
+                    file_url = signed.get("signedURL") or signed.get("signedUrl")
+                except Exception as e:
+                    logger.error(f"Failed to sign URL for {file_url}: {e}")
+            proofs.append({
+                "id": proof.get("id"),
+                "type": proof.get("proof_type"),
+                "url": file_url,
+                "filename": proof.get("original_file_name"),
+                "mime_type": proof.get("mime_type")
+            })
+
+        formatted.append({
+            "id": app.get("id"),
+            "name": app.get("full_name") or app.get("name") or app.get("display_name") or "Unknown",
+            "email": app.get("email") or "",
+            "phone": app.get("mobile_number") or app.get("whatsapp_no") or app.get("phone") or "",
+            "experience": app.get("experience_years") or app.get("experience_range") or app.get("experience") or 0,
+            "expertise": expertise,
+            "bio": app.get("background_description") or app.get("bio") or app.get("sample_case_study") or app.get("learning_goals") or "",
+            "additional_information": app.get("additional_information") or "",
+            "state": app.get("state") or "",
+            "country": app.get("country") or "",
+            "status": str(app.get("status") or "pending").lower(),
+            "proofs": proofs,
+            "created_at": app.get("created_at") or app.get("submitted_at"),
+        })
+    return {"applications": formatted}
+
+
+class AstrologerApplicationCompatUpdate(BaseModel):
+    status: str
+
+
+@router.post("/admin/astrologers/applications/{app_id}")
+async def admin_update_astrologer_application_compat(
+    app_id: str,
+    payload: AstrologerApplicationCompatUpdate,
+    auth: AuthState = Depends(RequireRole("admin")),
+):
+    status_map = {
+        "approved": "APPROVED",
+        "approve": "APPROVED",
+        "rejected": "REJECTED",
+        "reject": "REJECTED",
+        "pending": "SUBMITTED",
+        "submitted": "SUBMITTED",
+    }
+    target = status_map.get(payload.status.lower(), payload.status.upper())
+    return await admin_update_application_status(
+        app_id,
+        AdminStatusUpdatePayload(status=target),
+        auth,
+    )
 
 @router.get("/profile")
 async def api_get_profile(auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    """Return a minimal profile object so the frontend knows the user has access.
+    We derive the profile from the users table since community_profiles may not exist yet."""
     try:
-        res = auth.client.table("community_profiles").select("*").eq("user_id", auth.user_id).execute()
+        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        import httpx
+        custom_client = httpx.Client(timeout=httpx.Timeout(60.0))
+        options = ClientOptions(
+            headers={"Authorization": f"Bearer {service_role_key}"},
+            httpx_client=custom_client,
+        )
+        admin_client = create_client(get_supabase_url(), service_role_key, options=options)
+
+        res = admin_client.table("users").select(
+            "id, email, full_name, role, verification_status, community_access, community_verification_status"
+        ).eq("id", auth.user_id).execute()
         if not res.data:
             return None
-        return res.data[0]
+        u = res.data[0]
+        is_verified_astrologer = (
+            u.get("role") == "astrologer"
+            and u.get("verification_status") == "verified"
+        )
+        has_community_access = u.get("community_access") is True
+        if not is_verified_astrologer and not has_community_access:
+            return None
+        email_name = u.get("email", "").split("@")[0]
+        metadata_name = auth.user_metadata.get("full_name") or auth.user_metadata.get("name")
+        display_name = u.get("full_name") or metadata_name or email_name
+        await update_message_author_name(
+            auth.user_id,
+            display_name,
+            [email_name, auth.user_metadata.get("preferred_username", ""), auth.user_metadata.get("user_name", "")],
+        )
+        # Return a profile-shaped object so the frontend proceeds to workspace
+        return {
+            "user_id": u["id"],
+            "display_name": display_name,
+            "username": email_name,
+            "bio": "",
+            "community_access": True,
+            "role": u.get("role") or "verified_astrologer",
+            "verification_status": u.get("verification_status") or u.get("community_verification_status"),
+        }
     except Exception as e:
         logger.error(f"Error fetching profile: {e}")
         return None
@@ -437,21 +623,22 @@ class ProfilePayload(BaseModel):
     username: str
     display_name: str
     bio: str
-    state: str
-    country: str
-    experience_years: str
-    specializations: List[str]
-    languages: List[str]
-    systems_practiced: List[str]
+    state: str = ""
+    country: str = ""
+    experience_years: str = ""
+    specializations: List[str] = []
+    languages: List[str] = []
+    systems_practiced: List[str] = []
 
 @router.post("/profile")
 async def api_upsert_profile(payload: ProfilePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    """Save community profile — stored in users table metadata for now."""
     try:
-        data = payload.model_dump()
-        data["user_id"] = auth.user_id
-        data["updated_at"] = "now()"
-        auth.client.table("community_profiles").upsert(data).execute()
-        return {"status": "success", "profile": data}
+        # Store display name back to users table
+        auth.client.table("users").update({
+            "full_name": payload.display_name
+        }).eq("id", auth.user_id).execute()
+        return {"status": "success", "profile": {"user_id": auth.user_id, "display_name": payload.display_name}}
     except Exception as e:
         logger.error(f"Error upserting profile: {e}")
         raise HTTPException(status_code=500, detail="Failed to save profile.")
@@ -495,8 +682,38 @@ from app.storage.community_db import save_message
 class SendMessagePayload(BaseModel):
     content: str
     content_type: str = "STANDARD"
-    chart_id: str = None
-    image_base64: str = None
+    chart_id: Optional[str] = None
+    image_base64: Optional[str] = None
+    reply_to_message_id: Optional[str] = None
+    client_id: Optional[str] = None
+
+
+class UpdateMessagePayload(BaseModel):
+    content: str
+
+
+class ThreadReplyPayload(BaseModel):
+    content: str
+    image_base64: Optional[str] = None
+
+
+class ReadStatePayload(BaseModel):
+    last_read_message_id: Optional[str] = None
+
+
+class AdminCommunityMessagePayload(BaseModel):
+    content: str
+    content_type: str = "STANDARD"
+    image_base64: Optional[str] = None
+
+
+class AdminCommunityBroadcastPayload(BaseModel):
+    channel_name: str
+    title: Optional[str] = None
+    body: Optional[str] = None
+    link_url: Optional[str] = None
+    link_label: Optional[str] = None
+    image_base64: Optional[str] = None
 
 
 from app.storage.community_db import get_community_members, get_community_member, report_message
@@ -587,21 +804,103 @@ async def api_admin_ban_user(user_id: str, auth: AuthState = Depends(RequireRole
         logger.error(f"Error banning user: {e}")
         raise HTTPException(status_code=500, detail="Failed to ban user")
 
-@router.post("/messages/{channel_name}")
-async def api_send_message(channel_name: str, payload: SendMessagePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+
+@router.post("/admin/messages/{channel_name}")
+async def api_admin_send_channel_message(
+    channel_name: str,
+    payload: AdminCommunityMessagePayload,
+    auth: AuthState = Depends(RequireRole("admin")),
+):
+    if channel_name not in {"announcements", "general"}:
+        raise HTTPException(status_code=400, detail="Admin can post only to announcements or general.")
+    content = payload.content.strip()
+    if not content and not payload.image_base64:
+        raise HTTPException(status_code=400, detail="Message content is required.")
     try:
         saved_msg = await save_message(
             channel_name=channel_name,
-            user_name=auth.user_id, # Can map to display name later
+            user_name="Kundali Admin",
+            content=content,
+            image_base64=payload.image_base64,
+            content_type=payload.content_type,
+            sender_id=auth.user_id,
+            client_id=f"admin-{channel_name}-{uuid.uuid4().hex}",
+        )
+        await manager.broadcast(
+            json.dumps({"type": "message_created", "data": saved_msg, "message": saved_msg}),
+            channel_name,
+        )
+        return {"status": "success", "message": saved_msg}
+    except Exception as e:
+        logger.error(f"Error sending admin community message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send community message")
+
+
+@router.post("/admin/broadcast")
+async def api_admin_broadcast_message(
+    payload: AdminCommunityBroadcastPayload,
+    auth: AuthState = Depends(RequireRole("admin")),
+):
+    channel_name = payload.channel_name.strip()
+    if channel_name not in {"announcements", "general"}:
+        raise HTTPException(status_code=400, detail="Admin can post only to announcements or general.")
+
+    title = (payload.title or "").strip()
+    body = (payload.body or "").strip()
+    link_url = (payload.link_url or "").strip()
+    link_label = (payload.link_label or "").strip()
+
+    if not title and not body and not link_url and not payload.image_base64:
+        raise HTTPException(status_code=400, detail="Add a title, message, link, or image before broadcasting.")
+
+    post_content = json.dumps({
+        "title": title,
+        "body": body,
+        "link_url": link_url,
+        "link_label": link_label or link_url,
+    })
+
+    try:
+        saved_msg = await save_message(
+            channel_name=channel_name,
+            user_name="Kundali Admin",
+            content=post_content,
+            image_base64=payload.image_base64,
+            content_type="ADMIN_POST",
+            sender_id=auth.user_id,
+            client_id=f"admin-post-{channel_name}-{uuid.uuid4().hex}",
+        )
+        await manager.broadcast(
+            json.dumps({"type": "message_created", "data": saved_msg, "message": saved_msg}),
+            channel_name,
+        )
+        return {"status": "success", "message": saved_msg}
+    except Exception as e:
+        logger.error(f"Error broadcasting admin community post: {e}")
+        raise HTTPException(status_code=500, detail="Failed to broadcast community post")
+
+
+@router.post("/messages/{channel_name}")
+async def api_send_message(channel_name: str, payload: SendMessagePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    if channel_name == "announcements":
+        raise HTTPException(status_code=403, detail="Only admins can post in announcements.")
+    try:
+        display_name = resolve_display_name(auth)
+        saved_msg = await save_message(
+            channel_name=channel_name,
+            user_name=display_name,
             content=payload.content,
             image_base64=payload.image_base64,
             content_type=payload.content_type,
-            chart_id=payload.chart_id
+            chart_id=payload.chart_id,
+            sender_id=auth.user_id,
+            reply_to_message_id=payload.reply_to_message_id,
+            client_id=payload.client_id,
         )
         
         # Broadcast the new message via WS
         await manager.broadcast(
-            json.dumps({"type": "new_message", "message": saved_msg}),
+            json.dumps({"type": "message_created", "data": saved_msg, "message": saved_msg}),
             channel_name
         )
         
@@ -609,6 +908,104 @@ async def api_send_message(channel_name: str, payload: SendMessagePayload, auth:
     except Exception as e:
         logger.error(f"Error sending message via POST: {e}")
         raise HTTPException(status_code=500, detail="Failed to send message.")
+
+
+@router.patch("/messages/{message_id}")
+async def api_update_message(message_id: str, payload: UpdateMessagePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    try:
+        updated = await update_message(message_id, auth.user_id, payload.content)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Message not found or not editable.")
+        await manager.broadcast(
+            json.dumps({"type": "message_updated", "data": updated, "message_id": message_id}),
+            updated.get("channel_name", "")
+        )
+        return {"status": "success", "message": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update message.")
+
+
+@router.delete("/messages/{message_id}")
+async def api_delete_message(message_id: str, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    try:
+        deleted = await delete_message(message_id, auth.user_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Message not found or not deletable.")
+        await manager.broadcast(
+            json.dumps({"type": "message_deleted", "message_id": message_id, "data": deleted}),
+            deleted.get("channel_name", "")
+        )
+        return {"status": "success", "message": deleted}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete message.")
+
+
+@router.post("/messages/{message_id}/save")
+async def api_save_message(message_id: str, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    try:
+        saved = await set_saved_message(message_id, auth.user_id)
+        return {"status": "success", "saved": saved, "message_id": message_id}
+    except Exception as e:
+        logger.error(f"Error saving message: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save message.")
+
+
+@router.get("/saved-messages")
+async def api_get_saved_messages(auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    try:
+        return await get_saved_messages(auth.user_id)
+    except Exception as e:
+        logger.error(f"Error fetching saved messages: {e}")
+        # Return 503 so the frontend knows the DB is unavailable and keeps its local cache
+        raise HTTPException(status_code=503, detail="Saved messages temporarily unavailable")
+
+
+@router.post("/channels/{channel_name}/read")
+async def api_mark_channel_read(channel_name: str, payload: ReadStatePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    try:
+        success = await mark_channel_read(channel_name, auth.user_id, payload.last_read_message_id)
+        if success:
+            await manager.broadcast(
+                json.dumps({
+                    "type": "read_state_updated",
+                    "channel_name": channel_name,
+                    "user_id": auth.user_id,
+                    "last_read_message_id": payload.last_read_message_id,
+                }),
+                channel_name,
+            )
+        return {"status": "success" if success else "failed"}
+    except Exception as e:
+        logger.error(f"Error marking channel read: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update read state.")
+
+
+@router.post("/messages/{message_id}/replies")
+async def api_create_thread_reply(message_id: str, payload: ThreadReplyPayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
+    try:
+        display_name = resolve_display_name(auth)
+        saved_reply = await save_thread_reply(
+            parent_message_id=message_id,
+            user_name=display_name,
+            content=payload.content,
+            image_base64=payload.image_base64,
+            sender_id=auth.user_id,
+        )
+        await manager.broadcast(
+            json.dumps({"type": "thread_reply_created", "data": saved_reply, "parent_message_id": message_id}),
+            saved_reply.get("channel_name", ""),
+        )
+        return {"status": "success", "reply": saved_reply}
+    except Exception as e:
+        logger.error(f"Error creating thread reply: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create thread reply.")
+
 
 @router.get("/messages/{message_id}/replies")
 async def api_get_thread_replies(message_id: str, auth: AuthState = Depends(RequireVerifiedAstrologer())):

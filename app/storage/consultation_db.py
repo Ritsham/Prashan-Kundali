@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 import os
 
 from app.storage.database import supabase
+from app.schemas.consultation_case import ConsultationCasePayload
 
 ACTIVE_CONSULTATION_STATUSES = ["pending", "accepted", "in_progress"]
 MAX_ACTIVE_CONSULTATION_REQUESTS = 20
@@ -34,6 +35,268 @@ async def get_founder_consultant() -> Dict[str, Any]:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _json_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except Exception:
+            return value
+    return value
+
+
+def _encode_json(value: Any) -> Any:
+    if value is None:
+        return None
+    return value
+
+
+def _normalize_case_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    case = dict(row)
+    snapshot = _json_value(case.get("astrology_snapshot") or case.get("astrological_snapshot"))
+    case["astrology_snapshot"] = snapshot
+    case["astrological_snapshot"] = snapshot
+    case["chart_snapshot"] = snapshot
+    contract = snapshot.get("case_contract") if isinstance(snapshot, dict) else {}
+    source_result = snapshot.get("source_result") if isinstance(snapshot, dict) else {}
+    if not isinstance(contract, dict):
+        contract = {}
+    if not isinstance(source_result, dict):
+        source_result = {}
+    case["case_id"] = case.get("id")
+    case["case_status"] = case.get("status")
+    case.setdefault(
+        "source_type",
+        contract.get("source_type")
+        or ("matchmaking" if source_result.get("type") == "matchmaking" or case.get("topic") == "Marriage Match" else ("prashna" if case.get("topic") == "Prashna" else "direct_consultation")),
+    )
+    case.setdefault(
+        "chart_type",
+        contract.get("chart_type")
+        or ("matchmaking" if source_result.get("type") == "matchmaking" or case.get("topic") == "Marriage Match" else ("prashna" if case.get("topic") == "Prashna" else "lagna")),
+    )
+    case["user"] = {
+        "full_name": case.get("name") or "",
+        "email": case.get("email") or "",
+        "mobile_number": case.get("phone") or "",
+        "gender": case.get("gender"),
+        "date_of_birth": case.get("date_of_birth"),
+        "time_of_birth": case.get("time_of_birth"),
+        "place": case.get("place_of_birth"),
+        "latitude": case.get("latitude"),
+        "longitude": case.get("longitude"),
+        "timezone": case.get("timezone"),
+    }
+    case["consultation"] = {
+        "question": case.get("question") or "",
+        "additional_message": case.get("additional_message") or contract.get("additional_message"),
+        "preferred_date": case.get("preferred_date"),
+        "preferred_time": case.get("preferred_time") or contract.get("preferred_time"),
+        "consultation_mode": case.get("consultation_mode") or contract.get("consultation_mode"),
+        "payment_status": case.get("payment_status"),
+    }
+    return case
+
+
+async def create_consultation_case(payload: ConsultationCasePayload, user_id: Optional[str] = None) -> Dict[str, Any]:
+    active_count = await count_active_consultation_requests()
+    status = "pending" if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else "waiting_queue"
+    queue_number = None if status == "pending" else await next_waiting_queue_number()
+    now = _now_iso()
+
+    if payload.idempotency_key:
+        try:
+            res = (
+                supabase.table("consultation_requests")
+                .select("*")
+                .eq("idempotency_key", payload.idempotency_key)
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                return {
+                    "case": _normalize_case_row(dict(res.data[0])),
+                    "slot_available": res.data[0].get("status") != "waiting_queue",
+                    "message": "This consultation case was already submitted.",
+                    "duplicate": True,
+                }
+        except Exception as exc:
+            print(f"Warning: consultation case idempotency lookup failed: {exc}")
+
+    case_id = f"case_{uuid4().hex[:12]}"
+    user = payload.user
+    consultation = payload.consultation
+    snapshot = payload.astrology_snapshot.model_dump(mode="json", exclude_none=True)
+
+    row = {
+        "id": case_id,
+        "user_id": user_id,
+        "consultant_id": FOUNDER_CONSULTANT["id"],
+        "source_type": payload.source_type.value,
+        "chart_type": payload.chart_type.value,
+        "name": user.full_name,
+        "phone": user.mobile_number,
+        "email": user.email,
+        "gender": user.gender,
+        "date_of_birth": user.date_of_birth or "",
+        "time_of_birth": user.time_of_birth or "",
+        "place_of_birth": user.place or "",
+        "latitude": user.latitude,
+        "longitude": user.longitude,
+        "timezone": user.timezone,
+        "topic": (
+            "Prashna"
+            if payload.chart_type.value == "prashna"
+            else ("Marriage Match" if payload.chart_type.value == "matchmaking" else "Birth Chart")
+        ),
+        "question": consultation.question,
+        "additional_message": consultation.additional_message,
+        "preferred_date": consultation.preferred_date,
+        "preferred_time": consultation.preferred_time or "",
+        "consultation_mode": consultation.consultation_mode,
+        "payment_status": consultation.payment_status or "not_paid",
+        "status": status,
+        "queue_number": queue_number,
+        "astrology_snapshot": _encode_json(snapshot),
+        "astrological_snapshot": json.dumps(snapshot),
+        "idempotency_key": payload.idempotency_key,
+        "meeting_link": None,
+        "scheduled_at": None,
+        "admin_notes": None,
+        "assigned_astrologer": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    try:
+        supabase.table("consultation_requests").insert(row).execute()
+    except Exception as exc:
+        if "PGRST204" not in str(exc):
+            print(f"Error: consultation case insert failed: {exc}")
+            raise ValueError(f"Supabase Security Error: {exc}")
+        legacy_row = _legacy_consultation_case_row(row, payload, snapshot)
+        try:
+            supabase.table("consultation_requests").insert(legacy_row).execute()
+            row = _normalize_case_row(legacy_row)
+        except Exception as legacy_exc:
+            print(f"Error: consultation case legacy insert failed: {legacy_exc}")
+            raise ValueError(f"Supabase Security Error: {legacy_exc}")
+
+    return {
+        "case": _normalize_case_row(row),
+        "slot_available": status == "pending",
+        "message": (
+            "Your consultation case has been received. The consultant will review it soon."
+            if status == "pending"
+            else "Currently, all consultation slots are full. You have been added to the waiting queue."
+        ),
+        "duplicate": False,
+    }
+
+
+def _legacy_consultation_case_row(row: Dict[str, Any], payload: ConsultationCasePayload, snapshot: Dict[str, Any]) -> Dict[str, Any]:
+    source = payload.source_type.value
+    chart_type = payload.chart_type.value
+    legacy_snapshot = dict(snapshot)
+    legacy_snapshot.setdefault("case_contract", {
+        "source_type": source,
+        "chart_type": chart_type,
+        "additional_message": row.get("additional_message"),
+        "consultation_mode": row.get("consultation_mode"),
+        "preferred_date": row.get("preferred_date"),
+        "preferred_time": row.get("preferred_time"),
+        "assigned_astrologer": row.get("assigned_astrologer"),
+        "idempotency_key": row.get("idempotency_key"),
+    })
+    return {
+        "id": row["id"],
+        "user_id": row.get("user_id"),
+        "consultant_id": row.get("consultant_id"),
+        "name": row.get("name"),
+        "phone": row.get("phone"),
+        "email": row.get("email"),
+        "date_of_birth": row.get("date_of_birth") or "",
+        "time_of_birth": row.get("time_of_birth") or "",
+        "place_of_birth": row.get("place_of_birth") or "",
+        "topic": row.get("topic") or "Other",
+        "question": row.get("question") or "",
+        "preferred_time": row.get("preferred_time") or "",
+        "payment_status": row.get("payment_status") or "not_paid",
+        "status": row.get("status") or "pending",
+        "queue_number": row.get("queue_number"),
+        "meeting_link": row.get("meeting_link"),
+        "scheduled_at": row.get("scheduled_at"),
+        "admin_notes": row.get("admin_notes"),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+        "astrological_snapshot": json.dumps(legacy_snapshot),
+    }
+
+
+async def get_consultation_case(case_id: str) -> Optional[Dict[str, Any]]:
+    try:
+        res = supabase.table("consultation_requests").select("*").eq("id", case_id).execute()
+        if not res.data:
+            return None
+        return _normalize_case_row(dict(res.data[0]))
+    except Exception as exc:
+        print(f"Warning: get_consultation_case failed: {exc}")
+        return None
+
+
+async def list_consultation_cases(
+    status: Optional[str] = None,
+    source_type: Optional[str] = None,
+    chart_type: Optional[str] = None,
+    user_name: Optional[str] = None,
+    case_id: Optional[str] = None,
+    created_date: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    try:
+        query = supabase.table("consultation_requests").select("*")
+        if status:
+            query = query.eq("status", status)
+        if source_type:
+            query = query.eq("source_type", source_type)
+        if chart_type:
+            query = query.eq("chart_type", chart_type)
+        if case_id:
+            query = query.eq("id", case_id)
+        if user_name:
+            query = query.ilike("name", f"%{user_name}%")
+        if created_date:
+            query = query.gte("created_at", f"{created_date}T00:00:00").lt("created_at", f"{created_date}T23:59:59.999999")
+        res = query.order("created_at", desc=True).execute()
+        return [_normalize_case_row(dict(row)) for row in (res.data or [])]
+    except Exception as exc:
+        print(f"Warning: list_consultation_cases failed: {exc}")
+        return []
+
+
+async def update_consultation_case(case_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+    update_row: Dict[str, Any] = {}
+    if updates.get("case_status") is not None:
+        status_value = updates["case_status"]
+        update_row["status"] = getattr(status_value, "value", status_value)
+    for key in ["admin_notes", "assigned_astrologer", "meeting_link", "scheduled_at"]:
+        if updates.get(key) is not None:
+            update_row[key] = updates[key]
+    if updates.get("astrology_snapshot") is not None:
+        snapshot = updates["astrology_snapshot"]
+        update_row["astrology_snapshot"] = _encode_json(snapshot)
+        update_row["astrological_snapshot"] = json.dumps(snapshot)
+
+    update_row["updated_at"] = _now_iso()
+    supabase.table("consultation_requests").update(update_row).eq("id", case_id).execute()
+
+    promoted = None
+    if update_row.get("status") in {"completed", "rejected", "cancelled"}:
+        promoted = await promote_oldest_waiting_request()
+
+    return {"case": await get_consultation_case(case_id), "promoted_case": promoted}
 
 
 async def count_active_consultation_requests() -> int:
@@ -104,12 +367,13 @@ async def create_consultation_request(payload: Dict[str, Any], user_id: Optional
         "date_of_birth": payload["date_of_birth"],
         "time_of_birth": payload["time_of_birth"],
         "place_of_birth": payload["place_of_birth"],
-        "topic": payload["topic"],
-        "question": payload["question"],
-        "preferred_time": payload.get("preferred_time"),
-        "payment_status": payload.get("payment_status") or "not_paid",
+        "topic": payload.get("topic", "Other"),
+        "question": payload.get("question", ""),
+        "preferred_time": payload.get("preferred_time", ""),
+        "payment_status": payload.get("payment_status", "not_paid"),
         "status": status,
         "queue_number": queue_number,
+        "astrological_snapshot": payload.get("astrological_snapshot"),
         "meeting_link": None,
         "scheduled_at": None,
         "admin_notes": None,
@@ -119,7 +383,8 @@ async def create_consultation_request(payload: Dict[str, Any], user_id: Optional
     try:
         supabase.table("consultation_requests").insert(row).execute()
     except Exception as exc:
-        print(f"Warning: consultation_requests insert failed: {exc}")
+        print(f"Error: consultation_requests insert failed: {exc}")
+        raise ValueError(f"Supabase Security Error: {exc}")
 
     return {
         "request": row,
@@ -138,7 +403,7 @@ async def list_consultation_requests(status: Optional[str] = None) -> List[Dict[
         if status:
             query = query.eq("status", status)
         res = query.order("created_at").execute()
-        return [dict(row) for row in (res.data or [])]
+        return [_normalize_case_row(dict(row)) for row in (res.data or [])]
     except Exception as exc:
         print(f"Warning: list_consultation_requests failed: {exc}")
         return []
@@ -149,7 +414,7 @@ async def get_consultation_request(request_id: str) -> Optional[Dict[str, Any]]:
         res = supabase.table("consultation_requests").select("*").eq("id", request_id).execute()
         if not res.data:
             return None
-        return dict(res.data[0])
+        return _normalize_case_row(dict(res.data[0]))
     except Exception as exc:
         print(f"Warning: get_consultation_request failed: {exc}")
         return None

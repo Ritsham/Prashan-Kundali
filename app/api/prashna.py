@@ -9,9 +9,10 @@ import os
 import httpx
 from app.services.geocoding_service import geocode_place, reverse_geocode_place
 from app.services.timezone_service import timezone_at
-from app.storage.database import get_chart, save_prashna_chart, save_lagna_chart, sync_user
+from app.storage.database import get_chart, save_prashna_chart, save_lagna_chart, sync_user, update_prashna_chart
 from app.dependencies import get_current_user, AuthState
 from app.core.rate_limiter import RateLimiter
+from app.insight_engine import build_interpretation
 
 router = APIRouter()
 
@@ -95,7 +96,11 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
                 
             result = resp.json()
             chart = result["chart"]
-            interpretation = result.get("interpretation")
+            interpretation = result.get("interpretation") or chart.get("interpretation")
+            if not interpretation:
+                interpretation = build_interpretation(chart)
+            if interpretation:
+                chart["interpretation"] = interpretation
 
         except httpx.RequestError as exc:
             raise HTTPException(status_code=502, detail=f"Failed to connect to astrology engine: {str(exc)}") from exc
@@ -104,30 +109,40 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
                 raise
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-        # Step 3: Save and Return immediately (so frontend feels instant)
+        # Step 3: Save with the rule-engine interpretation attached.
         chart_id = save_prashna_chart(auth.client, chart, auth.user_id)
         chart["id"] = chart_id
         
-        # Step 4: Queue LLM Generation in the background
+        # Step 4: Try to attach the narrative interpretation immediately.
         if interpretation:
+            answer = None
             try:
                 llm_url = os.getenv("LLM_ENGINE_URL", "http://localhost:8002")
                 async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"{llm_url}/generate",
+                    llm_resp = await client.post(
+                        f"{llm_url}/generate/sync",
                         json={
                             "chart_id": chart_id,
                             "chart": chart,
                             "interpretation": interpretation
                         },
-                        timeout=5.0
+                        timeout=25.0
                     )
-            except Exception as e:
-                # Log but do not fail the request if LLM queuing fails
+                if llm_resp.status_code == 200:
+                    answer = llm_resp.json().get("answer")
+            except Exception as exc:
                 import logging
-                logging.warning(f"Failed to queue LLM generation: {e}")
-            
-        return {"chart_id": chart_id, "chart": chart, "status": "processing"}
+                logging.warning("Synchronous LLM interpretation failed, using local narrative fallback: %s", exc)
+
+            interpretation["answer"] = answer if answer and answer.get("text") else local_interpretation_answer(chart, interpretation)
+            chart["interpretation"] = interpretation
+            try:
+                update_prashna_chart(auth.client, chart_id, chart)
+            except Exception as exc:
+                import logging
+                logging.warning("Failed to update chart with interpretation: %s", exc)
+
+        return {"chart_id": chart_id, "chart": chart, "interpretation": interpretation, "status": "done" if interpretation else "chart_ready"}
     except HTTPException:
         raise
     except Exception as exc:
@@ -180,6 +195,68 @@ async def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_curr
         import traceback
         tb = traceback.format_exc()
         raise HTTPException(status_code=500, detail={"error": str(exc), "traceback": tb})
+
+
+def local_interpretation_answer(chart: dict, interpretation: dict) -> dict:
+    question = chart.get("question", {})
+    lagna = chart.get("lagna", {})
+    planets = {planet.get("name"): planet for planet in chart.get("planets", [])}
+    moon = planets.get("Moon", {})
+    verdict = interpretation.get("verdict", {}) or {}
+    confidence = interpretation.get("confidence", "medium")
+    domain = interpretation.get("domain") or question.get("domain") or "general"
+    timing = interpretation.get("timing") or {}
+    evidence = interpretation.get("evidence") or []
+    supports = [item for item in evidence if item.get("status") in {"strong", "support", "clear"}]
+    cautions = [item for item in evidence if item.get("status") in {"caution", "blocked", "weak"}]
+    active_dasha = chart.get("dashas", {}).get("current_mahadasha", {})
+
+    support_text = supports[0].get("text") if supports else "The chart has some supportive factors, but they need practical follow-through."
+    caution_text = cautions[0].get("text") if cautions else "No single obstruction dominates, though timing still needs patience."
+    timing_text = (
+        timing.get("summary")
+        or timing.get("window")
+        or (f"The current {active_dasha.get('lord')} Mahadasha is important for timing." if active_dasha.get("lord") else "Timing should be judged from the active Dasha and current Moon condition.")
+    )
+    domain_house = {
+        "illness": "6th house",
+        "marriage": "7th house",
+        "child": "5th house",
+        "job_career": "10th house",
+        "wealth": "2nd and 11th houses",
+        "foreign": "9th and 12th houses",
+        "education": "4th and 5th houses",
+    }.get(domain, "relevant bhava")
+
+    text = f"""Executive Summary
+{verdict.get('summary') or 'The Prashna gives a conditional answer that depends on the strength of the Lagna, Moon, and the relevant house.'} Confidence is {confidence}. The chart should be read practically: the Lagna shows the strength of the question itself, the Moon shows the current mental and circumstantial pressure, and the {domain_house} carries the main result for this domain.
+
+Astrological Analysis
+The Prashna Lagna is {lagna.get('sign', '-')} at {lagna.get('formatted_degree', '')}, falling in {lagna.get('nakshatra', '-')} Pada {lagna.get('pada', '-')}. This sets the base condition of the matter. The Moon is in {moon.get('sign', '-')} at {moon.get('formatted_degree', '')}, house {moon.get('house', '-')}, in {moon.get('nakshatra', '-')} Pada {moon.get('pada', '-')}. In Prashna, Moon is especially important because it describes the querent's mind, the immediacy of the question, and how quickly circumstances can move.
+
+The strongest support is: {support_text}
+
+The strongest caution is: {caution_text}
+
+Practical Interpretation
+For this question, judge the {domain_house} along with its lord, occupants, and relation to Lagna and Moon. If supportive factors are stronger, the matter can move forward, but if caution factors dominate, the outcome becomes delayed, conditional, or dependent on correction. This interpretation is traditional astrological guidance and should be used alongside practical judgment.
+
+Timing
+{timing_text} Use the active Vimshottari Dasha chain as the main timing trigger. When the Dasha lord supports the relevant house, events become easier to activate. When it connects to obstruction, disease, debt, delay, or hidden houses, the result needs patience and corrective action.
+
+Things to Avoid
+Avoid acting only from anxiety or impatience. In Prashna, a disturbed Moon can make the situation feel more urgent than it is. Do not ignore real-world documentation, medical advice, relationship communication, or professional process depending on the domain of the question.
+
+Final Verdict
+The chart leans according to the balance of support and obstruction described above. The answer is not meant to replace professional advice, but it gives a clear astrological direction for what is likely, what needs correction, and where timing should be watched."""
+
+    return {
+        "text": text.strip(),
+        "mode": "local_rule_engine",
+        "provider": "insight_engine",
+        "model": "",
+        "note": "Generated locally from the backend interpretation engine because the LLM service was unavailable or did not return text.",
+    }
 
 
 @router.get("/charts/{chart_id}")

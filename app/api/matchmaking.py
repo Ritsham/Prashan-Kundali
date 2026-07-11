@@ -6,10 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.dependencies import AuthState, RequireRole, get_current_user
+from app.schemas.consultation_case import AstrologySnapshot, ConsultationCasePayload
 from app.services.matchmaking_service import build_match_report
-from app.storage.consultation_db import get_founder_consultant, get_public_consultation_queue_status
+from app.storage.consultation_db import create_consultation_case, get_founder_consultant, get_public_consultation_queue_status
 from app.storage.matchmaking_db import (
-    create_matchmaking_consultation,
     get_match_report,
     list_match_reports,
     save_match_report,
@@ -89,32 +89,22 @@ async def create_matchmaking_consultation_request(
     report = result["report"] if result else payload.report_snapshot
     if not report:
         raise HTTPException(status_code=404, detail="Match report not found. Please regenerate the match report.")
-    queue = await get_public_consultation_queue_status()
-    if not queue.get("can_request_active_slot"):
-        raise HTTPException(
-            status_code=429,
-            detail="Consultant queue is full. Save your draft and request notification when a slot opens.",
-        )
-
     try:
-        result = await create_matchmaking_consultation(
-            user_id=auth.user_id,
-            user_email=payload.contact_email.strip() or auth.email,
-            phone=payload.phone.strip(),
+        case_payload = build_matchmaking_case_payload(
             match_id=match_id,
             report=report,
             question=payload.question.strip(),
-            payment_ref=payload.payment_ref or "match_free_review",
-            scheduled_at=payload.preferred_slot or payload.scheduled_at or "Consult now",
-            db_client=auth.client,
+            email=payload.contact_email.strip() or auth.email,
+            phone=payload.phone.strip(),
+            preferred_slot=payload.preferred_slot or payload.scheduled_at or "",
         )
+        result = await create_consultation_case(case_payload, user_id=auth.user_id)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Booking could not be saved to admin queue: {str(exc)}") from exc
 
     return {
         **result,
-        "slot_available": True,
-        "message": "Booking request sent to admin and Rupesh Kumar. Payment can be added later.",
+        "message": "Match consultation request sent to admin and Rupesh Kumar with the full match case file.",
     }
 
 
@@ -161,3 +151,76 @@ def build_matchmaking_booking_payload(
         "preferred_time": preferred_slot,
         "payment_status": "not_paid",
     }
+
+
+def build_matchmaking_case_payload(
+    *,
+    match_id: str,
+    report: dict,
+    question: str,
+    email: str,
+    phone: str,
+    preferred_slot: str,
+) -> ConsultationCasePayload:
+    boy = report["participants"]["boy"]
+    girl = report["participants"]["girl"]
+    ashtakoota = report["ashtakoota"]
+    summary = report["summary"]
+    full_question = (
+        f"Matchmaking consultation\n"
+        f"Match ID: {match_id}\n"
+        f"Boy: {boy['name']} | {boy['date_of_birth']} {boy['time_of_birth']} | {boy['birth_place']}\n"
+        f"Girl: {girl['name']} | {girl['date_of_birth']} {girl['time_of_birth']} | {girl['birth_place']}\n"
+        f"Guna Milan: {ashtakoota['total_score']}/{ashtakoota['max_score']} ({ashtakoota['category']})\n"
+        f"Recommendation: {summary['final_recommendation']}\n"
+        f"User question: {question or 'Please review this Kundali match for marriage compatibility.'}"
+    )
+    return ConsultationCasePayload.model_validate({
+        "source_type": "matchmaking",
+        "chart_type": "matchmaking",
+        "user": {
+            "full_name": f"{boy['name']} & {girl['name']}",
+            "email": email or "matchmaking@example.com",
+            "mobile_number": phone or "not_provided",
+            "date_of_birth": boy.get("date_of_birth"),
+            "time_of_birth": boy.get("time_of_birth"),
+            "place": f"{boy.get('birth_place', '')} / {girl.get('birth_place', '')}"[:180],
+            "latitude": boy.get("latitude"),
+            "longitude": boy.get("longitude"),
+        },
+        "consultation": {
+            "question": full_question,
+            "additional_message": question,
+            "preferred_time": preferred_slot,
+            "consultation_mode": "matchmaking_consultation",
+            "payment_status": "not_paid",
+        },
+        "astrology_snapshot": {
+            "chart_type": "matchmaking",
+            "chart": {
+                "meta": {
+                    "chart_type": "matchmaking",
+                    "match_id": match_id,
+                    "overall_result": summary.get("overall_result"),
+                    "guna_score": ashtakoota.get("total_score"),
+                    "max_score": ashtakoota.get("max_score"),
+                }
+            },
+            "interpretation": summary,
+            "source_result": {
+                "type": "matchmaking",
+                "match_id": match_id,
+                "report": report,
+            },
+            "question_context": {
+                "match_id": match_id,
+                "question": question,
+                "preferred_slot": preferred_slot,
+            },
+        },
+        "idempotency_key": f"matchmaking:{match_id}:{email or auth_safe_email(email)}",
+    })
+
+
+def auth_safe_email(email: str) -> str:
+    return email or "anonymous"

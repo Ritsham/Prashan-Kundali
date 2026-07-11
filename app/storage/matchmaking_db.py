@@ -168,6 +168,7 @@ def build_admin_question(match_id: str, report: dict[str, Any], question: str) -
 
 
 def public_match_row(row: dict[str, Any]) -> dict[str, Any]:
+    report_data = row.get("report_json") or row.get("report_data")
     return {
         "id": row["id"],
         "user_id": row.get("user_id"),
@@ -177,6 +178,8 @@ def public_match_row(row: dict[str, Any]) -> dict[str, Any]:
         "guna_score": row.get("guna_score"),
         "max_score": row.get("max_score"),
         "result_category": row.get("result_category"),
+        "report_data": report_data,
+        "report_json": report_data,
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
     }
