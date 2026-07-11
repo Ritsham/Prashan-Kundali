@@ -1,36 +1,34 @@
 # ॐ Kundali Studio (Prashna & Lagna Engine)
 
-An advanced, premium Vedic Astrology SaaS platform combining high-precision astronomical calculations (Swiss Ephemeris + Lahiri Ayanamsa) with an interpretation engine, a real-time astrologer community board, and practitioner workspaces.
+An advanced, premium Vedic Astrology SaaS platform combining high-precision astronomical calculations (Swiss Ephemeris + Lahiri Ayanamsa) with an AI-driven interpretation engine, a real-time WebSocket-powered astrologer community board, and professional practitioner workspaces.
 
-The project is styled under the theme of **Modern Indian Luxury**—drawing visual inspiration from ancient astronomical observatories like Jantar Mantar and the Indian Museum of Astronomy, combined with clean, high-end interfaces.
+The platform is designed with a **Modern Indian Luxury** aesthetic—drawing visual inspiration from ancient astronomical observatories like Jantar Mantar and the Indian Museum of Astronomy, combined with clean, high-end interfaces, gold-and-cream HSL color systems, serif typography, and glassmorphism elements.
 
 ---
 
 ## 🌌 Core Features
 
 ### 1. Calculation Engine (Swiss Ephemeris & Ayanamsa)
-- **High-Precision calculations**: Leverages `pyswisseph` (C-ephemeris wrapper) to compute exact planetary coordinates, whole-sign house structures, and planetary degrees.
-- **Divisional Charts (Vargas)**: Generates D1 (Lagna Chart) and D9 (Navamsha Chart) layouts dynamically.
-- **Nakshatra & Pada Mapping**: Calculates Nakshatra divisions, padas, and planetary rulers.
+- **High-Precision Coordinates**: Uses `pyswisseph` (C-ephemeris wrapper) to compute exact planetary positions, whole-sign house coordinates, and degrees.
+- **Divisional Charts (Vargas)**: Dynamically generates D1 (Lagna Chart) and D9 (Navamsha Chart) layouts.
+- **Nakshatra & Pada Mapping**: Calculates exact Nakshatra divisions, padas, and planetary rulers.
 - **Vimshottari Dasha**: Computes full 120-year three-tier Dasha structures (Maha Dasha, Antar Dasha, Pratyantar Dasha) based on moon coordinates.
-- **Timezone Detection**: Uses `timezonefinder` and coordinate lookups to automatically resolve standard UTC offsets for local times.
+- **Timezone Resolver**: Uses `timezonefinder` and geographical coordinates to automatically determine exact UTC offsets for any location.
 
-### 2. Modern Indian Luxury Frontend
-- **Obsensory Aesthetics**: Curated gold-and-cream HSL color systems, Marcellus serif typography, and glassmorphism elements.
-- **Ambient Elements**: Includes a dynamically rotating background **Sudarshan Chakra** SVG and a golden **Lord Ganesha** icon integrated into the global navigation bar logo.
-- **Fully Modular**: Vanilla ES6 JavaScript sub-modules (`app.js`, `state.js`, `api.js`, `auth.js`, `flash.js`) running without massive build-step overheads.
-- **Global Toast Notification System**: Animated, slide-in toast notifications capturing WebSocket errors, API failures, and unhandled promise rejections.
+### 2. Modern React & TypeScript Frontend
+- **Obsensory Aesthetics**: Styled with curated gold-and-cream palettes, Outfit & Marcellus typography, and smooth micro-animations.
+- **Responsive Navigation & Brand Elements**: Includes a dynamically rotating background **Sudarshan Chakra** and an integrated Lord Ganesha icon in the navigation header.
+- **Premium Toast Notifications**: slide-in alert notifications capturing WebSocket events, connection changes, and runtime errors.
+- **Modern Routing & Pages**: Fully migrated Vite React SPA containing:
+  - **HomePage**: Astronomical dashboard and calculation entry.
+  - **PrashnaPage & Result**: Detailed charts (D1/D9), planetary metrics, and multi-key LLM interpretations.
+  - **AstroCommunityPage**: Real-time collaborative workspace featuring live channels, multi-threaded sub-replies, and chat actions.
+  - **AdminDashboardPage**: Practitioner application queues and dashboard.
 
-### 3. Consultation Workspace & Queues
-- **Consultant Console (`consultant.html`)**: Real-time practitioner panels allowing verified astrologers to view pending questions, review astronomical snapshots of client situations, draft interpretations, and manage refunds.
-- **Admin Verification Portal (`admin.html`)**: Interactive queue allowing admins to approve or reject pending astrologer validation requests.
-- **Application Portal (`apply.html`)**: Profile creation form for astrologers seeking platform verification.
-
-### 4. Real-Time Astro Board Community
-- **WebSocket Chat Room (`community.html`)**: Collaborative workspace featuring live channels, multi-threaded sub-replies, starred messages, custom display names, and file/chart uploads.
-
-### 5. Validation QA Console (`validation.html`)
-- A dedicated testing workspace to cross-verify calculated charts, degrees, and Nakshatras against industry benchmark values.
+### 3. Consultation Workspaces & Queues
+- **Consultant Directory & Profiles**: Interactive search and detailed practitioner dashboards.
+- **Admin Verification Portal**: Review and approve pending astrologer registration requests.
+- **Real-Time Client Consultation Workspaces**: Secure chat channels for clients and astrologers during consultations.
 
 ---
 
@@ -39,12 +37,12 @@ The project is styled under the theme of **Modern Indian Luxury**—drawing visu
 | Layer | Technologies |
 | :--- | :--- |
 | **Backend Framework** | FastAPI (Python 3.11+, ASGI), Uvicorn |
-| **Astro calculations** | PySwissEph (Swiss Ephemeris), TimezoneFinder |
-| **Database & Cache** | SQLite (via `aiosqlite` async drivers), Redis |
-| **Authentication & AuthZ** | Supabase OAuth & Row-Level Security (RLS) |
-| **Real-Time Communication** | Native WebSockets |
+| **Astro Calculations** | PySwissEph (Swiss Ephemeris), TimezoneFinder |
+| **Database & Cache** | SQLite (via `aiosqlite` async drivers), Supabase Postgres |
+| **Authentication & AuthZ** | Supabase Auth, Row-Level Security (RLS) policies |
+| **Real-Time Layer** | Native WebSockets |
 | **AI Interpretation** | Multi-key rotated LLM providers (Gemini / OpenAI) |
-| **Frontend Foundation** | HTML5, CSS3 Variables, Vanilla ES6 JavaScript modules |
+| **Frontend Framework** | React 19, TypeScript, Vite 8, TailwindCSS v4 |
 
 ---
 
@@ -84,12 +82,9 @@ Launch the ASGI development server:
 python3 main.py
 ```
 
-The server will run at `http://127.0.0.1:8000`.
+The server will run locally at `http://127.0.0.1:8000`.
 
-- **Main Platform**: `http://127.0.0.1:8000/index.html`
-- **Validation Console**: `http://127.0.0.1:8000/validation.html`
-- **Admin Verification Panel**: `http://127.0.0.1:8000/admin.html`
-- **Astrologer Board**: `http://127.0.0.1:8000/community.html`
+- **Main Application & Pages**: `http://127.0.0.1:8000/` (Served dynamically via Vite dev server or static mounting)
 
 ---
 
@@ -98,11 +93,13 @@ The server will run at `http://127.0.0.1:8000`.
 ```
 ├── app/
 │   ├── api/                   # FastAPI Endpoints
-│   │   ├── admin.py           # Admin queue controls
+│   │   ├── admin_metrics.py   # Admin metrics logs
+│   │   ├── astrologer.py      # Astrologer verification controllers
 │   │   ├── community.py       # Community chat logs
 │   │   ├── consultants.py     # Consultant directory queries
-│   │   ├── prashna.py         # Lagna & Prashna chart API
-│   │   └── validation.py      # Calculations verification
+│   │   ├── consultation.py    # Consultation booking handlers
+│   │   ├── matchmaking.py     # Compatibility reporting
+│   │   └── prashna.py         # Lagna & Prashna chart APIs
 │   ├── astrology/             # Core Astronomy Calculations
 │   │   ├── constants.py       # Ayanamsa & degree indices
 │   │   ├── divisional.py      # Vargas (D1/D9) computation
@@ -112,19 +109,19 @@ The server will run at `http://127.0.0.1:8000`.
 │   │   ├── answer_generator.py # Rule-based & LLM interpretations
 │   │   ├── chart_calculator.py# High-precision coordinates
 │   │   ├── geocoding_service.py# Nominatim geographic queries
-│   │   └── realtime.py        # WebSocket channel management
-│   └── storage/               # SQLite database access
-├── frontend/                  # Static Web Assets
-│   ├── index.html             # Homepage & calculation entry
-│   ├── community.html         # WebSocket Astrologer Board
-│   ├── consultant.html        # Live consultation dashboard
-│   ├── styles.css             # Main stylesheet & design system
-│   ├── community.css          # Astro Board messaging styles
-│   ├── app.js                 # Global coordinate and lagna launcher
-│   ├── community.js           # Live WebSocket chat module
-│   ├── auth.js                # Supabase session synchronize helper
-│   ├── auth-shared.js         # Unified Supabase Auth module
-│   └── flash.js               # Premium toast alerts
+│   │   └── realtime.py        # WebSocket connection manager
+│   └── storage/               # SQLite & Supabase access helpers
+├── frontend/                  # React/TypeScript Frontend (Vite)
+│   ├── public/                # Static assets (ganesha.png, icons.svg)
+│   ├── src/
+│   │   ├── api/               # API clients (axios base, adminApi, prashnaApi)
+│   │   ├── components/        # Layout elements, Navbars, Kundali charts
+│   │   ├── features/          # Feature code (BookingForm, PrashnaForm)
+│   │   ├── pages/             # Route pages (Admin, Community, Booking)
+│   │   ├── App.tsx            # Main router configuration
+│   │   └── main.tsx           # React entry point
+│   ├── package.json           # React scripts and NPM packages
+│   └── vite.config.ts         # Vite bundler options
 ├── main.py                    # Application Entrypoint & WS Mounts
 └── requirements.txt           # Python Dependency Manifest
 ```
@@ -137,43 +134,70 @@ The server will run at `http://127.0.0.1:8000`.
 
 #### `POST /api/prashna`
 Calculates an astrological chart and returns rule-based/AI interpretations.
-- **Request Body**:
-  ```json
-  {
-    "question": "Will I get my dream job this year?",
-    "latitude": 28.6139,
-    "longitude": 77.2090,
-    "place_name": "New Delhi, Delhi, India"
-  }
-  ```
-- **Response Elements**: Includes house placements (1-12), planetary degrees, Nakshatras, current Vimshottari Dasha lords, and a structured `interpretation.answer` section.
+
+**Request Body:**
+```json
+{
+  "question": "Will I get my dream job this year?",
+  "latitude": 28.6139,
+  "longitude": 77.2090,
+  "place_name": "New Delhi, Delhi, India"
+}
+```
+
+**Response Elements:** Includes house placements (1-12), planetary degrees, Nakshatras, current Vimshottari Dasha lords, and a structured `interpretation.answer` section.
 
 #### `GET /api/admin/pending-astrologers`
 Retrieves pending verification profiles (Admin authentication token required).
 
 ---
 
+## 🔄 WebSocket Event Protocol
+
+The platform implements real-time WebSockets to synchronize chat logs, threaded replies, reactions, and online statuses.
+
 ### WebSocket Gateways
+- **Astro Board Channels**: `/ws/community/{channel_name}`
+- **Live Consultations**: `/ws/consultation/{booking_id}`
 
-#### Astro Board Channels
-- **URL Path**: `/ws/community/{channel_name}`
-- **Sub-actions**:
-  - `send_message`: Broadcasts a text message/chart image payload.
-  - `send_thread_reply`: Appends message logs into a child thread tree.
-  - `star_message`: Likes/stars a message thread.
-  - `delete_message`: Soft-deletes a message.
+### Message Flows
 
-#### Live Consultations
-- **URL Path**: `/ws/consultation/{booking_id}`
-- **Usage**: Encrypted real-time chat sync between consulting clients and practitioners.
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Astrologer as Astrologer Client
+    actor Client as Standard Client
+    participant Server as FastAPI Server
+    database DB as Supabase DB
+
+    Note over Astrologer, Server: WebSocket Handshake & Connection
+    Astrologer->>Server: Connect to /ws/community/{channel} with Supabase Token
+    activate Server
+    Server->>Server: Validate Supabase JWT and Role
+    Server-->>Astrologer: Connection Established (ACK)
+
+    Note over Astrologer, Server: Event: send_message
+    Astrologer->>Server: { "action": "send_message", "content": "Daily horoscope update...", "chart_id": "123" }
+    Server->>DB: Save message to community_messages
+    DB-->>Server: Message saved successfully (id: msg_789)
+    Server-->>Astrologer: Broadcast payload: { "type": "new_message", "message": "..." }
+    Server-->>Client: Broadcast payload: { "type": "new_message", "message": "..." }
+
+    Note over Client, Server: Event: toggle_reaction
+    Client->>Server: { "action": "toggle_reaction", "message_id": "msg_789", "reaction_type": "helpful" }
+    Server->>DB: Update user reaction state
+    Server-->>Astrologer: Broadcast: { "type": "reaction_updated", "message_id": "msg_789", "reaction_type": "helpful" }
+    Server-->>Client: Broadcast: { "type": "reaction_updated", "message_id": "msg_789", "reaction_type": "helpful" }
+    deactivate Server
+```
 
 ---
 
 ## 🔒 Security & Verification
 
-- **Supabase JWTs**: Restricts access to sensitive workspaces (Admin dashboard, Consultant portal, Astro Board) to users carrying verified roles.
+- **Supabase JWTs**: Restricts access to sensitive workspaces (Admin dashboard, Astro Board) to users carrying verified roles.
 - **Row-Level Security (RLS)**: Enforced database schemas to prevent unapproved profile reads or modifications.
-- **Client Side Guards**: Verified sessions are validated client-side in [auth-shared.js](file:///c:/Users/gyanr/Desktop/Kundli/Prashan-Kundali/frontend/auth-shared.js) prior to rendering protected elements.
+- **Client Side Guards**: Verified sessions are validated client-side in the React routing layer before rendering protected components.
 
 ---
 
