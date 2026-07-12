@@ -428,10 +428,16 @@ button.astro-outline-button:hover,
 
 .astro-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 0px;
+  grid-template-rows: 1fr;
   min-height: 0;
   flex: 1;
   overflow: hidden;
+  transition: grid-template-columns 0.25s ease;
+}
+
+.astro-workspace:has(.astro-context-panel.is-open) {
+  grid-template-columns: minmax(0, 1fr) 300px;
 }
 
 /* Channel wrap: flex column so section scrolls and notice/composer sticks to bottom */
@@ -793,6 +799,8 @@ button.astro-outline-button {
 }
 
 .astro-context-panel {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
@@ -1055,14 +1063,14 @@ button.astro-outline-button {
 
 /* Discord-inspired dark community workspace */
 .astro-community-shell {
-  --astro-bg: #0f141b;
-  --astro-panel: #111820;
-  --astro-panel-strong: #151c24;
-  --astro-sidebar: #101720;
-  --astro-sidebar-deep: #0c1219;
-  --astro-ink: #edf2fb;
-  --astro-muted: #7f8fa6;
-  --astro-line: rgba(130, 148, 170, 0.18);
+  --astro-bg: #1c1e22;
+  --astro-panel: #22252a;
+  --astro-panel-strong: #282c34;
+  --astro-sidebar: #16181c;
+  --astro-sidebar-deep: #101214;
+  --astro-ink: #f0f3f6;
+  --astro-muted: #8e9cae;
+  --astro-line: rgba(142, 156, 174, 0.16);
   --astro-accent: #635bff;
   --astro-accent-2: #4d42d8;
   --astro-green: #00d084;
@@ -1275,18 +1283,25 @@ button.astro-outline-button {
   backdrop-filter: none;
 }
 
-.astro-channel-titlebar {
+button.astro-channel-titlebar {
   display: flex;
   align-items: center;
   min-width: 0;
   gap: 12px;
   margin-right: auto;
-  border: 0;
-  background: transparent;
-  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
   color: inherit;
   cursor: pointer;
   text-align: left;
+  box-shadow: none !important;
+}
+
+button.astro-channel-titlebar:hover {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 .astro-channel-titlebar > svg {
@@ -1534,7 +1549,8 @@ button.astro-outline-button {
 }
 
 .astro-workspace {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 0px;
+  grid-template-rows: 1fr;
   transition: grid-template-columns 0.25s ease;
 }
 
@@ -1543,12 +1559,14 @@ button.astro-outline-button {
 }
 
 .astro-context-panel {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   width: 0;
   border-left: 0;
-  background: #101720;
+  background: var(--astro-bg);
   transition: width 0.25s ease, border-left 0.25s ease;
 }
 
