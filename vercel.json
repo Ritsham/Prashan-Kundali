@@ -1,5 +1,4 @@
 {
-  "buildCommand": "npm install && node build.js",
   "headers": [
     {
       "source": "/frontend_old/(.*\\.(js|css|webp|png|jpg|jpeg|svg|gif|ico|woff|woff2|ttf|eot))",
