@@ -25,6 +25,7 @@ const PERSISTED_PRASHNA_TAB_KEY = "kundali_active_prashna_tab";
 const PERSISTED_WIDGETS_KEY = "kundali_result_widgets";
 const PERSISTED_DRAFT_KEY = "kundali_entry_draft_v1";
 const PERSISTED_WORKSHEET_KEY = "kundali_worksheet_codes_v1";
+const PERSISTED_PRASHNA_JOB_KEY = "kundali_pending_prashna_job_v1";
 
 const signs = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"];
 const signNumbers = { Aries: 1, Taurus: 2, Gemini: 3, Cancer: 4, Leo: 5, Virgo: 6, Libra: 7, Scorpio: 8, Sagittarius: 9, Capricorn: 10, Aquarius: 11, Pisces: 12 };
@@ -116,6 +117,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPricingUI();
   initChatExtend();
   initPaidConsultation();
+  resumePendingPrashnaJob();
   
   const savedProgression = localStorage.getItem(PERSISTED_CHART_KEY) || sessionStorage.getItem("kundali_chart_progression");
   let restoredChart = false;
@@ -412,11 +414,12 @@ function bindUIEvents() {
     const payload = buildPayload();
     if (!payload) return;
 
-    statusEl.textContent = AppState.activeMode === "lagna" ? "Generating birth chart..." : "Generating chart...";
+    statusEl.textContent = AppState.activeMode === "lagna" ? "Generating birth chart..." : "Queued. Preparing your Prashna reading...";
 
     try {
-      const endpoint = AppState.activeMode === "lagna" ? "/api/lagna" : "/api/prashna";
-      const data = await API.post(endpoint, payload);
+      const data = AppState.activeMode === "lagna"
+        ? await API.post("/api/lagna", payload)
+        : await submitQueuedPrashna(payload);
       localStorage.removeItem(PERSISTED_DRAFT_KEY);
       renderChart(data.chart);
       statusEl.textContent = "Chart generated and saved.";
@@ -840,6 +843,71 @@ function renderChart(chart, switchTab = true) {
     // Just scroll if they are on home tab already
     resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
+
+async function submitQueuedPrashna(payload) {
+  const queued = await API.post("/api/prashna", payload);
+  if (!queued.job_id) {
+    return queued;
+  }
+  localStorage.setItem(PERSISTED_PRASHNA_JOB_KEY, queued.job_id);
+
+  const startedAt = Date.now();
+  const timeoutMs = 120000;
+  while (Date.now() - startedAt < timeoutMs) {
+    await delay(1500);
+    const job = await API.get(`/api/prashna/jobs/${encodeURIComponent(queued.job_id)}`);
+    const progress = Number.isFinite(job.progress) ? ` ${job.progress}%` : "";
+    if (job.status === "queued") statusEl.textContent = `Queued.${progress}`;
+    if (job.status === "calculating_chart") statusEl.textContent = `Calculating chart.${progress}`;
+    if (job.status === "generating_answer") statusEl.textContent = `Generating detailed reading.${progress}`;
+    if (job.status === "failed") {
+      localStorage.removeItem(PERSISTED_PRASHNA_JOB_KEY);
+      throw new Error(job.error || "Reading generation failed. Please try again.");
+    }
+    if (job.status === "done" && job.chart) {
+      localStorage.removeItem(PERSISTED_PRASHNA_JOB_KEY);
+      return { chart: job.chart, chart_id: job.chart_id, interpretation: job.interpretation, status: "done" };
+    }
+  }
+  throw new Error("Your reading is still processing. Please refresh shortly to check the result.");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resumePendingPrashnaJob() {
+  const jobId = localStorage.getItem(PERSISTED_PRASHNA_JOB_KEY);
+  if (!jobId) return;
+  if (!AppState.session && !localStorage.getItem("supabase_token")) return;
+  try {
+    statusEl.textContent = "Checking your pending Prashna reading...";
+    const data = await pollPrashnaJob(jobId, 30000);
+    if (data.chart) {
+      renderChart(data.chart);
+      statusEl.textContent = "Your pending reading is ready.";
+    }
+  } catch (_err) {
+    statusEl.textContent = "";
+  }
+}
+
+async function pollPrashnaJob(jobId, timeoutMs) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const job = await API.get(`/api/prashna/jobs/${encodeURIComponent(jobId)}`);
+    if (job.status === "failed") {
+      localStorage.removeItem(PERSISTED_PRASHNA_JOB_KEY);
+      throw new Error(job.error || "Reading generation failed.");
+    }
+    if (job.status === "done" && job.chart) {
+      localStorage.removeItem(PERSISTED_PRASHNA_JOB_KEY);
+      return { chart: job.chart, chart_id: job.chart_id, interpretation: job.interpretation, status: "done" };
+    }
+    await delay(1500);
+  }
+  return {};
 }
 
 function showCompleteResultSections() {

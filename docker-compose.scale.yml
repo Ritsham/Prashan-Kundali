@@ -1,0 +1,60 @@
+version: "3.9"
+
+# Optional scale overlay.
+# Use with:
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up --build
+#
+# Scale examples:
+#   docker compose -f docker-compose.yml -f docker-compose.scale.yml up --scale api_gateway=2 --scale llm_worker=2
+#
+# Note: when scaling api_gateway, remove fixed container_name/host port conflicts
+# or place the service behind a reverse proxy/load balancer in production.
+
+services:
+  api_gateway:
+    environment:
+      WEB_CONCURRENCY: "2"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  astrology_engine:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+  llm_engine:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+
+  llm_worker:
+    command: >
+      celery -A app.celery_app.celery_app worker
+      --loglevel=info
+      --concurrency=${CELERY_WORKER_CONCURRENCY:-4}
+      --prefetch-multiplier=1
+      --queues=default
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 512M

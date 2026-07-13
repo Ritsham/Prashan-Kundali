@@ -689,6 +689,23 @@ async def create_consultation(
         "sla_deadline": sla_deadline
     }
 
+
+async def update_paid_consultation_snapshot(
+    consultation_id: str,
+    astrological_snapshot: str,
+    db_client: Optional[Any] = None,
+) -> bool:
+    db = db_client or supabase
+    try:
+        if db:
+            db.table("paid_consultations").update({
+                "astrological_snapshot": astrological_snapshot,
+            }).eq("id", consultation_id).execute()
+            return True
+    except Exception as exc:
+        print(f"Warning: update_paid_consultation_snapshot failed: {exc}")
+    return False
+
 async def get_consultation_queue() -> List[Dict[str, Any]]:
     try:
         if supabase:

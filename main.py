@@ -1,12 +1,15 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from app.config import get_supabase_url
+import time
+from app.config import SettingsError, get_settings, get_supabase_url, validate_startup_settings
 from app.legal_pages import render_legal_page
+from app.core.observability import metrics_snapshot, record_request
+from app.dependencies import AuthState, RequireAdmin
 
 from app.api.prashna import router as prashna_router
 from app.api.consultants import router as consultants_router
@@ -21,28 +24,90 @@ from app.storage.community_db import init_community_db
 from app.storage.consultation_db import init_consultation_db
 from app.storage.matchmaking_db import init_matchmaking_db
 
+settings = get_settings()
+
 app = FastAPI(title="Prashna Kundli MVP", version="0.1.0")
 
-ADMIN_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("ADMIN_CORS_ORIGINS", "http://127.0.0.1:8088,http://localhost:8088,http://localhost:3000,http://127.0.0.1:3000,*").split(",")
-    if origin.strip()
-]
+ADMIN_ORIGINS = list(settings.cors_origins)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ADMIN_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
+
+
+@app.middleware("http")
+async def record_http_metrics(request, call_next):
+    started = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000
+        if not request.url.path.startswith(("/frontend_old", "/health")):
+            record_request(request.method, request.url.path, status_code, duration_ms)
 
 
 @app.on_event("startup")
 async def startup() -> None:
+    validate_startup_settings()
     init_db()
     await init_community_db()
     await init_consultation_db()
     await init_matchmaking_db()
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok", "service": "kundali_api", "env": settings.app_env}
+
+
+@app.get("/ready")
+async def readiness() -> dict:
+    import asyncio
+    from app.storage.cache import redis_client
+
+    checks: dict[str, str] = {"settings": "ok"}
+    try:
+        validate_startup_settings()
+    except SettingsError as exc:
+        raise HTTPException(status_code=503, detail={"settings": str(exc)}) from exc
+
+    if redis_client:
+        try:
+            await asyncio.to_thread(redis_client.ping)
+            checks["redis"] = "ok"
+        except Exception as exc:
+            checks["redis"] = "unavailable"
+            raise HTTPException(status_code=503, detail=checks) from exc
+    else:
+        checks["redis"] = "not_configured"
+        if settings.is_production:
+            raise HTTPException(status_code=503, detail=checks)
+
+    return {"status": "ready", "checks": checks}
+
+
+@app.get("/api/admin/ops-metrics")
+def admin_ops_metrics(auth: AuthState = Depends(RequireAdmin())) -> dict:
+    snapshot = metrics_snapshot()
+    try:
+        from app.storage.cache import redis_client
+        from app.services.job_status import job_metrics_snapshot
+        if redis_client:
+            snapshot["queues"] = {"default_depth": redis_client.llen("default")}
+        else:
+            snapshot["queues"] = {"default_depth": None}
+        snapshot["jobs"] = job_metrics_snapshot()
+    except Exception:
+        snapshot["queues"] = {"default_depth": None}
+        snapshot["jobs"] = {}
+    return snapshot
 
 
 @app.get("/api/config")
@@ -125,32 +190,46 @@ app.include_router(admin_metrics_router, prefix="/api")
 app.include_router(matchmaking_router, prefix="/api")
 
 # Realtime WebSockets
-from fastapi import WebSocket, WebSocketDisconnect
 from app.services.realtime import manager
+from app.dependencies import get_current_user_from_token
 import json
 
+
+def _legacy_ws_allowed() -> bool:
+    return get_settings().enable_legacy_unauthenticated_ws
+
 @app.websocket("/ws/community/{channel_name}")
-async def websocket_community(websocket: WebSocket, channel_name: str):
+async def websocket_community(websocket: WebSocket, channel_name: str, token: str = Query(default="")):
+    if not _legacy_ws_allowed():
+        await websocket.close(code=1008, reason="Legacy websocket route disabled")
+        return
+    if not token or not get_current_user_from_token(token):
+        await websocket.close(code=1008, reason="Authentication required")
+        return
     await manager.connect(websocket, f"community_{channel_name}")
     try:
         while True:
             data = await websocket.receive_text()
-            # For now, just broadcast the received message back to the channel
-            # In production, this would be saved to DB first
             msg = json.loads(data)
             await manager.broadcast(f"community_{channel_name}", msg)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, json.JSONDecodeError):
         manager.disconnect(websocket, f"community_{channel_name}")
 
 @app.websocket("/ws/consultation/{booking_id}")
-async def websocket_consultation(websocket: WebSocket, booking_id: str):
+async def websocket_consultation(websocket: WebSocket, booking_id: str, token: str = Query(default="")):
+    if not _legacy_ws_allowed():
+        await websocket.close(code=1008, reason="Legacy websocket route disabled")
+        return
+    if not token or not get_current_user_from_token(token):
+        await websocket.close(code=1008, reason="Authentication required")
+        return
     await manager.connect(websocket, f"consultation_{booking_id}")
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
             await manager.broadcast(f"consultation_{booking_id}", msg)
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, json.JSONDecodeError):
         manager.disconnect(websocket, f"consultation_{booking_id}")
 
 # Today's Panchang API Endpoint (cached)
@@ -159,6 +238,7 @@ from datetime import datetime, timedelta
 from fastapi.responses import FileResponse
 
 panchang_cache = {}
+PANCHANG_CACHE_MAX_ENTRIES = 512
 
 @app.get("/api/panchang")
 async def get_panchang(lat: float = 28.6139, lng: float = 77.2090, date_str: str = None, tz_offset: str = "+05:30"):
@@ -250,6 +330,8 @@ async def get_panchang(lat: float = 28.6139, lng: float = 77.2090, date_str: str
         "muhurat": muhurat_time
     }
     
+    if len(panchang_cache) >= PANCHANG_CACHE_MAX_ENTRIES:
+        panchang_cache.pop(next(iter(panchang_cache)))
     panchang_cache[cache_key] = payload
     return payload
 

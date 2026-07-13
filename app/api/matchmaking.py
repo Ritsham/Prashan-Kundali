@@ -8,6 +8,7 @@ from pydantic import Field, field_validator
 from app.core.rate_limiter import booking_limiter, llm_limiter
 from app.dependencies import AuthState, RequireAdmin, get_current_user
 from app.schemas.consultation_case import AstrologySnapshot, ConsultationCasePayload
+from app.services.job_status import create_job, get_job
 from app.services.matchmaking_service import build_match_report
 from app.storage.consultation_db import create_consultation_case, get_founder_consultant, get_public_consultation_queue_status
 from app.storage.matchmaking_db import (
@@ -54,7 +55,33 @@ class AdminMatchStatusUpdate(StrictRequestModel):
 
 
 @router.post("/matchmaking/requests", dependencies=[Depends(llm_limiter)])
-async def create_matchmaking_request(payload: MatchCreateRequest, auth: AuthState = Depends(get_current_user)) -> dict:
+async def create_matchmaking_request(
+    payload: MatchCreateRequest,
+    auth: AuthState = Depends(get_current_user),
+    sync: bool = Query(default=False),
+) -> dict:
+    if not sync:
+        job = create_job(
+            "matchmaking_generation",
+            auth.user_id,
+            metadata={
+                "boy_name": payload.boy.name,
+                "girl_name": payload.girl.name,
+            },
+        )
+        try:
+            from app.worker import generate_matchmaking_report_task
+            generate_matchmaking_report_task.delay(job["job_id"], auth.user_id, payload.model_dump(mode="json"))
+        except Exception as exc:
+            from app.services.job_status import update_job
+            update_job(job["job_id"], status="failed", progress=100, message="Queue unavailable", error=str(exc))
+            raise HTTPException(status_code=503, detail="Matchmaking queue is unavailable. Please try again shortly.") from exc
+        return {
+            "status": "queued",
+            "job_id": job["job_id"],
+            "message": "Your matchmaking report is being generated.",
+        }
+
     try:
         report = await build_match_report(payload.boy.model_dump(), payload.girl.model_dump())
     except ValueError as exc:
@@ -64,6 +91,28 @@ async def create_matchmaking_request(payload: MatchCreateRequest, auth: AuthStat
 
     saved = await save_match_report(auth.user_id, report)
     return {"match_id": saved["match_id"], "report": saved["report"]}
+
+
+@router.get("/matchmaking/jobs/{job_id}")
+async def read_matchmaking_job(job_id: str = Path(pattern=r"^job_[A-Za-z0-9]{8,40}$"), auth: AuthState = Depends(get_current_user)) -> dict:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("user_id") != auth.user_id and not auth.is_admin:
+        raise HTTPException(status_code=403, detail="Not allowed to read this job")
+
+    response = {
+        key: value
+        for key, value in job.items()
+        if key not in {"user_id"}
+    }
+    match_id = job.get("match_id")
+    if match_id and job.get("status") == "done":
+        result = await get_match_report(match_id, auth.user_id if not auth.is_admin else None)
+        if result:
+            response["match_id"] = result["match_id"]
+            response["report"] = result["report"]
+    return response
 
 
 @router.get("/matchmaking/requests/{match_id}")

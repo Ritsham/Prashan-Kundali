@@ -3192,7 +3192,35 @@ body.has-result .interpretation-card {
   color: var(--ink-dim);
   font-size: 0.9rem;
   line-height: 1.5;
-  margin-bottom: 28px;
+  margin-bottom: 20px;
+}
+
+.auth-fields {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  text-align: left;
+}
+
+.auth-fields label {
+  color: var(--ink-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.auth-fields input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #1e293b;
+  font: 600 0.95rem 'Inter', sans-serif;
+  padding: 11px 12px;
+}
+
+.auth-fields input:focus {
+  outline: 2px solid rgba(232, 192, 127, 0.45);
+  border-color: var(--saffron-gold);
 }
 
 .btn-google-login {

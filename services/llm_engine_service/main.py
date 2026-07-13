@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.llm_engine import generate_interpretation_answer
-from app.config import get_settings
+from app.config import get_settings, validate_startup_settings
 
 app = FastAPI(
     title="LLM Engine",
@@ -59,6 +59,11 @@ class GenerateRequest(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "llm_engine"}
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    validate_startup_settings()
 
 
 @app.post("/generate")

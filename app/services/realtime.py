@@ -10,18 +10,19 @@ class ConnectionManager:
         self.active_connections: Dict[str, List[WebSocket]] = {}
         # Keep track of which pubsub tasks are running for which channels
         self.pubsub_tasks: Dict[str, asyncio.Task] = {}
+        self._lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket, channel: str):
         await websocket.accept()
-        if channel not in self.active_connections:
-            self.active_connections[channel] = []
-            
-        self.active_connections[channel].append(websocket)
+        async with self._lock:
+            if channel not in self.active_connections:
+                self.active_connections[channel] = []
+            self.active_connections[channel].append(websocket)
 
-        # Start a Redis pubsub listener for this channel if not already running
-        if redis_client and channel not in self.pubsub_tasks:
-            task = asyncio.create_task(self._listen_to_redis(channel))
-            self.pubsub_tasks[channel] = task
+            # Start a Redis pubsub listener for this channel if not already running.
+            if redis_client and channel not in self.pubsub_tasks:
+                task = asyncio.create_task(self._listen_to_redis(channel))
+                self.pubsub_tasks[channel] = task
 
     def disconnect(self, websocket: WebSocket, channel: str):
         if channel in self.active_connections:
@@ -38,7 +39,7 @@ class ConnectionManager:
     async def broadcast(self, channel: str, message: dict):
         # If redis is available, publish to redis (it will be picked up by the listener)
         if redis_client:
-            redis_client.publish(channel, json.dumps(message))
+            await asyncio.to_thread(redis_client.publish, channel, json.dumps(message))
         else:
             # Fallback to local memory broadcast
             await self._send_to_local_connections(channel, message)
@@ -60,16 +61,22 @@ class ConnectionManager:
             return
             
         pubsub = redis_client.pubsub()
-        pubsub.subscribe(channel)
+        await asyncio.to_thread(pubsub.subscribe, channel)
         
         try:
-            for message in pubsub.listen():
+            while True:
+                message = await asyncio.to_thread(pubsub.get_message, True, 1.0)
+                if not message:
+                    continue
                 if message["type"] == "message":
                     data = json.loads(message["data"])
                     await self._send_to_local_connections(channel, data)
         except asyncio.CancelledError:
-            pubsub.unsubscribe(channel)
+            await asyncio.to_thread(pubsub.unsubscribe, channel)
+            await asyncio.to_thread(pubsub.close)
+            raise
         except Exception as e:
             print(f"Redis PubSub Error on {channel}: {e}")
+            await asyncio.to_thread(pubsub.close)
 
 manager = ConnectionManager()

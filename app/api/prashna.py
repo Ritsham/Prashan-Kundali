@@ -14,6 +14,7 @@ from app.dependencies import get_current_user, AuthState
 from app.core.rate_limiter import RateLimiter, llm_limiter, public_limiter
 from app.insight_engine import build_interpretation
 from app.schemas.common import ID_RE, LocationInput, StrictRequestModel, parse_iso_datetime
+from app.services.job_status import create_job, get_job
 
 router = APIRouter()
 
@@ -55,6 +56,7 @@ class LagnaRequest(StrictRequestModel):
 class UserSyncRequest(StrictRequestModel):
     email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     name: str = Field(default="", max_length=120)
+    mobile_number: str = Field(default="", max_length=24, pattern=r"^$|^\+?[0-9 ()-]{6,24}$")
 
 
 def _is_admin(auth: AuthState) -> bool:
@@ -64,15 +66,42 @@ def _is_admin(auth: AuthState) -> bool:
 @router.post("/users/sync")
 def sync_user_endpoint(payload: UserSyncRequest, auth: AuthState = Depends(get_current_user)) -> dict:
     try:
-        sync_user(auth.client, auth.user_id, payload.email, payload.name)
+        sync_user(auth.client, auth.user_id, payload.email, payload.name, payload.mobile_number)
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"User sync failed: {str(e)}")
 
 
 @router.post("/prashna")
-async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_current_user), _ = Depends(prashna_rate_limiter)) -> dict:
+async def create_prashna(
+    payload: PrashnaRequest,
+    auth: AuthState = Depends(get_current_user),
+    _ = Depends(prashna_rate_limiter),
+    sync: bool = Query(default=False),
+) -> dict:
     try:
+        if not sync:
+            job = create_job(
+                "prashna_generation",
+                auth.user_id,
+                metadata={
+                    "question_domain": payload.question_domain,
+                    "question_subdomain": payload.question_subdomain,
+                },
+            )
+            try:
+                from app.worker import generate_prashna_chart_task
+                generate_prashna_chart_task.delay(job["job_id"], auth.user_id, payload.model_dump(mode="json"))
+            except Exception as exc:
+                from app.services.job_status import update_job
+                update_job(job["job_id"], status="failed", progress=100, message="Queue unavailable", error=str(exc))
+                raise HTTPException(status_code=503, detail="Generation queue is unavailable. Please try again shortly.") from exc
+            return {
+                "status": "queued",
+                "job_id": job["job_id"],
+                "message": "Your Prashna reading is being generated.",
+            }
+
         asked_at_utc = datetime.now(timezone.utc)
         if payload.asked_at_utc:
             try:
@@ -160,6 +189,28 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
         import logging
         logging.getLogger(__name__).exception("create_prashna_failed")
         raise HTTPException(status_code=500, detail="Failed to create Prashna chart") from exc
+
+
+@router.get("/prashna/jobs/{job_id}")
+def read_prashna_job(job_id: str = Path(pattern=r"^job_[A-Za-z0-9]{8,40}$"), auth: AuthState = Depends(get_current_user)) -> dict:
+    job = get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.get("user_id") != auth.user_id and not _is_admin(auth):
+        raise HTTPException(status_code=403, detail="Not allowed to read this job")
+
+    response = {
+        key: value
+        for key, value in job.items()
+        if key not in {"user_id"}
+    }
+    chart_id = job.get("chart_id")
+    if chart_id and job.get("status") == "done":
+        chart = get_chart(auth.client, chart_id)
+        if chart:
+            response["chart"] = chart
+            response["interpretation"] = chart.get("interpretation")
+    return response
 
 
 @router.post("/lagna")

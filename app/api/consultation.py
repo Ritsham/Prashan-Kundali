@@ -399,45 +399,7 @@ async def request_consultation(
 ):
     try:
         data = payload.model_dump()
-        
-        # Pre-process chart if lat/lon are provided
-        if payload.latitude and payload.longitude and payload.date_of_birth and payload.time_of_birth:
-            try:
-                # Convert DD/MM/YYYY or YYYY-MM-DD to ISO format for parsing
-                # Actually, HTML5 date input sends YYYY-MM-DD, and time is HH:MM
-                dt_str = f"{payload.date_of_birth}T{payload.time_of_birth}"
-                local_dt = datetime.fromisoformat(dt_str)
-                tz_name = timezone_at(payload.latitude, payload.longitude)
-                
-                if local_dt.tzinfo is None:
-                    local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
-                birth_utc = local_dt.astimezone(timezone.utc)
-                
-                astrology_url = get_settings().astrology_engine_url
-                chart_type = "prashna" if payload.topic == "Prashna" else "lagna"
-                
-                chart_req_data = {
-                    "chart_type": chart_type,
-                    "name": payload.name,
-                    "question": payload.question,
-                    "location": {
-                        "latitude": payload.latitude,
-                        "longitude": payload.longitude,
-                        "place_name": payload.place_of_birth
-                    },
-                    "asked_at_utc": birth_utc.isoformat()
-                }
-                
-                async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
-                    resp = await client.post(f"{astrology_url}/calculate", json=chart_req_data)
-                    
-                if resp.status_code == 200:
-                    data["astrological_snapshot"] = json.dumps(resp.json()["chart"])
-                else:
-                    logger.warning("public_consultation_chart_generation_failed status=%s", resp.status_code)
-            except Exception as e:
-                logger.warning("public_consultation_snapshot_failed")
-                
+
         # If frontend provided a snapshot directly, prefer that
         if payload.chart_snapshot:
             data["astrological_snapshot"] = json.dumps(payload.chart_snapshot)
@@ -451,6 +413,23 @@ async def request_consultation(
             user_id=auth.user_id if auth else None,
             db_client=auth.client if auth else get_service_client(),
         )
+        request_id = (result.get("request") or {}).get("id")
+        should_enrich_snapshot = (
+            request_id
+            and not payload.chart_snapshot
+            and payload.latitude is not None
+            and payload.longitude is not None
+            and payload.date_of_birth
+            and payload.time_of_birth
+        )
+        if should_enrich_snapshot:
+            try:
+                from app.worker import enrich_consultation_request_snapshot_task
+                enrich_consultation_request_snapshot_task.delay(request_id, payload.model_dump(mode="json"))
+                result["snapshot_status"] = "queued"
+            except Exception as exc:
+                logger.warning("public_consultation_snapshot_queue_failed: %s", exc)
+                result["snapshot_status"] = "unavailable"
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -527,49 +506,22 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
     if status["current_queue_size"] >= status["max_capacity"]:
         raise HTTPException(status_code=429, detail="Consultant queue is currently full.")
 
-    # 2. Pre-processing: Generate Astronomical Snapshot
-    try:
-        tz_name = timezone_at(payload.location.latitude, payload.location.longitude)
-        local_dt = datetime.fromisoformat(payload.birth_datetime_local)
-        if local_dt.tzinfo is None:
-            local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
-        birth_utc = local_dt.astimezone(timezone.utc)
-        
-        astrology_url = get_settings().astrology_engine_url
-        
-        payload_data = {
-            "chart_type": "prashna",
-            "name": payload.name,
-            "question": payload.question,
-            "location": {
-                "latitude": payload.location.latitude,
-                "longitude": payload.location.longitude,
-                "place_name": payload.location.place_name
-            },
-            "asked_at_utc": birth_utc.isoformat()
-        }
-            
-        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
-            resp = await client.post(f"{astrology_url}/calculate", json=payload_data)
-            
-        if resp.status_code != 200:
-            raise HTTPException(status_code=422, detail="Failed to calculate astrological snapshot for consultation.")
-            
-        snapshot = resp.json()["chart"]
-    except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"Chart calculation failed: {str(exc)}")
-
-    # 3. Create consultation record
+    # 2. Create consultation record immediately; chart snapshot is enriched in the background.
     try:
         birth_date = payload.birth_datetime_local.split('T')[0]
         birth_time = payload.birth_datetime_local.split('T')[1]
+        pending_snapshot = {
+            "status": "queued",
+            "message": "Astrological snapshot is being generated.",
+            "chart_type": "prashna",
+        }
         
         result = await create_consultation(
             user_id=auth.user_id,
             user_name=payload.name,
             user_email=auth.email,
             question_text=payload.question,
-            astrological_snapshot=json.dumps(snapshot),
+            astrological_snapshot=json.dumps(pending_snapshot),
             payment_ref=payload.payment_ref,
             whatsapp_no=payload.whatsapp_no,
             gender=payload.gender,
@@ -584,6 +536,13 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
                 status="paid",
                 booking_id=result.get("id"),
             )
+        try:
+            from app.worker import enrich_paid_consultation_snapshot_task
+            enrich_paid_consultation_snapshot_task.delay(result["id"], payload.model_dump(mode="json"))
+            result["snapshot_status"] = "queued"
+        except Exception as exc:
+            logger.warning("paid_consultation_snapshot_queue_failed: %s", exc)
+            result["snapshot_status"] = "unavailable"
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail="Failed to book consultation") from exc
@@ -592,7 +551,14 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
 async def get_queue(auth: AuthState = Depends(RequireAdmin())):
     queue = await get_consultation_queue()
     for q in queue:
-        q["astrological_snapshot"] = json.loads(q["astrological_snapshot"])
+        raw_snapshot = q.get("astrological_snapshot")
+        if isinstance(raw_snapshot, str) and raw_snapshot.strip():
+            try:
+                q["astrological_snapshot"] = json.loads(raw_snapshot)
+            except json.JSONDecodeError:
+                q["astrological_snapshot"] = {"status": "unavailable", "raw": raw_snapshot}
+        elif not raw_snapshot:
+            q["astrological_snapshot"] = {"status": "queued", "message": "Astrological snapshot is being generated."}
     return {"queue": queue}
 
 @router.post("/consultation/{consultation_id}/answer")

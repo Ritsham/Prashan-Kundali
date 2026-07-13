@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 from app.services.chart_calculator import CalculationDependencyError, calculate_prashna_chart
 from app.services.timezone_service import timezone_at
 from app.insight_engine import build_interpretation
-from app.config import get_settings
+from app.config import get_settings, validate_startup_settings
 
 app = FastAPI(
     title="Astrology Engine",
@@ -73,6 +73,11 @@ class ChartRequest(BaseModel):
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "service": "astrology_engine"}
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    validate_startup_settings()
 
 
 @app.post("/calculate")

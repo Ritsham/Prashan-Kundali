@@ -37,19 +37,25 @@ def init_db() -> None:
     # No-op since Supabase handles the database schema remotely
     pass
 
-def sync_user(db: Client, user_id: str, email: str, name: str) -> None:
+def sync_user(db: Client, user_id: str, email: str, name: str, mobile_number: str = "") -> None:
     from datetime import datetime, timezone
-    if not db:
+    client = service_supabase or db
+    if not client:
         print("Warning: Supabase client is not initialized. Skipping sync_user.")
         return
+    clean_name = (name or "").strip()
+    clean_mobile = (mobile_number or "").strip()
     data = {
         "id": user_id,
         "email": email,
-        "name": name,
+        "name": clean_name,
+        "full_name": clean_name,
         "last_sign_in": datetime.now(timezone.utc).isoformat()
     }
+    if clean_mobile:
+        data["mobile_number"] = clean_mobile
     try:
-        db.table("users").upsert(data).execute()
+        client.table("users").upsert(data).execute()
     except Exception as e:
         print(f"Warning: Supabase sync_user failed: {e}")
 

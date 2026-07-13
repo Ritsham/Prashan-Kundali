@@ -48,7 +48,11 @@ function selectItem(id) {
   activeItem = item;
   renderQueue(queueData); // update active class
   const snapshot = parseSnapshot(item.astrological_snapshot);
-  const matchBlock = snapshot.type === "matchmaking" ? renderMatchmakingCase(snapshot) : renderStandardChartCase(item);
+  const matchBlock = snapshot.status === "queued"
+    ? renderPendingSnapshot(snapshot)
+    : snapshot.type === "matchmaking"
+      ? renderMatchmakingCase(snapshot)
+      : renderStandardChartCase(item, snapshot);
   
   const main = document.getElementById("main-view");
   main.innerHTML = `
@@ -75,13 +79,23 @@ function selectItem(id) {
   `;
 }
 
-function renderStandardChartCase(item) {
+function renderPendingSnapshot(snapshot) {
+  return `
+    <div class="question-box">
+      <strong>Chart Snapshot:</strong><br/>
+      ${escapeHtml(snapshot.message || "Astrological snapshot is still being generated.")}
+    </div>
+  `;
+}
+
+function renderStandardChartCase(item, snapshot = null) {
+  const chart = snapshot || parseSnapshot(item.astrological_snapshot);
   return `
     <div class="chart-previews">
       <div class="chart-box">
         <strong>Lagna Chart Snapshot</strong><br/>
         (Pre-calculated data available here)
-        <pre style="overflow:auto; height: 100px;">${escapeHtml(JSON.stringify(item.astrological_snapshot.houses || item.astrological_snapshot, null, 2))}</pre>
+        <pre style="overflow:auto; height: 100px;">${escapeHtml(JSON.stringify(chart.houses || chart, null, 2))}</pre>
       </div>
       <div class="chart-box">
         <strong>Transits & Dashas</strong><br/>

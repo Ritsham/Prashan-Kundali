@@ -3,6 +3,9 @@ import { API } from './api.js';
 import { showFlash } from './flash.js';
 
 let supabaseClient = null;
+const SIGNUP_PROFILE_KEY = 'astro_pending_signup_profile';
+const AUTH_LAST_SEEN_KEY = 'astro_auth_last_seen_at';
+const AUTH_MAX_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Prevent FOUC (Flash of Unauthenticated Content) by checking localStorage eagerly
 const hasToken = !!localStorage.getItem('supabase_token');
@@ -16,15 +19,16 @@ if (hasToken) {
 export async function initAuth() {
   try {
     const config = await API.get("/api/config", false);
-    if (!config.supabaseUrl || !config.supabaseAnonKey) {
-      console.error("CRITICAL: Supabase keys are missing in config!");
-      showFlash("CRITICAL: Supabase keys are missing in config!", "error");
+    if (!isValidSupabaseUrl(config.supabaseUrl) || !config.supabaseAnonKey) {
+      console.error("CRITICAL: Supabase auth config is invalid!", config.supabaseUrl);
+      showFlash("Authentication is not configured correctly. Please update the Supabase URL/key for this deployment.", "error");
       return;
     }
     
     supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
 
     supabaseClient.auth.onAuthStateChange(async (event, newSession) => {
+      newSession = await enforceSevenDaySignin(newSession);
       AppState.setSession(newSession);
       
       if (newSession) {
@@ -36,6 +40,14 @@ export async function initAuth() {
       }
     });
 
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const activeSession = await enforceSevenDaySignin(session);
+    AppState.setSession(activeSession);
+    if (activeSession) {
+      await syncUserWithBackend(activeSession.user);
+    }
+
+    ensureAuthModal();
     bindAuthUI();
   } catch (err) {
     console.error("Error initializing Supabase client:", err);
@@ -44,11 +56,23 @@ export async function initAuth() {
 }
 
 function bindAuthUI() {
-  document.querySelector("#btn-login-google")?.addEventListener("click", () => {
-    supabaseClient.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin }});
+  document.querySelector("#btn-login-google")?.addEventListener("click", async () => {
+    const profile = collectSignupProfile();
+    if (!profile) return;
+    localStorage.setItem(SIGNUP_PROFILE_KEY, JSON.stringify(profile));
+    const redirectTo = new URL(window.location.pathname + window.location.search, window.location.origin).toString();
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo },
+    });
+    if (error) showFlash(error.message, "error");
   });
 
-  document.querySelector("#btn-logout")?.addEventListener("click", () => supabaseClient.auth.signOut());
+  document.querySelector("#btn-logout")?.addEventListener("click", () => {
+    localStorage.removeItem(AUTH_LAST_SEEN_KEY);
+    localStorage.removeItem(SIGNUP_PROFILE_KEY);
+    supabaseClient.auth.signOut();
+  });
   
   document.querySelector("#btn-login-header")?.addEventListener("click", () => {
     document.querySelector("#auth-modal").classList.remove("hidden");
@@ -74,11 +98,99 @@ function bindAuthUI() {
 
 async function syncUserWithBackend(user) {
   const email = user.email;
-  const name = user.user_metadata?.full_name || user.user_metadata?.name || "Google User";
+  const pendingProfile = readPendingSignupProfile();
+  const name = pendingProfile.name || user.user_metadata?.full_name || user.user_metadata?.name || "Google User";
+  const mobile_number = pendingProfile.mobile_number || "";
   try {
-    await API.post("/api/users/sync", { email, name });
+    await API.post("/api/users/sync", { email, name, mobile_number });
+    localStorage.removeItem(SIGNUP_PROFILE_KEY);
   } catch (err) {
     console.warn("User details sync failed:", err);
+  }
+}
+
+function isValidSupabaseUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname.endsWith(".supabase.co");
+  } catch (_err) {
+    return false;
+  }
+}
+
+function rememberAuthenticatedVisit() {
+  localStorage.setItem(AUTH_LAST_SEEN_KEY, String(Date.now()));
+}
+
+async function enforceSevenDaySignin(session) {
+  if (!session || !supabaseClient) return null;
+  const lastSeen = Number(localStorage.getItem(AUTH_LAST_SEEN_KEY) || "0");
+  if (lastSeen && Date.now() - lastSeen > AUTH_MAX_IDLE_MS) {
+    await supabaseClient.auth.signOut();
+    localStorage.removeItem("supabase_token");
+    localStorage.removeItem(AUTH_LAST_SEEN_KEY);
+    return null;
+  }
+  rememberAuthenticatedVisit();
+  return session;
+}
+
+function ensureAuthModal() {
+  let modal = document.querySelector("#auth-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "auth-modal";
+    modal.className = "auth-modal hidden";
+    modal.innerHTML = `
+      <div class="auth-backdrop" id="auth-backdrop"></div>
+      <div class="auth-panel">
+        <button type="button" id="btn-close-auth" class="btn-close-auth" aria-label="Close modal">&times;</button>
+        <h1>Sign in to continue</h1>
+        <p>Enter your details once, then continue with Google.</p>
+        <button type="button" id="btn-login-google" class="btn-google-login">Continue with Google</button>
+      </div>
+    `;
+    document.body.prepend(modal);
+  }
+
+  const button = modal.querySelector("#btn-login-google");
+  if (button && !modal.querySelector("#signup-profile-fields")) {
+    button.insertAdjacentHTML("beforebegin", `
+      <div id="signup-profile-fields" class="auth-fields">
+        <label for="auth-full-name">Full name</label>
+        <input id="auth-full-name" type="text" autocomplete="name" maxlength="120" placeholder="Your name" required>
+        <label for="auth-mobile-number">Mobile number</label>
+        <input id="auth-mobile-number" type="tel" autocomplete="tel" maxlength="24" placeholder="+91 98765 43210" required>
+      </div>
+    `);
+  }
+}
+
+function collectSignupProfile() {
+  const nameEl = document.querySelector("#auth-full-name");
+  const mobileEl = document.querySelector("#auth-mobile-number");
+  const name = (nameEl?.value || "").trim();
+  const mobile_number = (mobileEl?.value || "").trim();
+  const phonePattern = /^\+?[0-9 ()-]{6,24}$/;
+
+  if (!name) {
+    showFlash("Please enter your name before continuing.", "error");
+    nameEl?.focus();
+    return null;
+  }
+  if (!phonePattern.test(mobile_number)) {
+    showFlash("Please enter a valid mobile number.", "error");
+    mobileEl?.focus();
+    return null;
+  }
+  return { name, mobile_number };
+}
+
+function readPendingSignupProfile() {
+  try {
+    return JSON.parse(localStorage.getItem(SIGNUP_PROFILE_KEY) || "{}");
+  } catch (_err) {
+    return {};
   }
 }
 

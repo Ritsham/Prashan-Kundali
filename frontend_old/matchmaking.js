@@ -12,11 +12,13 @@ const submitBtn = document.querySelector("#btn-generate-match");
 let activeMatchId = "";
 let activeReport = null;
 const BOOKING_CONTEXT_KEY = "matchmaking_booking_context";
+const PERSISTED_MATCH_JOB_KEY = "kundali_pending_match_job_v1";
 
 initAuth();
 disableNameAutofill();
 initPlaceSearch("boy");
 initPlaceSearch("girl");
+resumePendingMatchJob();
 
 document.addEventListener("astro:authChanged", (event) => {
   const signedIn = Boolean(event.detail);
@@ -39,11 +41,11 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   resultEl.classList.add("hidden");
-  statusEl.textContent = "Generating charts, calculating Koota scores, and checking Doshas...";
+  statusEl.textContent = "Queued. Preparing compatibility report...";
   submitBtn.disabled = true;
 
   try {
-    const data = await API.post("/api/matchmaking/requests", payload);
+    const data = await submitQueuedMatchmaking(payload);
     activeMatchId = data.match_id;
     activeReport = data.report;
     renderResult(data.match_id, data.report);
@@ -55,6 +57,73 @@ form.addEventListener("submit", async (event) => {
     submitBtn.disabled = false;
   }
 });
+
+async function submitQueuedMatchmaking(payload) {
+  const queued = await API.post("/api/matchmaking/requests", payload);
+  if (!queued.job_id) {
+    return queued;
+  }
+  localStorage.setItem(PERSISTED_MATCH_JOB_KEY, queued.job_id);
+
+  const startedAt = Date.now();
+  const timeoutMs = 120000;
+  while (Date.now() - startedAt < timeoutMs) {
+    await delay(1500);
+    const job = await API.get(`/api/matchmaking/jobs/${encodeURIComponent(queued.job_id)}`);
+    const progress = Number.isFinite(job.progress) ? ` ${job.progress}%` : "";
+    if (job.status === "queued") statusEl.textContent = `Queued.${progress}`;
+    if (job.status === "calculating_match") statusEl.textContent = `Calculating compatibility.${progress}`;
+    if (job.status === "saving_report") statusEl.textContent = `Saving report.${progress}`;
+    if (job.status === "failed") {
+      localStorage.removeItem(PERSISTED_MATCH_JOB_KEY);
+      throw new Error(job.error || "Match report generation failed. Please try again.");
+    }
+    if (job.status === "done" && job.report) {
+      localStorage.removeItem(PERSISTED_MATCH_JOB_KEY);
+      return { match_id: job.match_id, report: job.report };
+    }
+  }
+  throw new Error("Your report is still processing. Please refresh shortly to check the result.");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function resumePendingMatchJob() {
+  const jobId = localStorage.getItem(PERSISTED_MATCH_JOB_KEY);
+  if (!jobId) return;
+  if (!AppState.session && !localStorage.getItem("supabase_token")) return;
+  try {
+    statusEl.textContent = "Checking your pending match report...";
+    const data = await pollMatchJob(jobId, 30000);
+    if (data.report) {
+      activeMatchId = data.match_id;
+      activeReport = data.report;
+      renderResult(data.match_id, data.report);
+      statusEl.textContent = "Your pending match report is ready.";
+    }
+  } catch (_err) {
+    statusEl.textContent = "";
+  }
+}
+
+async function pollMatchJob(jobId, timeoutMs) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const job = await API.get(`/api/matchmaking/jobs/${encodeURIComponent(jobId)}`);
+    if (job.status === "failed") {
+      localStorage.removeItem(PERSISTED_MATCH_JOB_KEY);
+      throw new Error(job.error || "Match report generation failed.");
+    }
+    if (job.status === "done" && job.report) {
+      localStorage.removeItem(PERSISTED_MATCH_JOB_KEY);
+      return { match_id: job.match_id, report: job.report };
+    }
+    await delay(1500);
+  }
+  return {};
+}
 
 function formPayload(fd) {
   return {
