@@ -114,7 +114,8 @@ def admin_ops_metrics(auth: AuthState = Depends(RequireAdmin())) -> dict:
 def get_config():
     return {
         "supabaseUrl": get_supabase_url(),
-        "supabaseAnonKey": os.getenv("SUPABASE_ANON_KEY", "")
+        "supabaseAnonKey": os.getenv("SUPABASE_ANON_KEY", ""),
+        "publicSiteUrl": settings.public_site_url,
     }
 
 

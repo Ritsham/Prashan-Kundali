@@ -3,6 +3,7 @@ import { API } from './api.js';
 import { showFlash } from './flash.js';
 
 let supabaseClient = null;
+let authConfig = {};
 const SIGNUP_PROFILE_KEY = 'astro_pending_signup_profile';
 const AUTH_LAST_SEEN_KEY = 'astro_auth_last_seen_at';
 const AUTH_MAX_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -25,6 +26,7 @@ export async function initAuth() {
       return;
     }
     
+    authConfig = config;
     supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
 
     supabaseClient.auth.onAuthStateChange(async (event, newSession) => {
@@ -60,7 +62,7 @@ function bindAuthUI() {
     const profile = collectSignupProfile();
     if (!profile) return;
     localStorage.setItem(SIGNUP_PROFILE_KEY, JSON.stringify(profile));
-    const redirectTo = new URL(window.location.pathname + window.location.search, window.location.origin).toString();
+    const redirectTo = buildAuthRedirectUrl();
     const { error } = await supabaseClient.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -116,6 +118,30 @@ function isValidSupabaseUrl(value) {
   } catch (_err) {
     return false;
   }
+}
+
+function isLocalhostOrigin(origin) {
+  try {
+    const hostname = new URL(origin).hostname;
+    return ["localhost", "127.0.0.1", "0.0.0.0"].includes(hostname);
+  } catch (_err) {
+    return false;
+  }
+}
+
+function getConfiguredPublicOrigin() {
+  try {
+    const configured = authConfig.publicSiteUrl || "";
+    if (!configured || isLocalhostOrigin(configured)) return "";
+    return new URL(configured).origin;
+  } catch (_err) {
+    return "";
+  }
+}
+
+function buildAuthRedirectUrl() {
+  const origin = getConfiguredPublicOrigin() || window.location.origin;
+  return new URL(window.location.pathname + window.location.search, origin).toString();
 }
 
 function rememberAuthenticatedVisit() {
