@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="./styles.css?v=2">
     <link rel="stylesheet" href="./community.css?v=5">
     <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   </head>
 <body>
     <section id="community-landing" class="community-landing">
@@ -72,7 +72,7 @@
     <section id="community-app" class="community-app hidden">
         <aside class="community-sidebar">
             <div class="sidebar-brand">
-                <img src="./ganesha.png" alt="Ganesha Logo">
+                <img src="./ganesha.webp" alt="Ganesha Logo">
                 <div>
                     <strong>Astro Community</strong>
                     <span>Professional network</span>
@@ -242,6 +242,6 @@
         import { recordVisit } from './analytics.js';
         recordVisit();
     </script>
-    <script type="module" src="./community.js?v=11"></script>
+    <script type="module" src="./community.js?v=11" defer></script>
 </body>
 </html>

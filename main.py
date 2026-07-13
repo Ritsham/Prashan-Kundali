@@ -4,6 +4,8 @@ load_dotenv()
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse
 import os
 import time
 from app.config import SettingsError, get_settings, get_supabase_url, validate_startup_settings
@@ -39,6 +41,17 @@ app.add_middleware(
     allow_credentials=True,
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+@app.middleware("http")
+async def add_cache_control_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/frontend_old/") and not path.endswith(".html"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.endswith(".html") or path == "/":
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
 
 @app.middleware("http")
 async def record_http_metrics(request, call_next):

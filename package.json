@@ -1,0 +1,14 @@
+{
+  "name": "shreelakshmi-astro",
+  "version": "1.0.0",
+  "description": "Shree Lakshmi Astro frontend build tools",
+  "private": true,
+  "scripts": {
+    "build": "node build.js",
+    "minify": "node build.js"
+  },
+  "devDependencies": {
+    "clean-css-cli": "^5.6.3",
+    "terser": "^5.49.0"
+  }
+}

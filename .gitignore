@@ -9,3 +9,5 @@ ephemeris/
 !.env.example
 .vercel
 .env*
+node_modules/
+package-lock.json

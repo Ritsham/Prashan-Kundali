@@ -4,7 +4,7 @@ import glob
 standard_navbar = """    <!-- Global Navbar -->
     <nav class="global-navbar" aria-label="Main Navigation">
       <div class="logo-text">
-        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> Shree Lakshmi <span class="highlight">Astro</span>
+        <img src="./ganesha.webp" alt="Ganesha Logo" class="navbar-ganesha"> Shree Lakshmi <span class="highlight">Astro</span>
       </div>
       <div class="nav-links">
         <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
