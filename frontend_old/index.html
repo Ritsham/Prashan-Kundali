@@ -1,0 +1,1630 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kundali Studio - Vedic Prashna & Lagna Horoscope</title>
+    <script>
+      try {
+        if (!window.location.hash && localStorage.getItem("kundali_active_chart_state_v2")) {
+          document.documentElement.classList.add("restoring-chart");
+        }
+      } catch (_error) {}
+    </script>
+    <style>
+      html.restoring-chart body:not(.has-result) .entry,
+      html.restoring-chart body:not(.has-result) .floating-popup {
+        visibility: hidden !important;
+      }
+    </style>
+    <link rel="stylesheet" href="./styles.css?v=14" />
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+      // Global error handler to help debug frontend crashes.
+      // Off in production; append ?debug=1 to the URL (or set
+      // localStorage.astro_debug = "1") to surface runtime errors on-page.
+      const __astroDebugOn =
+        new URLSearchParams(window.location.search).has("debug") ||
+        localStorage.getItem("astro_debug") === "1";
+      if (__astroDebugOn)
+        document.addEventListener("DOMContentLoaded", () =>
+          document.body.classList.add("debug-mode"),
+        );
+      window.onerror = function (msg, url, line, col, error) {
+        if (!__astroDebugOn) {
+          console.error(msg, error);
+          if (window.showFlash) {
+            window.showFlash(error?.message || msg, "error");
+          }
+          return false;
+        }
+        const div = document.createElement("div");
+        div.style.position = "fixed";
+        div.style.top = "0";
+        div.style.left = "0";
+        div.style.right = "0";
+        div.style.background = "#ffebee";
+        div.style.color = "#c62828";
+        div.style.padding = "16px";
+        div.style.borderBottom = "2px solid #c62828";
+        div.style.zIndex = "999999";
+        div.style.fontFamily = "monospace";
+        div.style.fontSize = "14px";
+        div.innerText =
+          "Runtime Error: " +
+          msg +
+          " at " +
+          url +
+          ":" +
+          line +
+          (col ? ":" + col : "") +
+          (error ? "\n" + error.stack : "");
+        document.body.appendChild(div);
+        return false;
+      };
+      window.onunhandledrejection = function (event) {
+        if (!__astroDebugOn) {
+          console.error(event.reason);
+          if (window.showFlash) {
+            window.showFlash(event.reason?.message || event.reason || "Unhandled Promise Rejection", "error");
+          }
+          return;
+        }
+        const div = document.createElement("div");
+        div.style.position = "fixed";
+        div.style.top = "0";
+        div.style.left = "0";
+        div.style.right = "0";
+        div.style.background = "#ffebee";
+        div.style.color = "#c62828";
+        div.style.padding = "16px";
+        div.style.borderBottom = "2px solid #c62828";
+        div.style.zIndex = "999999";
+        div.style.fontFamily = "monospace";
+        div.style.fontSize = "14px";
+        div.innerText = "Unhandled Promise Rejection: " + event.reason;
+        document.body.appendChild(div);
+      };
+    </script>
+  </head>
+  <body>
+    <!-- Authentication Modal (hidden by default) -->
+    <div id="auth-modal" class="auth-modal hidden">
+      <div class="auth-backdrop" id="auth-backdrop"></div>
+      <div class="auth-panel">
+        <button
+          type="button"
+          id="btn-close-auth"
+          class="btn-close-auth"
+          aria-label="Close modal"
+        >
+          &times;
+        </button>
+        <h1>Welcome to Kundali Studio</h1>
+        <p>
+          Sign in with your Google account to perform readings, consult
+          astrologers, and track saved transits.
+        </p>
+        <button type="button" id="btn-login-google" class="btn-google-login">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
+          </svg>
+          Sign in with Google
+        </button>
+        <div
+          id="auth-debug-box"
+          style="
+            margin-top: 20px;
+            font-size: 11px;
+            color: #9ca3af;
+            text-align: left;
+            border-top: 1px solid rgba(46, 43, 95, 0.08);
+            padding-top: 10px;
+            width: 100%;
+            white-space: pre-wrap;
+            word-break: break-all;
+          "
+        >
+          Initializing script...
+        </div>
+      </div>
+    </div>
+
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <button
+        type="button"
+        id="mobile-menu-button"
+        class="mobile-menu-button"
+        aria-label="Open navigation menu"
+        aria-expanded="false"
+        aria-controls="mobile-nav-drawer"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <div class="logo-text">
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> ॐ <span class="highlight">Kundali</span> Studio
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <div id="mobile-nav-drawer" class="mobile-nav-drawer" aria-hidden="true">
+      <div class="mobile-drawer-panel" role="dialog" aria-label="Navigation menu">
+        <div class="mobile-drawer-head">
+          <strong>Kundali Studio</strong>
+          <button type="button" id="mobile-menu-close" aria-label="Close navigation menu">&times;</button>
+        </div>
+        <a href="/index.html" class="mobile-drawer-link" data-mobile-nav-link>Home</a>
+        <a href="/consultation" class="mobile-drawer-link" data-mobile-nav-link>Consultant</a>
+        <a href="/index.html#pricing" class="mobile-drawer-link" data-mobile-nav-link>Pricing</a>
+        <a href="/about.html" class="mobile-drawer-link" data-mobile-nav-link>About</a>
+        <a href="/astro-community" class="mobile-drawer-link" data-mobile-nav-link>Astro Community</a>
+        <button type="button" class="mobile-drawer-link mobile-login-link" data-mobile-login>Login</button>
+      </div>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+
+    <!-- Main App -->
+    <main class="shell" id="main-app">
+
+      <!-- Today's Panchang Strip -->
+      <div class="panchang-strip" aria-label="Today's Panchang Info">
+        <div class="panchang-track" id="panchang-track">
+          <div class="panchang-item">
+            <span class="panchang-label">तिथि (Tithi)</span>
+            <span class="panchang-val">Loading...</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+            <span class="panchang-val">Loading...</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+            <span class="panchang-val">Loading...</span>
+          </div>
+          <div class="panchang-divider"></div>
+          <div class="panchang-item">
+            <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+            <span class="panchang-val">Loading...</span>
+          </div>
+          <div class="panchang-divider"></div>
+        </div>
+      </div>
+
+      <section class="entry">
+        <!-- Celestial Background Elements -->
+        <div class="celestial-bg">
+          <!-- Rotating Sudarshan Chakra Background -->
+          <div class="chakra-bg-container">
+            <svg class="chakra-svg" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="0.8" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+              <!-- Center hub -->
+              <circle cx="50" cy="50" r="6" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="2" fill="currentColor" />
+              <!-- Inner ring -->
+              <circle cx="50" cy="50" r="18" stroke-dasharray="2,2" />
+              <!-- Outer ring -->
+              <circle cx="50" cy="50" r="44" stroke-width="1.2" />
+              <circle cx="50" cy="50" r="47" />
+              <!-- 24 Spokes -->
+              <g stroke-width="0.6">
+                <line x1="50" y1="50" x2="50" y2="6" />
+                <line x1="50" y1="50" x2="50" y2="94" />
+                <line x1="50" y1="50" x2="6" y2="50" />
+                <line x1="50" y1="50" x2="94" y2="50" />
+                <line x1="50" y1="50" x2="19" y2="19" />
+                <line x1="50" y1="50" x2="81" y2="81" />
+                <line x1="50" y1="50" x2="19" y2="81" />
+                <line x1="50" y1="50" x2="81" y2="19" />
+                <line x1="50" y1="50" x2="61.4" y2="8.4" />
+                <line x1="50" y1="50" x2="38.6" y2="91.6" />
+                <line x1="50" y1="50" x2="72.1" y2="15.6" />
+                <line x1="50" y1="50" x2="27.9" y2="84.4" />
+                <line x1="50" y1="50" x2="84.4" y2="27.9" />
+                <line x1="50" y1="50" x2="15.6" y2="72.1" />
+                <line x1="50" y1="50" x2="91.6" y2="38.6" />
+                <line x1="50" y1="50" x2="8.4" y2="61.4" />
+                <line x1="50" y1="50" x2="61.4" y2="91.6" />
+                <line x1="50" y1="50" x2="38.6" y2="8.4" />
+                <line x1="50" y1="50" x2="72.1" y2="84.4" />
+                <line x1="50" y1="50" x2="27.9" y2="15.6" />
+                <line x1="50" y1="50" x2="84.4" y2="72.1" />
+                <line x1="50" y1="50" x2="15.6" y2="27.9" />
+                <line x1="50" y1="50" x2="91.6" y2="61.4" />
+                <line x1="50" y1="50" x2="8.4" y2="38.6" />
+              </g>
+              <!-- Teeth details -->
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(0 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(15 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(30 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(45 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(60 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(75 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(90 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(105 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(120 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(135 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(150 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(165 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(180 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(195 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(210 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(225 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(240 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(255 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(270 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(285 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(300 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(315 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(330 50 50)" />
+              <path d="M50 2 L52 5 L48 5 Z" fill="currentColor" transform="rotate(345 50 50)" />
+            </svg>
+          </div>
+
+          <div class="planet planet-1"></div>
+          <div class="planet planet-2"></div>
+          <div class="constellation-overlay"></div>
+        </div>
+
+        <div class="hero-container">
+          <div class="hero-center-content">
+            <span class="devanagari-accent">ज्योतिषं नेत्रं शास्त्रस्य</span>
+            <span class="hero-eyebrow-mark">✨ Luxury Spiritual Wellness</span>
+            <h1 class="hero-main-title">
+              Decode the Blueprint Written in the Stars.
+            </h1>
+            <p class="hero-lede">
+              Ancient Wisdom meets Modern Precision. Generate highly accurate
+              birth charts and gain profound insights into your life's journey.
+            </p>
+
+            <div class="hero-cta-group" id="mode-panel">
+              <button
+                type="button"
+                class="btn-primary mode-card"
+                data-mode="lagna"
+              >
+                Lagna (Birth Chart)
+              </button>
+              <button
+                type="button"
+                class="btn-secondary mode-card"
+                data-mode="prashna"
+              >
+                Prashna (Ask a Question)
+              </button>
+              <button
+                type="button"
+                class="btn-secondary mode-card"
+                data-matchmaking-link
+              >
+                Match Making
+              </button>
+            </div>
+
+            <div class="hero-stat-row">
+              <div><strong>Expert</strong><span>Astrologer</span></div>
+            </div>
+          </div>
+        </div>
+
+        <form id="prashna-form" class="form hidden">
+          <div class="form-head">
+            <div>
+              <p class="eyebrow" id="mode-eyebrow">Selected mode</p>
+              <h2 id="form-title">Kundli</h2>
+            </div>
+            <button type="button" id="change-mode-button">Change Mode</button>
+          </div>
+
+          <div class="portal-guidance-banner">
+            <div class="shanti-heading">ॐ शान्तिः शान्तिः शान्तिः</div>
+            <p class="guidance-desc">
+              Prashna Darshana Portal — for preparatory guidance only.
+            </p>
+          </div>
+
+          <!-- Wizard Progress -->
+          <div class="wizard-progress-bar">
+            <div
+              class="wizard-progress-fill"
+              id="wizard-progress-fill"
+              style="width: 33%"
+            ></div>
+          </div>
+          <div class="wizard-steps-indicator" id="wizard-steps-indicator">
+            <span class="active">Personal</span>
+            <span>Details</span>
+            <span>Location</span>
+          </div>
+
+          <!-- Step 1: Personal -->
+          <div class="wizard-step" id="wizard-step-1">
+            <label>
+              Name
+              <input
+                id="name"
+                name="name"
+                autocomplete="name"
+                required
+                placeholder="Your name"
+              />
+            </label>
+
+            <div id="birth-fields" class="hidden">
+              <label>
+                Gender
+                <select id="gender" name="gender">
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+
+              <label>
+                Birth date and time
+                <div class="dt-picker-group">
+                  <div class="dt-inputs">
+                    <input
+                      id="birth_date"
+                      name="birth_date"
+                      type="date"
+                      placeholder="YYYY-MM-DD"
+                      autocomplete="off"
+                    />
+                    <input
+                      id="birth_time"
+                      name="birth_time"
+                      type="time"
+                      step="1"
+                      placeholder="HH:MM:SS"
+                      autocomplete="off"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    id="use-now-btn"
+                    class="dt-now-btn"
+                    title="Set to current date &amp; time"
+                  >
+                    ⏱ Use Now
+                  </button>
+                </div>
+                <input
+                  id="birth_datetime_local"
+                  name="birth_datetime_local"
+                  type="hidden"
+                />
+              </label>
+            </div>
+
+            <div class="wizard-actions">
+              <button
+                type="button"
+                class="btn-primary"
+                onclick="nextWizardStep(2)"
+              >
+                Next Step
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2: Question (Prashna Mode) / Other Details -->
+          <div class="wizard-step hidden" id="wizard-step-2">
+            <label id="question-field">
+              Question
+              <textarea
+                id="question"
+                name="question"
+                required
+                rows="4"
+                placeholder="Ask the exact Prashna question"
+              ></textarea>
+            </label>
+
+            <label id="question-domain-field">
+              Question domain
+              <select id="question_domain" name="question_domain">
+                <option value="">General / not sure</option>
+                <option value="wealth">Wealth / money</option>
+                <option value="marriage">Marriage / relationship</option>
+                <option value="child">Child / progeny</option>
+                <option value="job_career">Job / career</option>
+                <option value="illness">Illness / health</option>
+                <option value="foreign">Foreign / travel</option>
+                <option value="education">Education</option>
+              </select>
+            </label>
+
+            <label id="job-type-field" class="hidden">
+              Job type
+              <select id="job_type" name="job_type">
+                <option value="">Not sure</option>
+                <option value="government">Government job</option>
+                <option value="private">Private job</option>
+              </select>
+            </label>
+
+            <div class="wizard-actions dual">
+              <button
+                type="button"
+                class="btn-secondary"
+                onclick="nextWizardStep(1)"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                class="btn-primary"
+                onclick="nextWizardStep(3)"
+              >
+                Next Step
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 3: Location & Submit -->
+          <div class="wizard-step hidden" id="wizard-step-3">
+            <label class="location-label">
+              <span>City / place</span>
+              <div class="location-search-wrap">
+                <input
+                  id="place_search"
+                  name="place_search"
+                  autocomplete="off"
+                  required
+                  placeholder="Type city name…"
+                  aria-label="Search city or place"
+                />
+                <button
+                  type="button"
+                  id="gps-button"
+                  class="gps-icon-btn"
+                  title="Use my GPS location"
+                >
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                  </svg>
+                  GPS
+                </button>
+              </div>
+            </label>
+
+            <div
+              id="place-results"
+              class="place-results"
+              aria-live="polite"
+            ></div>
+
+            <details class="manual-location">
+              <summary>Manual coordinates</summary>
+              <div class="location-grid">
+                <label>
+                  Latitude
+                  <input
+                    id="latitude"
+                    name="latitude"
+                    inputmode="decimal"
+                    required
+                    placeholder="28.6139"
+                  />
+                </label>
+                <label>
+                  Longitude
+                  <input
+                    id="longitude"
+                    name="longitude"
+                    inputmode="decimal"
+                    required
+                    placeholder="77.2090"
+                  />
+                </label>
+              </div>
+              <label>
+                Place name
+                <input
+                  id="place_name"
+                  name="place_name"
+                  required
+                  placeholder="New Delhi, India"
+                />
+              </label>
+            </details>
+
+            <details class="manual-location">
+              <summary>Validation time override</summary>
+              <label>
+                Exact UTC time
+                <input
+                  id="asked_at_utc"
+                  name="asked_at_utc"
+                  placeholder="2026-06-26T07:35:00+00:00"
+                />
+              </label>
+              <p class="field-hint">
+                Leave blank for true Prashna mode. Use only when matching
+                AstroSage/DrikPanchang input time.
+              </p>
+            </details>
+
+            <div class="wizard-actions dual">
+              <button
+                type="button"
+                class="btn-secondary"
+                onclick="nextWizardStep(2)"
+              >
+                Back
+              </button>
+              <button type="submit" id="submit-button" class="btn-primary">
+                Generate Kundli
+              </button>
+            </div>
+            <p id="status" class="status"></p>
+          </div>
+        </form>
+
+        <script>
+          function nextWizardStep(stepNumber) {
+            // Very simple frontend logic for wizard steps
+            const currentMode = document
+              .getElementById("mode-eyebrow")
+              .innerText.toLowerCase();
+
+            // If Lagna mode, skip step 2 because question fields are hidden
+            if (currentMode.includes("lagna") && stepNumber === 2) {
+              // Coming from 1 going to 2 -> jump to 3
+              if (
+                document
+                  .getElementById("wizard-step-1")
+                  .classList.contains("hidden") === false
+              ) {
+                stepNumber = 3;
+              } else {
+                // Coming from 3 going to 2 -> jump to 1
+                stepNumber = 1;
+              }
+            }
+
+            document.getElementById("wizard-step-1").classList.add("hidden");
+            document.getElementById("wizard-step-2").classList.add("hidden");
+            document.getElementById("wizard-step-3").classList.add("hidden");
+
+            document
+              .getElementById("wizard-step-" + stepNumber)
+              .classList.remove("hidden");
+
+            const fill = document.getElementById("wizard-progress-fill");
+            const indicators = document.getElementById(
+              "wizard-steps-indicator",
+            ).children;
+
+            if (stepNumber === 1) {
+              fill.style.width = "33%";
+            }
+            if (stepNumber === 2) {
+              fill.style.width = "66%";
+            }
+            if (stepNumber === 3) {
+              fill.style.width = "100%";
+            }
+
+            for (let i = 0; i < indicators.length; i++) {
+              if (i < stepNumber) indicators[i].classList.add("active");
+              else indicators[i].classList.remove("active");
+            }
+          }
+        </script>
+      </section>
+
+      <section id="result" class="result hidden">
+        <button
+          type="button"
+          id="mobile-result-nav-button"
+          class="mobile-result-nav-button"
+          aria-label="Open chart navigation"
+          aria-expanded="false"
+          aria-controls="mobile-result-drawer"
+        >
+          Charts
+        </button>
+        <div id="mobile-result-drawer" class="mobile-result-drawer" aria-hidden="true">
+          <div class="mobile-result-panel" role="dialog" aria-label="Chart navigation">
+            <div class="mobile-drawer-head">
+              <strong>Chart Navigator</strong>
+              <button type="button" id="mobile-result-close" aria-label="Close chart navigation">&times;</button>
+            </div>
+            <button type="button" data-mobile-result-target="overview">Overview</button>
+            <button type="button" data-mobile-result-target="charts">All Charts</button>
+            <button type="button" data-mobile-result-target="planets">Planet Positions</button>
+            <button type="button" data-mobile-result-target="kp">KP Tables</button>
+            <button type="button" data-mobile-result-target="transits">Transit / Gochar</button>
+            <button type="button" data-mobile-result-target="dashas">Dashas</button>
+            <button type="button" data-mobile-result-target="interpretation">Interpretation</button>
+            <button type="button" data-mobile-result-target="prashna-charts">Prashna Charts</button>
+          </div>
+        </div>
+        <div class="result-head">
+          <button type="button" id="result-back-button" class="result-back-button">&larr; Back</button>
+          <div>
+            <p class="eyebrow">Generated chart</p>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;"><h2 id="chart-title">Chart</h2><button type="button" id="btn-share-community" class="secondary-action small hidden">Share to Community</button></div>
+          </div>
+
+          <div class="result-tabs-nav lagna-only" id="result-tabs-nav">
+            <button
+              type="button"
+              class="tab-btn active"
+              data-result-tab-button="overview"
+              onclick="switchResultTab('overview', this)"
+            >
+              Overview
+            </button>
+            <button
+              type="button"
+              class="tab-btn"
+              data-result-tab-button="predictions"
+              onclick="switchResultTab('predictions', this)"
+            >
+              Predictions
+            </button>
+            <button
+              type="button"
+              class="tab-btn"
+              data-result-tab-button="charts"
+              onclick="switchResultTab('charts', this)"
+            >
+              Charts
+            </button>
+            <button
+              type="button"
+              class="tab-btn"
+              data-result-tab-button="transits"
+              onclick="switchResultTab('transits', this)"
+            >
+              Transits
+            </button>
+            <button
+              type="button"
+              class="tab-btn"
+              data-result-tab-button="dashas"
+              onclick="switchResultTab('dashas', this)"
+            >
+              Dashas
+            </button>
+          </div>
+
+          <div class="result-tabs-nav prashna-only hidden" id="prashna-tabs-nav">
+            <button
+              type="button"
+              class="tab-btn active"
+              data-prashna-tab-button="interpretation"
+              onclick="switchPrashnaTab('interpretation', this)"
+            >
+              Interpretation
+            </button>
+            <button
+              type="button"
+              class="tab-btn"
+              data-prashna-tab-button="charts-positions"
+              onclick="switchPrashnaTab('charts-positions', this)"
+            >
+              Charts & Positions
+            </button>
+          </div>
+
+          <a id="share-link" class="share-link" href="#">Share link</a>
+        </div>
+        
+        <!-- PRASHNA TAB CONTENTS -->
+        <div class="prashna-tab-content" id="prashna-interpretation" data-prashna-tab="interpretation">
+          <!-- Will be populated by JS -->
+        </div>
+
+        <div class="prashna-tab-content hidden" id="prashna-charts-positions" data-prashna-tab="charts-positions">
+          <!-- Will be populated by JS -->
+        </div>
+
+
+        <div
+          class="facts result-tab-content"
+          id="facts"
+          data-tab="overview"
+        ></div>
+
+        <div class="grid-resizer result-tab-content" data-resize-col="left" aria-hidden="true"></div>
+        <div class="grid-resizer result-tab-content" data-resize-col="right" aria-hidden="true"></div>
+        <div class="row-resizer result-tab-content" data-resize-row="middle" aria-hidden="true"></div>
+
+        <article
+          id="interpretation-card"
+          class="interpretation-card hidden result-tab-content"
+          data-tab="predictions"
+        >
+          <div class="interpretation-head">
+            <div>
+              <p class="eyebrow" id="interpretation-domain">Interpretation</p>
+              <h3 id="interpretation-title">Prashna Reading</h3>
+            </div>
+            <span
+              id="interpretation-confidence"
+              class="interpretation-confidence"
+            ></span>
+          </div>
+          <div id="interpretation-body"></div>
+
+          <!-- Follow-up Chat Section -->
+          <div class="chat-extend-section">
+            <h4 class="chat-extend-title">
+              Ask follow-up questions about this chart
+            </h4>
+            <p class="chat-extend-subtitle">
+              Ask questions like: "What remedies are best?", "Will my health
+              improve?", or "When will this phase end?"
+            </p>
+
+            <div
+              id="chat-extend-history"
+              class="chat-extend-history hidden"
+            ></div>
+
+            <div class="chat-extend-input-group">
+              <textarea
+                id="chat-extend-input"
+                placeholder="Type your follow-up question here..."
+                rows="3"
+              ></textarea>
+              <button type="button" id="btn-chat-extend-submit">
+                Ask AstroAI
+              </button>
+            </div>
+            <p id="chat-extend-status" class="chat-extend-status"></p>
+          </div>
+        </article>
+
+        <article
+          id="consultants-card"
+          class="consultants-card hidden result-tab-content"
+          data-tab="predictions"
+        >
+          <div class="consultants-head">
+            <div>
+              <p class="eyebrow">Not satisfied?</p>
+              <h3>Ask a Real Astrologer</h3>
+            </div>
+            <span id="consultant-queue-status">Live Queue: Checking...</span>
+          </div>
+
+          <div id="consultants-body" class="consultation-cta-body">
+            <!-- Step 1: Intro -->
+            <div id="wizard-step-1" class="wizard-step active">
+              <p class="wizard-lead">
+                Get a personalized, deeply analyzed answer to your exact
+                question within 24 hours from our verified Vedic astrologers.
+              </p>
+              <button
+                type="button"
+                id="btn-start-consultation"
+                class="btn-wizard-primary"
+              >
+                Start Consultation
+              </button>
+            </div>
+
+            <!-- Step 2: Basic Details -->
+            <div id="wizard-step-2" class="wizard-step" style="display: none">
+              <h4
+                class="wizard-lead"
+                style="
+                  color: var(--ink-light);
+                  font-weight: 700;
+                  margin-bottom: 16px;
+                "
+              >
+                Step 1: Your Details
+              </h4>
+              <form id="wizard-details-form">
+                <div class="wizard-form-row">
+                  <input
+                    type="text"
+                    id="cons-name"
+                    required
+                    placeholder="Full Name"
+                  />
+                </div>
+                <div class="wizard-form-row">
+                  <input
+                    type="email"
+                    id="cons-email"
+                    required
+                    disabled
+                    placeholder="Email"
+                  />
+                </div>
+                <div class="wizard-form-row">
+                  <input
+                    type="tel"
+                    id="cons-whatsapp"
+                    required
+                    placeholder="WhatsApp Number"
+                  />
+                </div>
+
+                <div class="wizard-form-row two-up">
+                  <input type="date" id="cons-dob" required />
+                  <input type="time" id="cons-time" required />
+                </div>
+
+                <div class="wizard-form-row" style="position: relative">
+                  <input
+                    type="text"
+                    id="cons-place"
+                    required
+                    placeholder="Place of Birth"
+                    autocomplete="off"
+                  />
+                  <ul
+                    id="cons-place-suggestions"
+                    class="suggestions-list hidden"
+                  ></ul>
+                  <input type="hidden" id="cons-lat" />
+                  <input type="hidden" id="cons-lon" />
+                </div>
+
+                <div class="wizard-form-row">
+                  <select id="cons-gender" required>
+                    <option value="" disabled selected>Select Gender</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <button
+                  type="submit"
+                  id="btn-next-to-question"
+                  class="btn-wizard-primary"
+                >
+                  Continue to Question
+                </button>
+              </form>
+            </div>
+
+            <!-- Step 3: Question & Payment -->
+            <div id="wizard-step-3" class="wizard-step" style="display: none">
+              <h4
+                class="wizard-lead"
+                style="
+                  color: var(--ink-light);
+                  font-weight: 700;
+                  margin-bottom: 16px;
+                "
+              >
+                Step 2: Ask Your Question
+              </h4>
+              <form id="paid-consultation-form">
+                <div class="wizard-form-row">
+                  <textarea
+                    id="paid_question"
+                    name="paid_question"
+                    maxlength="200"
+                    required
+                    placeholder="Type your 1 question here (max 200 chars)..."
+                    rows="3"
+                  ></textarea>
+                </div>
+
+                <div class="wizard-actions">
+                  <button
+                    type="button"
+                    id="btn-back-to-details"
+                    class="btn-wizard-secondary"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="submit"
+                    id="btn-pay-consultation"
+                    class="btn-wizard-primary"
+                  >
+                    Pay ₹299 &amp; Ask
+                  </button>
+                </div>
+
+                <span id="consultation-form-status"></span>
+              </form>
+            </div>
+          </div>
+        </article>
+
+        <article
+          class="worksheet result-tab-content"
+          data-tab="charts"
+        >
+          <div class="widget-controls" aria-label="Optional data panels">
+            <button
+              type="button"
+              class="widget-toggle"
+              data-widget-toggle="planetary"
+              aria-pressed="false"
+            >
+              Planet Positions
+            </button>
+            <button
+              type="button"
+              class="widget-toggle"
+              data-widget-toggle="kp"
+              aria-pressed="false"
+            >
+              KP
+            </button>
+          </div>
+          <div class="worksheet-head">
+            <div>
+              <p class="eyebrow">Worksheet</p>
+              <h3>Topic Charts</h3>
+            </div>
+            <div class="worksheet-actions">
+              <select id="chart-picker"></select>
+              <button type="button" id="add-chart-button">Add Chart</button>
+              <button type="button" id="reset-worksheet-button">Reset</button>
+            </div>
+          </div>
+          <div id="worksheet-presets" class="worksheet-presets" aria-label="Worksheet presets">
+            <button type="button" data-worksheet-preset="main">Main</button>
+            <button type="button" data-worksheet-preset="divisional">Divisional</button>
+            <button type="button" data-worksheet-preset="career">Career</button>
+            <button type="button" data-worksheet-preset="marriage">Marriage</button>
+            <button type="button" data-worksheet-preset="health">Health</button>
+          </div>
+          <div id="topic-chart-tabs" class="chart-tabs"></div>
+          <div id="divisional-charts" class="worksheet-canvas"></div>
+          <div
+            id="panel-palette"
+            class="panel-palette hidden"
+            aria-live="polite"
+          ></div>
+        </article>
+
+        <article class="planet-card result-tab-content" data-tab="overview">
+          <h3>Planetary Positions</h3>
+          <div class="table-wrap">
+            <table id="planet-table"></table>
+          </div>
+        </article>
+
+        <article
+          id="kp-section"
+          class="planet-card hidden result-tab-content"
+          data-tab="overview"
+        >
+          <div class="kp-chart-panel">
+            <h3>KP Chart</h3>
+            <div class="kp-chart-wrap">
+              <canvas id="kp-chart" class="responsive-canvas kundali-canvas"></canvas>
+            </div>
+          </div>
+          <div class="kp-details-panel">
+            <div class="kp-significators-panel">
+              <h3>KP Significators</h3>
+              <div class="table-wrap">
+                <table id="kp-planet-table"></table>
+              </div>
+            </div>
+            <div class="kp-cusps-panel">
+              <h3>KP Cusps</h3>
+              <div class="table-wrap">
+                <table id="kp-cusp-table"></table>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article
+          id="transit-section"
+          class="hidden result-tab-content"
+          data-tab="transits"
+        >
+          <div class="dasha-app-head">
+            <div>
+              <p class="eyebrow">Current gochar</p>
+              <h3>Transit for Lagna Kundli</h3>
+            </div>
+            <span class="dasha-system">Birth Lagna houses</span>
+          </div>
+          <div class="transit-layout">
+            <div class="transit-data-panel">
+              <div id="transit-facts" class="facts transit-facts"></div>
+              <div class="table-wrap">
+                <table id="transit-table"></table>
+              </div>
+            </div>
+            <div class="transit-chart-panel">
+              <h3>Transit Chart</h3>
+              <canvas id="transit-chart" class="responsive-canvas kundali-canvas"></canvas>
+            </div>
+          </div>
+        </article>
+
+        <article
+          class="dasha-card result-tab-content"
+          data-tab="dashas"
+        >
+          <div class="dasha-app-head">
+            <div>
+              <p class="eyebrow">Time periods</p>
+              <h3>Vimshottari Dasha</h3>
+            </div>
+            <span class="dasha-system">120 year cycle</span>
+          </div>
+          <div id="dasha-summary" class="dasha-summary"></div>
+          <div class="dasha-drillbar">
+            <button type="button" id="dasha-back-button" disabled>Back</button>
+            <div>
+              <h3 id="dasha-heading" class="dasha-heading">Mahadasha</h3>
+              <p id="dasha-path" class="dasha-path">
+                Select a period to open the next dasha level.
+              </p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="dasha-table"></table>
+          </div>
+          <p class="dasha-note">
+            Dates shown are period ending dates. Drill-down levels: Mahadasha,
+            Antardasha, Pratyantardasha, Sookshma, Prana.
+          </p>
+        </article>
+
+        <script>
+          function showCompleteResultPage() {
+            const contents = document.querySelectorAll(".result-tab-content");
+            contents.forEach((c) => {
+              c.style.display = document.body.classList.contains("result-prashna") ? "none" : "";
+            });
+          }
+
+          function switchResultTab(tabName, button) {
+            localStorage.setItem("kundali_active_result_tab", tabName);
+            showCompleteResultPage();
+            const btns = document.querySelectorAll("#result-tabs-nav .tab-btn");
+            btns.forEach((b) => {
+              b.classList.toggle("active", button ? b === button : b.innerText.toLowerCase() === tabName.toLowerCase());
+            });
+
+            const target = document.querySelector(`.result-tab-content[data-tab="${tabName}"]:not(.hidden)`);
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+          
+          function switchPrashnaTab(tabName, button) {
+            localStorage.setItem("kundali_active_prashna_tab", tabName);
+            showCompleteResultPage();
+            const btns = document.querySelectorAll("#prashna-tabs-nav .tab-btn");
+            btns.forEach((b) => {
+              b.classList.toggle("active", button ? b === button : (b.innerText.toLowerCase().includes(tabName.split('-')[0].toLowerCase())));
+            });
+
+            document.querySelectorAll(".prashna-tab-content").forEach((c) => {
+              c.classList.toggle("hidden", c.dataset.prashnaTab !== tabName);
+            });
+            const target = document.querySelector(`.prashna-tab-content[data-prashna-tab="${tabName}"]`);
+            if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+
+          window.showCompleteResultPage = showCompleteResultPage;
+          setTimeout(showCompleteResultPage, 500);
+        </script>
+      </section>
+
+      <!-- App Footer -->
+
+      <!-- Pricing View -->
+      <section id="pricing-card" class="pricing-card hidden">
+        <div class="pricing-header-section">
+          <p class="eyebrow">Choose your plan</p>
+          <h2>Pricing & Subscriptions</h2>
+          <p class="pricing-subtitle">
+            Unlock deeper follow-up questions and extended chat sessions with
+            AstroAI.
+          </p>
+        </div>
+
+        <div class="pricing-grid">
+          <!-- Free Plan -->
+          <div class="pricing-plan-card" data-plan="free">
+            <div class="plan-badge">Basic</div>
+            <h3 class="plan-name">Free Plan</h3>
+            <div class="plan-price">
+              <span class="currency">₹</span>
+              <span class="amount">0</span>
+              <span class="period">/month</span>
+            </div>
+            <p class="plan-description">
+              Get started with single question Prashna/Lagna calculation.
+            </p>
+            <ul class="plan-features">
+              <li>1 Prashna / Lagna chart</li>
+              <li>Basic planetary alignments</li>
+              <li class="disabled">No follow-up questions</li>
+              <li class="disabled">No chat extensions</li>
+            </ul>
+            <button
+              type="button"
+              class="btn-select-plan"
+              onclick="selectPricingPlan('free')"
+            >
+              Current Plan
+            </button>
+          </div>
+
+          <!-- Basic Plan -->
+          <div class="pricing-plan-card popular" data-plan="basic">
+            <div class="plan-badge">Popular</div>
+            <h3 class="plan-name">Basic Plan</h3>
+            <div class="plan-price">
+              <span class="currency">₹</span>
+              <span class="amount">29</span>
+              <span class="period">/month</span>
+            </div>
+            <p class="plan-description">
+              For enthusiasts who want to study multiple charts regularly.
+            </p>
+            <ul class="plan-features">
+              <li>10 charts per month</li>
+              <li>Full divisional charts (Vargas)</li>
+              <li>Gemini-powered interpretations</li>
+              <li class="disabled">No follow-up questions</li>
+            </ul>
+            <button
+              type="button"
+              class="btn-select-plan"
+              onclick="selectPricingPlan('basic')"
+            >
+              Upgrade Plan
+            </button>
+          </div>
+
+          <!-- Premium Plan -->
+          <div class="pricing-plan-card premium" data-plan="premium">
+            <div class="plan-badge">Astro Pro</div>
+            <h3 class="plan-name">Premium Plan</h3>
+            <div class="plan-price">
+              <span class="currency">₹</span>
+              <span class="amount">99</span>
+              <span class="period">/month</span>
+            </div>
+            <p class="plan-description">
+              Complete unlimited follow-up conversations with AstroAI.
+            </p>
+            <ul class="plan-features">
+              <li>10 charts per month</li>
+              <li>Full divisional charts (Vargas)</li>
+              <li>Gemini-powered interpretations</li>
+              <li><strong>Ask follow-up questions</strong></li>
+              <li><strong>Extended Chat Session</strong></li>
+            </ul>
+            <button
+              type="button"
+              class="btn-select-plan"
+              onclick="selectPricingPlan('premium')"
+            >
+              Upgrade Plan
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="subscription-status-alert"
+          class="subscription-status-alert hidden"
+        ></div>
+      </section>
+
+      <footer class="app-footer" style="background-color: rgb(241, 217, 161)">
+        <div class="footer-grid">
+          <!-- Column 1: About Us -->
+          <div class="footer-col about-col">
+            <div class="footer-logo">
+              <div class="logo-brush">
+                <span class="logo-text-top">Prashna</span>
+                <span class="logo-text-bottom">Astro</span>
+              </div>
+            </div>
+            <h3>ABOUT US</h3>
+            <p>
+              Prashna Astro provides Research-Level Vedic Astrology
+              Consultations & Predictions. Get Expert Vedic guidance on Career,
+              Health, Relationships & more.
+            </p>
+          </div>
+
+          <!-- Column 2: Quick Links -->
+          <div class="footer-col links-col">
+            <h3>QUICK LINKS</h3>
+            <ul class="quick-links-list">
+              <li>
+                <a href="/apply.html">Prashna Astro Community (Astrologers)</a>
+              </li>
+              <li><a href="#">Privacy Policy</a></li>
+              <li><a href="#about-platform" id="footer-about-link">About Us</a></li>
+              <li><a href="#">Post-Consultation Policy</a></li>
+            </ul>
+
+            <h3 class="social-title">SOCIAL CHANNELS</h3>
+            <div class="social-channels">
+              <a href="#" class="social-icon" title="Instagram"
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"
+                  /></svg
+              ></a>
+              <a href="#" class="social-icon" title="Facebook"
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z"
+                  /></svg
+              ></a>
+              <a href="#" class="social-icon" title="Twitter"
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"
+                  /></svg
+              ></a>
+              <a href="#" class="social-icon" title="YouTube"
+                ><svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
+                  <path
+                    d="M23.498 6.163a3.003 3.003 0 00-2.11-2.11C19.518 3.545 12 3.545 12 3.545s-7.518 0-9.388.508a3.003 3.003 0 00-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 002.11 2.11c1.87.508 9.388.508 9.388.508s7.518 0 9.388-.508a3.003 3.003 0 002.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"
+                  /></svg
+              ></a>
+            </div>
+          </div>
+
+          <!-- Column 3: Community & Moat -->
+          <div class="footer-col community-col">
+            <p class="community-text">
+              Join Prashna Astro's WhatsApp for daily astrology insights.
+              Enhance your success with our expert predictions.
+            </p>
+            <a
+              href="https://whatsapp.com/channel/0029Vb8ZvHsKbYMLie7XIk0A"
+              target="_blank"
+              class="btn-whatsapp-community"
+            >
+              <svg
+                class="wa-icon"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  fill="currentColor"
+                  d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"
+                />
+              </svg>
+
+              <span>Join WhatsApp Community</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <p>© 2026 Prashna Astro. All Rights Reserved</p>
+        </div>
+      </footer>
+    </main>
+
+    <script type="module" src="./app.js?v=16"></script>
+
+    <!-- Floating Popups Section -->
+    <div id="popup-astro-community" class="floating-popup popup-left">
+      <div class="popup-card">
+        <div class="popup-watermark">ॐ</div>
+        <button type="button" class="popup-close" aria-label="Close popup">&times;</button>
+        <div class="popup-icon-wrapper" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10" stroke-dasharray="3 3"></circle>
+            <circle cx="12" cy="12" r="6"></circle>
+            <circle cx="12" cy="12" r="2" fill="currentColor"></circle>
+            <line x1="12" y1="2" x2="12" y2="22"></line>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+          </svg>
+        </div>
+        <div class="popup-content">
+          <h4>Join Our Growing Astrologer Community</h4>
+          <p>Connect with verified astrologers and enthusiasts. <b>Only for Astrologers</b></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="popup-whatsapp" class="floating-popup popup-right">
+      <div class="popup-card">
+        <div class="popup-watermark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"></path>
+          </svg>
+        </div>
+        <button type="button" class="popup-close" aria-label="Close popup">&times;</button>
+        <div class="popup-icon-wrapper" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.6.95 2.722 1.488 4.791 1.489 5.568 0 10.099-4.52 10.102-10.098.002-2.707-1.05-5.251-2.962-7.165C16.666 1.467 14.127.417 11.417.417 5.845.417 1.319 4.94 1.316 10.513c-.001 2.052.535 3.197 1.466 4.767l-.995 3.635 3.738-.979.522.318zm10.967-7.407c-.3-.15-1.77-.874-2.046-.973-.276-.1-.477-.15-.677.15-.2.3-.777.973-.951 1.173-.174.2-.35.225-.65.075-.3-.15-1.263-.465-2.407-1.485-.89-.792-1.49-1.77-1.665-2.07-.175-.3-.019-.462.13-.611.135-.135.3-.35.45-.525.15-.175.2-.3.3-.5.1-.2.05-.375-.025-.525-.075-.15-.677-1.633-.928-2.233-.244-.588-.493-.508-.677-.518-.174-.01-.375-.012-.576-.012-.2 0-.527.075-.802.375-.276.3-1.053 1.175-1.053 2.862 0 1.687 1.228 3.316 1.399 3.545.172.229 2.417 3.693 5.857 5.177.819.353 1.458.564 1.957.722.822.261 1.57.224 2.161.136.66-.099 2.03-.83 2.317-1.632.287-.802.287-1.49.201-1.632-.086-.143-.315-.229-.659-.401"></path>
+          </svg>
+        </div>
+        <div class="popup-content">
+          <h4>Get Astrology Updates First</h4>
+          <p>Join our WhatsApp channel for early updates and insights.</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const popupLeft = document.getElementById("popup-astro-community");
+        const popupRight = document.getElementById("popup-whatsapp");
+        const modePanel = document.getElementById("mode-panel");
+        const resultPanel = document.getElementById("result");
+
+        function syncLandingPopups() {
+          const isHome = document.body.classList.contains("view-home");
+          const hasResult = document.body.classList.contains("has-result");
+          const modePanelVisible = modePanel && !modePanel.classList.contains("hidden");
+          const resultHidden = !resultPanel || resultPanel.classList.contains("hidden");
+          document.body.classList.toggle(
+            "popup-landing-active",
+            isHome && !hasResult && modePanelVisible && resultHidden,
+          );
+        }
+
+        function setupPopupBehavior(popup, targetLink, openInNewTab) {
+          if (!popup) return;
+          const card = popup.querySelector(".popup-card");
+          const closeBtn = popup.querySelector(".popup-close");
+          popup.classList.add("visible");
+
+          card.addEventListener("click", (event) => {
+            if (event.target.closest(".popup-close")) return;
+            if (openInNewTab) {
+              window.open(targetLink, "_blank", "noopener");
+            } else {
+              window.location.href = targetLink;
+            }
+          });
+
+          closeBtn.addEventListener("click", (event) => {
+            event.stopPropagation();
+            popup.classList.add("hidden");
+          });
+        }
+
+        setupPopupBehavior(popupLeft, "./astro-community", false);
+        setupPopupBehavior(popupRight, "https://whatsapp.com/channel/0029Vb8ZvHsKbYMLie7XIk0A", true);
+        syncLandingPopups();
+
+        const popupObserver = new MutationObserver(syncLandingPopups);
+        popupObserver.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+        if (modePanel) popupObserver.observe(modePanel, { attributes: true, attributeFilter: ["class"] });
+        if (resultPanel) popupObserver.observe(resultPanel, { attributes: true, attributeFilter: ["class"] });
+
+        async function loadPanchang() {
+          const track = document.getElementById("panchang-track");
+          if (!track) return;
+
+          const offsetMinutes = -new Date().getTimezoneOffset();
+          const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+          const offsetMins = Math.abs(offsetMinutes) % 60;
+          const offsetSign = offsetMinutes >= 0 ? "+" : "-";
+          const tzOffset = `${offsetSign}${String(offsetHours).padStart(2, "0")}:${String(offsetMins).padStart(2, "0")}`;
+          const todayStr = new Date().toISOString().split("T")[0];
+          const cachedLocation = localStorage.getItem("kundali_panchang_location");
+          let lat = 28.6139;
+          let lng = 77.2090;
+
+          if (cachedLocation) {
+            try {
+              const parsed = JSON.parse(cachedLocation);
+              lat = parsed.lat || lat;
+              lng = parsed.lng || lng;
+            } catch (error) {
+              localStorage.removeItem("kundali_panchang_location");
+            }
+          }
+
+          const cacheKey = `panchang_${todayStr}_${lat.toFixed(2)}_${lng.toFixed(2)}_${tzOffset}`;
+          let data = null;
+
+          try {
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) data = JSON.parse(cached);
+          } catch (error) {
+            console.warn("Panchang cache read failed:", error);
+          }
+
+          if (!data) {
+            try {
+              const params = new URLSearchParams({
+                lat,
+                lng,
+                tz_offset: tzOffset,
+                date_str: todayStr,
+              });
+              const response = await fetch(`/api/panchang?${params.toString()}`);
+              if (response.ok) {
+                data = await response.json();
+                localStorage.setItem(cacheKey, JSON.stringify(data));
+              }
+            } catch (error) {
+              console.error("Error fetching live Panchang data:", error);
+            }
+          }
+
+          if (!data) {
+            data = {
+              tithi: "Shukla Ekadashi",
+              nakshatra: "Anuradha",
+              sunrise: "05:24 AM",
+              sunset: "07:12 PM",
+              muhurat: "11:45 AM - 12:35 PM",
+            };
+          }
+
+          const itemsHTML = `
+            <div class="panchang-item">
+              <span class="panchang-label">तिथि (Tithi)</span>
+              <span class="panchang-val">${data.tithi}</span>
+            </div>
+            <div class="panchang-divider"></div>
+            <div class="panchang-item">
+              <span class="panchang-label">नक्षत्र (Nakshatra)</span>
+              <span class="panchang-val">${data.nakshatra}</span>
+            </div>
+            <div class="panchang-divider"></div>
+            <div class="panchang-item">
+              <span class="panchang-label">सूर्योदय/सूर्यास्त (Sunrise/Sunset)</span>
+              <span class="panchang-val">${data.sunrise} / ${data.sunset}</span>
+            </div>
+            <div class="panchang-divider"></div>
+            <div class="panchang-item">
+              <span class="panchang-label">अभिजीत मुहूर्त (Auspicious Muhurat)</span>
+              <span class="panchang-val">${data.muhurat}</span>
+            </div>
+            <div class="panchang-divider"></div>
+          `;
+
+          track.innerHTML = itemsHTML + itemsHTML + itemsHTML;
+        }
+
+        loadPanchang();
+      });
+    </script>
+  
+    <!-- Share to Community Modal -->
+    <div id="share-community-overlay" class="overlay hidden">
+        <div class="modal">
+            <header>
+                <h2>Share to Community</h2>
+                <button type="button" class="icon-btn close-btn" onclick="document.getElementById('share-community-overlay').classList.add('hidden')">&times;</button>
+            </header>
+            <div class="modal-body">
+                <div class="form-row">
+                    <label>Select Channel</label>
+                    <select id="share-channel-select"></select>
+                </div>
+                <div class="form-row">
+                    <label>Add a comment</label>
+                    <textarea id="share-comment" rows="3" placeholder="What would you like to discuss about this chart?"></textarea>
+                </div>
+            </div>
+            <footer>
+                <button type="button" class="primary-action" id="btn-submit-share">Share Post</button>
+            </footer>
+        </div>
+    </div>
+
+</body>
+</html>
