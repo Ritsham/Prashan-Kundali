@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -110,12 +110,21 @@ def admin_ops_metrics(auth: AuthState = Depends(RequireAdmin())) -> dict:
     return snapshot
 
 
+def get_public_site_url(request: Request) -> str:
+    configured_url = (settings.public_site_url or "").rstrip("/")
+    host = request.url.hostname or ""
+    request_origin = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+    if host not in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        return request_origin
+    return configured_url or request_origin
+
+
 @app.get("/api/config")
-def get_config():
+def get_config(request: Request):
     return {
         "supabaseUrl": get_supabase_url(),
         "supabaseAnonKey": os.getenv("SUPABASE_ANON_KEY", ""),
-        "publicSiteUrl": settings.public_site_url,
+        "publicSiteUrl": get_public_site_url(request),
     }
 
 
