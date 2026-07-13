@@ -15,15 +15,11 @@ The platform is designed with a **Modern Indian Luxury** aesthetic—drawing vis
 - **Vimshottari Dasha**: Computes full 120-year three-tier Dasha structures (Maha Dasha, Antar Dasha, Pratyantar Dasha) based on moon coordinates.
 - **Timezone Resolver**: Uses `timezonefinder` and geographical coordinates to automatically determine exact UTC offsets for any location.
 
-### 2. Modern React & TypeScript Frontend
-- **Obsensory Aesthetics**: Styled with curated gold-and-cream palettes, Outfit & Marcellus typography, and smooth micro-animations.
-- **Responsive Navigation & Brand Elements**: Includes a dynamically rotating background **Sudarshan Chakra** and an integrated Lord Ganesha icon in the navigation header.
-- **Premium Toast Notifications**: slide-in alert notifications capturing WebSocket events, connection changes, and runtime errors.
-- **Modern Routing & Pages**: Fully migrated Vite React SPA containing:
-  - **HomePage**: Astronomical dashboard and calculation entry.
-  - **PrashnaPage & Result**: Detailed charts (D1/D9), planetary metrics, and multi-key LLM interpretations.
-  - **AstroCommunityPage**: Real-time collaborative workspace featuring live channels, multi-threaded sub-replies, and chat actions.
-  - **AdminDashboardPage**: Practitioner application queues and dashboard.
+### 2. Static Frontend Served by FastAPI
+- **Localhost and Production Match**: The app uses the same `frontend_old/` HTML, CSS, and JavaScript files locally and on Vercel.
+- **Luxury Spiritual Aesthetic**: Styled with curated gold-and-cream palettes, traditional brand elements, and an integrated Lord Ganesha icon in the navigation header.
+- **Production Routes**: FastAPI serves the main website, consultation flow, community pages, policy pages, dashboard, profile, matchmaking, and validation pages from one frontend directory.
+- **No Duplicate Frontend App**: The React/Vite duplicate has been removed so routing cannot drift between localhost and the live website.
 
 ### 3. Consultation Workspaces & Queues
 - **Consultant Directory & Profiles**: Interactive search and detailed practitioner dashboards.
@@ -42,7 +38,7 @@ The platform is designed with a **Modern Indian Luxury** aesthetic—drawing vis
 | **Authentication & AuthZ** | Supabase Auth, Row-Level Security (RLS) policies |
 | **Real-Time Layer** | Native WebSockets |
 | **AI Interpretation** | Multi-key rotated LLM providers (Gemini / OpenAI) |
-| **Frontend Framework** | React 19, TypeScript, Vite 8, TailwindCSS v4 |
+| **Frontend** | Static HTML, CSS, and JavaScript served from `frontend_old/` |
 
 ---
 
@@ -58,14 +54,13 @@ python3 scripts/download_ephemeris.py
 This populates the local `ephemeris/` directory with `sepl_18.se1`, `semo_18.se1`, and `seas_18.se1`.
 
 ### Environment Configuration
-Create backend and frontend environment files from the examples:
+Create the backend environment file from the example:
 
 ```bash
 cp .env.example .env
-cp frontend/.env.example frontend/.env.local
 ```
 
-Backend secrets such as `SUPABASE_SERVICE_ROLE_KEY`, LLM provider keys, Redis credentials, and Razorpay secrets must stay in backend/server environment storage only. Browser builds may only receive public `VITE_` values such as `VITE_API_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`.
+Backend secrets such as `SUPABASE_SERVICE_ROLE_KEY`, LLM provider keys, Redis credentials, and Razorpay secrets must stay in backend/server environment storage only.
 
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for development, staging, and production requirements.
 
@@ -78,7 +73,7 @@ python3 main.py
 
 The server will run locally at `http://127.0.0.1:8000`.
 
-- **Main Application & Pages**: `http://127.0.0.1:8000/` (Served dynamically via Vite dev server or static mounting)
+- **Main Application & Pages**: `http://127.0.0.1:8000/` and `http://127.0.0.1:8000/index.html` served from `frontend_old/`
 
 ---
 
@@ -105,17 +100,12 @@ The server will run locally at `http://127.0.0.1:8000`.
 │   │   ├── geocoding_service.py# Nominatim geographic queries
 │   │   └── realtime.py        # WebSocket connection manager
 │   └── storage/               # SQLite & Supabase access helpers
-├── frontend/                  # React/TypeScript Frontend (Vite)
-│   ├── public/                # Static assets (ganesha.png, icons.svg)
-│   ├── src/
-│   │   ├── api/               # API clients (axios base, adminApi, prashnaApi)
-│   │   ├── components/        # Layout elements, Navbars, Kundali charts
-│   │   ├── features/          # Feature code (BookingForm, PrashnaForm)
-│   │   ├── pages/             # Route pages (Admin, Community, Booking)
-│   │   ├── App.tsx            # Main router configuration
-│   │   └── main.tsx           # React entry point
-│   ├── package.json           # React scripts and NPM packages
-│   └── vite.config.ts         # Vite bundler options
+├── frontend_old/              # Single frontend used locally and in production
+│   ├── index.html             # Landing page
+│   ├── consultation.html      # Consultant/payment flow page
+│   ├── community.html         # Astro community page
+│   ├── styles.css             # Shared site styling
+│   └── *.js                   # Browser-side page scripts
 ├── main.py                    # Application Entrypoint & WS Mounts
 └── requirements.txt           # Python Dependency Manifest
 ```
@@ -191,7 +181,7 @@ sequenceDiagram
 
 - **Supabase JWTs**: Restricts access to sensitive workspaces (Admin dashboard, Astro Board) to users carrying verified roles.
 - **Row-Level Security (RLS)**: Enforced database schemas to prevent unapproved profile reads or modifications.
-- **Client Side Guards**: Verified sessions are validated client-side in the React routing layer before rendering protected components.
+- **Client Side Guards**: Browser-side scripts validate sessions and roles before rendering protected controls.
 
 ---
 

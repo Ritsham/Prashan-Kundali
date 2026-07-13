@@ -61,8 +61,6 @@ def consultation_page():
 @app.get("/astro-community", include_in_schema=False)
 def astro_community_page():
     from fastapi.responses import FileResponse
-    if os.path.isfile("frontend/dist/index.html"):
-        return FileResponse("frontend/dist/index.html")
     return FileResponse("frontend_old/community.html")
 
 @app.get("/matchmaking", include_in_schema=False)
@@ -259,19 +257,13 @@ async def get_panchang(lat: float = 28.6139, lng: float = 77.2090, date_str: str
     panchang_cache[cache_key] = payload
     return payload
 
-# Mount static assets for the React App
+# Mount static assets for the single FastAPI-served frontend.
 
 # Note: The old frontend_old/ styles.css and chart-engine.js might be loaded from root.
 # Vercel serverless bundles may omit optional static directories; only mount
 # directories that exist so importing api/index.py never crashes.
 if os.path.isdir("frontend_old"):
     app.mount("/frontend_old", StaticFiles(directory="frontend_old"), name="frontend_old")
-
-# Mount new React app assets
-if os.path.isdir("frontend/dist/assets"):
-    app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="assets")
-
-
 
 # Catch-all route for SPA routing
 @app.get("/", include_in_schema=False)

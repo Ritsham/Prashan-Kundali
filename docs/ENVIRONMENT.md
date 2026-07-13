@@ -46,16 +46,11 @@ Backend-only secrets:
 - `RAZORPAY_WEBHOOK_SECRET`
 - Redis credentials, database URLs, webhook tokens, and any future provider secrets
 
-## Frontend Variables
+## Frontend Configuration
 
-The frontend may only use public `VITE_` values:
+The frontend is served from `frontend_old/` by FastAPI in both local development and production.
 
-- `VITE_API_URL`, optional for split frontend/API hosting
-- `VITE_SUPABASE_URL`, optional public Supabase URL
-- `VITE_SUPABASE_ANON_KEY`, optional public Supabase anon key
-
-If Supabase `VITE_` values are omitted, the app loads public Supabase config from `/api/config`.
-Do not add service-role, LLM, payment, database, or webhook secrets to frontend env files.
+The browser loads public Supabase config from `/api/config`. Do not add service-role, LLM, payment, database, or webhook secrets to browser-side files.
 
 ## CORS
 
@@ -81,22 +76,13 @@ python3 main.py
 Frontend:
 
 ```bash
-cd frontend
-cp .env.example .env.local
-npm install
-npm run dev
-```
-
-For same-origin local backend testing, leave `VITE_API_URL` empty. For Vite dev server calling FastAPI directly, set:
-
-```ini
-VITE_API_URL=http://127.0.0.1:8000
+open http://127.0.0.1:8000/index.html
 ```
 
 ## Production Checklist
 
 - Set `APP_ENV=production`.
-- Use deployed HTTPS frontend origins in `CORS_ORIGINS`.
+- Use deployed HTTPS site origins in `CORS_ORIGINS`.
 - Set `PUBLIC_SITE_URL` to the deployed customer-facing frontend URL.
 - Point `REDIS_URL`, `ASTROLOGY_ENGINE_URL`, and `LLM_ENGINE_URL` to production/private infrastructure.
 - Disable `ALLOW_MOCK_ADMIN_TOKEN`.
