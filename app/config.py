@@ -229,8 +229,14 @@ class Settings:
 def _build_settings() -> Settings:
     raw_env = (_env("APP_ENV") or _env("ENVIRONMENT") or "development").lower()
     app_env = "production" if raw_env == "prod" else "staging" if raw_env == "stage" else raw_env
+    public_site_url = _env("PUBLIC_SITE_URL", "http://localhost:5173").rstrip("/")
     cors_value = _env("CORS_ORIGINS") or _env("ADMIN_CORS_ORIGINS")
-    cors_origins = tuple(_split_csv(cors_value)) if cors_value else LOCAL_CORS_ORIGINS
+    if cors_value:
+        cors_origins = tuple(_split_csv(cors_value))
+    elif app_env in PRODUCTION_ENVS and _is_url(public_site_url, schemes={"https"}):
+        cors_origins = (public_site_url,)
+    else:
+        cors_origins = LOCAL_CORS_ORIGINS
 
     return Settings(
         app_env=app_env,
@@ -245,7 +251,7 @@ def _build_settings() -> Settings:
         allow_mock_admin_token=_bool_env("ALLOW_MOCK_ADMIN_TOKEN"),
         enable_legacy_unauthenticated_ws=_bool_env("ENABLE_LEGACY_UNAUTHENTICATED_WS"),
         require_verified_payment=_bool_env("REQUIRE_VERIFIED_PAYMENT"),
-        public_site_url=_env("PUBLIC_SITE_URL", "http://localhost:5173").rstrip("/"),
+        public_site_url=public_site_url,
         enable_razorpay=_bool_env("ENABLE_RAZORPAY"),
         razorpay_key_id=_env("RAZORPAY_KEY_ID"),
         razorpay_key_secret=_env("RAZORPAY_KEY_SECRET"),

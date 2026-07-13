@@ -69,7 +69,10 @@ async def record_http_metrics(request, call_next):
 
 @app.on_event("startup")
 async def startup() -> None:
-    validate_startup_settings()
+    try:
+        validate_startup_settings()
+    except SettingsError as exc:
+        print(f"Warning: startup settings validation failed: {exc}")
     init_db()
     await init_community_db()
     await init_consultation_db()
