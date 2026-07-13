@@ -1,0 +1,2 @@
+This directory satisfies Vercel's configured output directory check.
+The FastAPI application is served through api/index.py.
