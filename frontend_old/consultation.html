@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consultation - Shree Lakshmi Astro</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body {
+      background: #f7f4ef;
+      color: #241f1a;
+    }
+    .consult-page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 24px 72px;
+    }
+    .consult-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(360px, 1.1fr);
+      gap: 28px;
+      align-items: start;
+    }
+    .profile-panel,
+    .request-panel,
+    .result-panel {
+      background: #fff;
+      border: 1px solid #e5ded6;
+      border-radius: 8px;
+      box-shadow: 0 18px 50px rgba(63, 45, 32, 0.08);
+    }
+    .profile-panel {
+      padding: 24px;
+    }
+    .profile-photo {
+      width: 112px;
+      height: 112px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #eee1d4;
+      margin-bottom: 18px;
+    }
+    .eyebrow {
+      color: #9b4d24;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 800;
+      margin: 0 0 8px;
+    }
+    h1 {
+      font-size: clamp(34px, 5vw, 56px);
+      line-height: 1;
+      margin: 0 0 12px;
+      letter-spacing: 0;
+    }
+    .profile-title {
+      color: #6f6153;
+      margin: 0 0 18px;
+      line-height: 1.6;
+    }
+    .profile-grid {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .profile-row {
+      border-top: 1px solid #eee6dd;
+      padding-top: 12px;
+    }
+    .profile-row span {
+      display: block;
+      color: #7b6e61;
+      font-size: 12px;
+      text-transform: uppercase;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+    .profile-row strong {
+      color: #241f1a;
+      line-height: 1.45;
+    }
+    .positioning {
+      margin-top: 20px;
+      padding: 14px;
+      background: #fff7e8;
+      border-left: 3px solid #d6812d;
+      color: #5c4630;
+      line-height: 1.6;
+      border-radius: 6px;
+    }
+    .queue-panel {
+      margin-top: 16px;
+      padding: 16px;
+      border: 1px solid #eadfce;
+      border-radius: 8px;
+      background: #fffdf8;
+    }
+    .queue-panel h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .queue-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .queue-stat {
+      border: 1px solid #efe5d8;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+    .queue-stat span {
+      display: block;
+      color: #7b6e61;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+    .queue-stat strong {
+      color: #241f1a;
+      font-size: 22px;
+    }
+    .queue-note {
+      margin: 12px 0 0;
+      color: #6f6153;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+    .request-panel {
+      padding: 24px;
+    }
+    .request-panel h2,
+    .result-panel h2 {
+      margin: 0 0 6px;
+      font-size: 24px;
+    }
+    .request-panel p {
+      color: #6f6153;
+      line-height: 1.6;
+      margin-top: 0;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 800;
+      color: #463b31;
+      margin-bottom: 7px;
+    }
+    input,
+    select,
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #d9d0c6;
+      border-radius: 8px;
+      padding: 12px;
+      font: inherit;
+      background: #fffdf9;
+      color: #241f1a;
+    }
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+    }
+    .btn-submit {
+      width: 100%;
+      min-height: 48px;
+      border: 0;
+      border-radius: 8px;
+      background: #8c3d25;
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .btn-submit:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+    .result-panel {
+      display: none;
+      margin-top: 24px;
+      padding: 22px;
+    }
+    .result-panel.show {
+      display: block;
+    }
+    .status-pill {
+      display: inline-flex;
+      padding: 6px 10px;
+      border-radius: 8px;
+      background: #eef6ef;
+      color: #276b3b;
+      font-weight: 800;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+    .status-pill.waiting_queue {
+      background: #fff3d8;
+      color: #8b5a00;
+    }
+    .status-pill.paid,
+    .status-pill.confirmed {
+      background: #eef6ef;
+      color: #276b3b;
+    }
+    .result-details {
+      display: grid;
+      gap: 8px;
+      margin-top: 16px;
+      color: #5f5348;
+    }
+    .paid-contact-box {
+      display: grid;
+      gap: 8px;
+      padding: 14px;
+      border: 1px solid #cfe4d2;
+      border-left: 4px solid #2f8f46;
+      border-radius: 8px;
+      background: #f4fbf5;
+      color: #254d31;
+      line-height: 1.55;
+    }
+    .paid-contact-box a {
+      color: #1f6f35;
+      font-weight: 800;
+    }
+    .status-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+    .secondary-btn {
+      min-height: 42px;
+      border: 1px solid #d9d0c6;
+      border-radius: 8px;
+      background: #fffdf9;
+      color: #4a3d32;
+      font-weight: 800;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+    .small-note {
+      color: #7b6e61;
+      font-size: 13px;
+      line-height: 1.6;
+      margin-top: 12px;
+    }
+    @media (max-width: 900px) {
+      .consult-hero,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+<body    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> Shree Lakshmi <span class="highlight">Astro</span>
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+
+  <main class="consult-page">
+    <section class="consult-hero">
+      <aside class="profile-panel">
+        <img id="consultant-photo" class="profile-photo" src="https://www.shanitemple.com/index_images/astrology-puja/janamkundli.png" alt="Founder astrologer">
+        <p class="eyebrow">Founder Astrologer / Primary Consultant</p>
+        <h1 id="consultant-name">Rupesh Kumar</h1>
+        <p class="profile-title" id="consultant-bio">Consultations are available for focused astrological guidance.</p>
+
+        <div class="profile-grid">
+          <div class="profile-row"><span>Experience</span><strong id="consultant-experience">-</strong></div>
+          <div class="profile-row"><span>Astrology Systems</span><strong id="consultant-systems">-</strong></div>
+          <div class="profile-row"><span>Languages</span><strong id="consultant-languages">-</strong></div>
+          <div class="profile-row"><span>Consultation Type</span><strong id="consultant-type">-</strong></div>
+        </div>
+        <div class="positioning" id="positioning">
+          Consultations are currently available with our founder astrologer. More verified astrologers may be added later after quality review.
+        </div>
+        <div class="queue-panel">
+          <h2>Live Queue</h2>
+          <div class="queue-grid">
+            <div class="queue-stat"><span>Active Requests</span><strong id="queue-active">--/20</strong></div>
+            <div class="queue-stat"><span>Available Slots</span><strong id="queue-available">--</strong></div>
+            <div class="queue-stat"><span>Waiting Queue</span><strong id="queue-waiting">--</strong></div>
+            <div class="queue-stat"><span>Status</span><strong id="queue-open">--</strong></div>
+          </div>
+          <p class="queue-note" id="queue-note">Checking live consultation queue...</p>
+        </div>
+      </aside>
+
+      <section>
+        <div class="request-panel">
+          <p class="eyebrow">Request Consultation</p>
+          <h2>Submit your details</h2>
+          <p>Only 20 active consultation requests are handled at a time. If slots are full, your request enters the waiting queue.</p>
+
+          <form id="consultation-form">
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="name">Full Name</label>
+                <input id="name" required autocomplete="name">
+              </div>
+              <div class="form-group">
+                <label for="phone">Mobile / WhatsApp Number</label>
+                <input id="phone" required autocomplete="tel">
+              </div>
+              <div class="form-group">
+                <label for="email">Email</label>
+                <input id="email" type="email" required autocomplete="email">
+              </div>
+              <div class="form-group">
+                <label for="topic">Consultation Topic</label>
+                <select id="topic" required>
+                  <option>Career</option>
+                  <option>Marriage</option>
+                  <option>Business</option>
+                  <option>Health</option>
+                  <option>Prashna</option>
+                  <option>Other</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="date_of_birth" id="date-label">Date of Birth</label>
+                <input id="date_of_birth" type="date" required>
+              </div>
+              <div class="form-group">
+                <label for="time_of_birth" id="time-label">Time of Birth</label>
+                <input id="time_of_birth" type="time" required>
+              </div>
+              <div class="form-group full" style="position: relative;">
+                <label for="place_search" id="place-label">Place of Birth</label>
+                <input id="place_search" type="search" required placeholder="Search city..." autocomplete="off">
+                <div id="place-results" class="place-results" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 10; max-height: 200px; overflow-y: auto; background: #fff; border: 1px solid #d9d0c6; border-top: none; border-radius: 0 0 8px 8px; box-shadow: 0 8px 16px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 0; margin-top: 0;"></div>
+                <input type="hidden" id="place_of_birth">
+                <input type="hidden" id="latitude">
+                <input type="hidden" id="longitude">
+              </div>
+              <div class="form-group full">
+                <label for="question">Proposed Question</label>
+                <textarea id="question" required placeholder="Write the question you want the consultant to review."></textarea>
+              </div>
+            </div>
+            <button id="submit-btn" class="btn-submit" type="submit">Book Consultation</button>
+          </form>
+        </div>
+
+        <div class="result-panel" id="result-panel">
+          <span class="status-pill" id="result-status">pending</span>
+          <h2 id="result-title">Request received</h2>
+          <p id="result-message"></p>
+          <div class="result-details" id="result-details"></div>
+          <div class="status-actions">
+            <button id="refresh-status-btn" class="secondary-btn" type="button">Refresh Status</button>
+            <button id="clear-status-btn" class="secondary-btn" type="button">Clear Saved Request</button>
+          </div>
+          <div class="small-note">Save your request ID if you contact support. This browser also remembers your latest consultation request.</div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initAuth } from './auth.js';
+    import { recordVisit } from './analytics.js';
+    initAuth();
+    recordVisit();
+  </script>
+  <script src="/consultation.js"></script>
+</body>
+</html>

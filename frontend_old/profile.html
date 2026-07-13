@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile - Shree Lakshmi Astro</title>
+    <link rel="stylesheet" href="./styles.css?v=2">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        .profile-container {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .profile-header {
+            margin-bottom: 30px;
+        }
+        .profile-title {
+            font-size: 2rem;
+            color: var(--ink-light);
+            margin-bottom: 8px;
+        }
+        .profile-subtitle {
+            color: var(--ink-dim);
+            font-size: 1rem;
+        }
+        .section-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .section-title {
+            color: var(--saffron-gold);
+            font-size: 1.25rem;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 8px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .status-pending { background: #fef08a; color: #854d0e; }
+        .status-approved { background: #bbf7d0; color: #166534; }
+        .status-rejected { background: #fecaca; color: #991b1b; }
+        
+        .list-item {
+            padding: 16px 0;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .list-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+        .item-details h4 {
+            color: var(--ink-light);
+            margin: 0 0 4px 0;
+            font-size: 1rem;
+        }
+        .item-details p {
+            color: var(--ink-dim);
+            margin: 0;
+            font-size: 0.85rem;
+        }
+        .empty-state {
+            color: var(--ink-dim);
+            font-style: italic;
+            text-align: center;
+            padding: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Global Navbar -->
+    <nav class="global-navbar" aria-label="Main Navigation">
+      <div class="logo-text">
+        <img src="./ganesha.png" alt="Ganesha Logo" class="navbar-ganesha"> Shree Lakshmi <span class="highlight">Astro</span>
+      </div>
+      <div class="nav-links">
+        <a href="/index.html" id="nav-home" class="nav-btn" style="text-decoration: none;">Home</a>
+        <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
+        <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
+        <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn" style="text-decoration: none;" target="_blank">Astro Community</a>
+      </div>
+      <div class="nav-auth">
+        <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
+        <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
+        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
+        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+      </div>
+    </nav>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const path = window.location.pathname;
+        if (path === '/' || path.includes('index.html')) {
+          document.getElementById('nav-home')?.classList.add('active');
+        } else if (path.includes('consultation')) {
+          document.getElementById('nav-consultant')?.classList.add('active');
+        } else if (path.includes('about')) {
+          document.getElementById('nav-about')?.classList.add('active');
+        } else if (path.includes('community')) {
+          document.getElementById('nav-community')?.classList.add('active');
+        }
+      });
+    </script>
+
+    <main class="profile-container">
+        <div class="profile-header">
+            <h1 class="profile-title">My Profile</h1>
+            <p class="profile-subtitle" id="user-email">Loading...</p>
+        </div>
+
+        <div class="section-card">
+            <h2 class="section-title">Astro Community Application</h2>
+            <div id="community-app-container">
+                <div class="empty-state">Loading application status...</div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <h2 class="section-title">My Consultations</h2>
+            <div id="consultations-container">
+                <div class="empty-state">Loading consultations...</div>
+            </div>
+        </div>
+    </main>
+
+    <script type="module" src="./profile.js"></script>
+</body>
+</html>

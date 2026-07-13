@@ -9,5 +9,3 @@ ephemeris/
 !.env.example
 .vercel
 .env*
-frontend_old/
-

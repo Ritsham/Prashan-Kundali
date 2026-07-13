@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astro Community - Shree Lakshmi Astro</title>
+    <link rel="stylesheet" href="./styles.css?v=2">
+    <link rel="stylesheet" href="./community.css?v=5">
+    <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  </head>
+<body>
+    <section id="community-landing" class="community-landing">
+
+
+        <div class="landing-hero">
+            <div class="hero-copy">
+                <p class="eyebrow">Private professional network</p>
+                <h1>A Professional Community Built for Astrologers</h1>
+                <p class="hero-text">Discuss charts, exchange interpretations, participate in focused professional discussions, learn from practitioners, and build a persistent professional contribution history.</p>
+                <div class="hero-actions">
+                    <a href="./apply.html" class="primary-action">Apply to Join</a>
+                </div>
+                <p id="access-note" class="access-note">Approved astrologers are automatically redirected to the workspace when visiting this page.</p>
+            </div>
+            <div class="community-preview" aria-label="Community preview">
+                <div class="preview-bar">
+                    <span>CHART DISCUSSIONS</span>
+                    <strong>Active Case Review</strong>
+                </div>
+                <div class="preview-post">
+                    <div class="preview-meta">Shree Lakshmi Astrology · 12 responses</div>
+                    <h2>How would you weigh Moon in the 8th when the query is about delayed payment?</h2>
+                    <p>Members compare classical rules, KP significators, timing factors, and chart privacy considerations in one durable discussion.</p>
+                </div>
+                <div class="preview-response">
+                    <span>Focused Thread</span>
+                    <p>Interpretation debate around dasha strength and ruling planets.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="landing-sections">
+            <section>
+                <h2>Why Astro Community</h2>
+                <p>Structured channels keep professional astrology discussion, chart-based collaboration, interpretation debates, astrologer discovery, and durable contribution history in one organized knowledge network.</p>
+            </section>
+            <section>
+                <h2>How It Works</h2>
+                <ol>
+                    <li>Apply as an astrologer and complete your professional information.</li>
+                    <li>Receive approval, complete onboarding, and join topic channels.</li>
+                    <li>Create discussion posts or chart discussion posts, then respond to peers.</li>
+                    <li>Build a persistent professional contribution history over time.</li>
+                </ol>
+            </section>
+            <section>
+                <h2>Community Principles</h2>
+                <div class="principle-grid">
+                    <span>Professional Discussion</span>
+                    <span>Respectful Disagreement</span>
+                    <span>Explain Reasoning</span>
+                    <span>Protect Chart Privacy</span>
+                    <span>No Spam</span>
+                    <span>No Low-Effort Requests</span>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <section id="community-app" class="community-app hidden">
+        <aside class="community-sidebar">
+            <div class="sidebar-brand">
+                <img src="./ganesha.png" alt="Ganesha Logo">
+                <div>
+                    <strong>Astro Community</strong>
+                    <span>Professional network</span>
+                </div>
+            </div>
+            <div class="sidebar-member" id="sidebar-member">
+                <span class="member-avatar">A</span>
+                <div>
+                    <strong>Loading...</strong>
+                    <small>Verified workspace</small>
+                </div>
+            </div>
+            <nav class="sidebar-nav">
+                <h3>Channels</h3>
+                <ul id="sidebar-channel-list" class="channel-list">
+                    <!-- Dynamic channels injected here -->
+                </ul>
+                <h3 style="margin-top: 24px;">Community</h3>
+                <ul class="channel-list">
+                    <li><a href="#" id="nav-members">👥 Members Directory</a></li>
+                    <li><a href="#" id="nav-notifications">🔔 Notifications</a></li>
+                </ul>
+            </nav>
+
+            <div class="sidebar-foot">
+                <button type="button" data-view="profile" class="text-btn" style="text-align: left;">User Profile / Settings</button>
+                <a href="./index.html">Back to Main Website</a>
+            </div>
+        </aside>
+
+        <main class="community-main">
+            <header class="workspace-header">
+                <div>
+                    <p class="eyebrow">Member workspace</p>
+                    <h1 id="workspace-title">Home Feed</h1>
+                    <p id="workspace-subtitle" class="workspace-subtitle">Professional discussions across verified astrologers.</p>
+                </div>
+                <div class="workspace-actions">
+                    <select id="channel-filter" aria-label="Select channel"></select>
+                    <button type="button" id="open-composer" class="primary-action small">Create Post</button>
+                </div>
+            </header>
+            <section class="workspace-tools" aria-label="Community tools">
+                <label class="workspace-search">
+                    <span>Search</span>
+                    <input id="community-search" type="search" placeholder="Search posts, channels, members">
+                </label>
+                <div class="workspace-tool-actions">
+                    <button type="button" id="btn-open-pins" class="secondary-action small">Pinned</button>
+                    <button type="button" id="btn-open-members" class="secondary-action small">Members</button>
+                    <button type="button" id="btn-open-info" class="secondary-action small">Info</button>
+                </div>
+            </section>
+
+            <section id="composer-panel" class="composer-panel hidden" aria-label="Create a post">
+                <div class="composer-head">
+                    <div>
+                        <h2>Create Discussion Post</h2>
+                        <p>Start a professional discussion or chart interpretation request inside a channel.</p>
+                    </div>
+                    <button type="button" id="close-composer" class="icon-btn" aria-label="Close composer">&times;</button>
+                </div>
+                <form id="post-form">
+                    <div class="form-row">
+                        <label for="post-channel">Channel</label>
+                        <select id="post-channel" required></select>
+                    </div>
+                    <div class="form-row">
+                        <label for="post-title">Post Title</label>
+                        <input id="post-title" type="text" maxlength="120" placeholder="Frame the question or discussion topic" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="post-body">Professional Context</label>
+                        <textarea id="post-body" rows="7" placeholder="Share chart context, your reasoning, and what kind of interpretation debate you want." required></textarea>
+                    </div>
+                    <div class="form-row">
+                        <label for="post-image">Chart or Supporting Image</label>
+                        <input id="post-image" type="file" accept="image/*">
+                    </div>
+                    <div id="image-preview-wrap" class="image-preview-wrap hidden">
+                        <img id="post-image-preview" src="" alt="Selected chart preview">
+                        <button type="button" id="clear-post-image">Remove</button>
+                    </div>
+                    <div class="composer-actions">
+                        <button type="submit" class="primary-action small">Publish Post</button>
+                        <button type="button" id="cancel-composer" class="secondary-action small">Cancel</button>
+                    </div>
+                </form>
+            </section>
+
+            <section id="status-panel" class="status-panel hidden"></section>
+            <section id="channel-overview" class="channel-overview"></section>
+            <section id="posts-feed" class="posts-feed" aria-live="polite"></section>
+        </main>
+
+        <aside id="context-panel" class="context-panel" aria-label="Context panel">
+            <div class="thread-head">
+                <div>
+                    <p class="eyebrow" id="context-eyebrow">Channel Info</p>
+                    <h2 id="context-title">Details</h2>
+                </div>
+                <button type="button" id="close-context" class="icon-btn" aria-label="Close panel">&times;</button>
+            </div>
+            <div id="context-content" class="context-content">
+                <!-- Dynamic content (Thread, Channel Info, Online Members) goes here -->
+            </div>
+        </aside>
+    </section>
+
+    <!-- Onboarding Modal -->
+    <div id="onboarding-overlay" class="onboarding-overlay hidden">
+        <div class="onboarding-modal">
+            <div id="step-1" class="onboarding-step active">
+                <h2>Welcome to Astro Community</h2>
+                <p>You have been approved as a verified astrologer. This is a private professional space to discuss charts, ask questions, and learn from peers.</p>
+                <div class="onboarding-actions">
+                    <button type="button" class="primary-action small btn-next-step">Continue</button>
+                </div>
+            </div>
+            <div id="step-2" class="onboarding-step">
+                <h2>Complete Your Profile</h2>
+                <div class="form-row">
+                    <label>Username</label>
+                    <input type="text" id="ob-username" required>
+                </div>
+                <div class="form-row">
+                    <label>Display Name</label>
+                    <input type="text" id="ob-displayname" required>
+                </div>
+                <div class="form-row">
+                    <label>Short Bio</label>
+                    <textarea id="ob-bio" rows="2"></textarea>
+                </div>
+                <div class="onboarding-actions">
+                    <button type="button" class="primary-action small btn-next-step">Next</button>
+                </div>
+            </div>
+            <div id="step-3" class="onboarding-step">
+                <h2>Astrology Interests</h2>
+                <p>What systems do you practice?</p>
+                <div class="form-row">
+                    <label>Systems (comma separated)</label>
+                    <input type="text" id="ob-systems" placeholder="Vedic, KP, Prashna">
+                </div>
+                <div class="onboarding-actions">
+                    <button type="button" class="primary-action small btn-next-step">Next</button>
+                </div>
+            </div>
+            <div id="step-4" class="onboarding-step">
+                <h2>Join Recommended Channels</h2>
+                <p>We've automatically added you to #general-discussion and #community-announcements.</p>
+                <div class="onboarding-actions">
+                    <button type="button" class="primary-action small btn-next-step">Next</button>
+                </div>
+            </div>
+            <div id="step-5" class="onboarding-step">
+                <h2>Community Guidelines</h2>
+                <p>1. Respect other practitioners.<br>2. Protect chart privacy.<br>3. No spam or self-promotion.</p>
+                <div class="onboarding-actions">
+                    <button type="button" class="primary-action small" id="btn-finish-onboarding">Accept & Enter</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { recordVisit } from './analytics.js';
+        recordVisit();
+    </script>
+    <script type="module" src="./community.js?v=11"></script>
+</body>
+</html>
