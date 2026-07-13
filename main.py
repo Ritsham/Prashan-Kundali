@@ -6,6 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from app.config import get_supabase_url
+from app.legal_pages import render_legal_page
 
 from app.api.prashna import router as prashna_router
 from app.api.consultants import router as consultants_router
@@ -85,28 +86,23 @@ def community_status_page():
 
 @app.get("/return-policy", include_in_schema=False)
 def return_policy_page():
-    from fastapi.responses import FileResponse
-    return FileResponse("frontend_old/return-policy.html")
+    return render_legal_page("return")
 
 @app.get("/refund-policy", include_in_schema=False)
 def refund_policy_page():
-    from fastapi.responses import FileResponse
-    return FileResponse("frontend_old/refund-policy.html")
+    return render_legal_page("refund")
 
 @app.get("/privacy-policy", include_in_schema=False)
 def privacy_policy_page():
-    from fastapi.responses import FileResponse
-    return FileResponse("frontend_old/privacy-policy.html")
+    return render_legal_page("privacy")
 
 @app.get("/disclaimer", include_in_schema=False)
 def disclaimer_page():
-    from fastapi.responses import FileResponse
-    return FileResponse("frontend_old/disclaimer.html")
+    return render_legal_page("disclaimer")
 
 @app.get("/about-contact", include_in_schema=False)
 def about_contact_page():
-    from fastapi.responses import FileResponse
-    return FileResponse("frontend_old/about-contact.html")
+    return render_legal_page("about-contact")
 
 @app.get("/admin/community-applications", include_in_schema=False)
 def admin_community_apps_list():
