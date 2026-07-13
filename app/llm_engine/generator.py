@@ -27,13 +27,13 @@ from app.llm_engine.prompts import (
     timing_prompt,
     synthesizer_prompt
 )
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 import redis
 import json
-import os
 
 def generate_interpretation_answer(chart: dict, interpretation: dict, chart_id: str = None) -> dict:
     load_local_env()
@@ -70,7 +70,7 @@ def generate_interpretation_answer(chart: dict, interpretation: dict, chart_id: 
             if chart_id and supports_stream:
                 stream_gen = llm_answer(s_sys, s_usr, provider, caller, stream=True)
                 
-                redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+                redis_client = redis.Redis.from_url(get_settings().redis_url)
                 full_text = ""
                 for chunk in stream_gen:
                     full_text += chunk
@@ -82,7 +82,7 @@ def generate_interpretation_answer(chart: dict, interpretation: dict, chart_id: 
             else:
                 final_result = llm_answer(s_sys, s_usr, provider, caller)
                 if chart_id:
-                    redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+                    redis_client = redis.Redis.from_url(get_settings().redis_url)
                     redis_client.publish(f"stream:{chart_id}", json.dumps({"text": final_result["text"]}))
                     redis_client.publish(f"stream:{chart_id}", json.dumps({"done": True}))
 

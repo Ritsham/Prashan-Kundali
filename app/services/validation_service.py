@@ -1,9 +1,9 @@
-import os
 import httpx
 import csv
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from app.config import get_settings
 
 CASE_FILE = Path("validation/reference_cases/prashna_cases.csv")
 
@@ -33,7 +33,7 @@ def write_cases(rows: list[dict]) -> None:
 
 
 def generated_output(row: dict) -> dict:
-    astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+    astrology_url = get_settings().astrology_engine_url
     payload_data = {
         "chart_type": "prashna",
         "name": row["name"],

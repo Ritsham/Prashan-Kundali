@@ -4,6 +4,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from app.config import get_settings
 
 
 def post_json(url: str, payload: dict, headers: dict) -> dict:
@@ -11,7 +12,7 @@ def post_json(url: str, payload: dict, headers: dict) -> dict:
     request_headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "KundaliStudio/1.0 (+https://localhost)",
+        "User-Agent": f"KundaliStudio/1.0 (+{get_settings().public_site_url})",
         **headers,
     }
     request = urllib.request.Request(
@@ -66,7 +67,7 @@ def post_json_stream(url: str, payload: dict, headers: dict):
     request_headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "User-Agent": "KundaliStudio/1.0 (+https://localhost)",
+        "User-Agent": f"KundaliStudio/1.0 (+{get_settings().public_site_url})",
         **headers,
     }
     request = urllib.request.Request(

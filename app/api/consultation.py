@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
-from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
+from pydantic import Field, field_validator
+from typing import Annotated, Optional
 import json
-import os
 import re
 import httpx
+import logging
 
 from app.storage.consultation_db import (
     get_founder_consultant,
@@ -23,18 +23,25 @@ from app.storage.consultation_db import (
     answer_consultation,
     decline_consultation
 )
-from app.api.prashna import LocationInput
-from app.dependencies import get_current_user, get_optional_current_user, AuthState, RequireRole
+from app.dependencies import get_current_user, get_optional_current_user, AuthState, RequireAdmin
+from app.core.rate_limiter import booking_limiter, llm_limiter, public_limiter
+from app.core.consultation_lifecycle import normalize_consultation_status
 from app.schemas.consultation_case import (
     AstrologySnapshot,
     ConsultationCaseAdminUpdate,
     ConsultationCasePayload,
 )
+from app.schemas.common import ID_RE, LocationInput, PHONE_RE, StrictRequestModel, parse_iso_datetime
+from app.storage.payments_db import is_verified_payment, update_payment_status
+from app.storage.audit_db import record_admin_audit
+from app.storage.database import get_service_client
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
+from app.config import get_settings
 from app.services.timezone_service import timezone_at
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 COORD_RE = re.compile(r"Lat:\s*(-?\d+(?:\.\d+)?),?\s*Lon:\s*(-?\d+(?:\.\d+)?)", re.IGNORECASE)
@@ -45,6 +52,28 @@ def _public_case(case: dict) -> dict:
     for key in ("admin_notes", "assigned_astrologer"):
         clean.pop(key, None)
     return clean
+
+
+def _is_admin(auth: AuthState) -> bool:
+    return auth.is_admin
+
+
+def _can_read_own_case(auth: AuthState, case: dict) -> bool:
+    user = case.get("user") or {}
+    return (
+        case.get("user_id") == auth.user_id
+        or user.get("email") == auth.email
+        or case.get("email") == auth.email
+        or case.get("assigned_astrologer") == auth.user_id
+        or _is_admin(auth)
+    )
+
+
+def _requires_verified_payment() -> bool:
+    settings = get_settings()
+    if settings.is_production:
+        return True
+    return settings.require_verified_payment
 
 
 def _snapshot_has_chart(snapshot: object) -> bool:
@@ -118,7 +147,7 @@ def _payload_from_existing_case(case: dict) -> Optional[ConsultationCasePayload]
     try:
         return ConsultationCasePayload.model_validate(payload_data)
     except Exception as exc:
-        print(f"Warning: could not build consultation case payload for snapshot repair: {exc}")
+        logger.warning("consultation_case_payload_rebuild_failed")
         return None
 
 
@@ -135,10 +164,10 @@ async def _ensure_case_snapshot(case: dict) -> dict:
     try:
         enriched = await _enrich_case_snapshot(payload)
     except HTTPException as exc:
-        print(f"Warning: consultation case snapshot repair failed: {exc.detail}")
+        logger.warning("consultation_case_snapshot_repair_failed status=%s", exc.status_code)
         return case
     except Exception as exc:
-        print(f"Warning: consultation case snapshot repair failed: {exc}")
+        logger.warning("consultation_case_snapshot_repair_failed")
         return case
 
     snapshot = enriched.astrology_snapshot.model_dump(mode="json", exclude_none=True)
@@ -149,7 +178,7 @@ async def _ensure_case_snapshot(case: dict) -> dict:
         result = await update_consultation_case(case["case_id"], {"astrology_snapshot": snapshot})
         return result.get("case") or case
     except Exception as exc:
-        print(f"Warning: consultation case snapshot repair calculated but could not be persisted: {exc}")
+        logger.warning("consultation_case_snapshot_repair_persist_failed")
         repaired = dict(case)
         repaired["astrology_snapshot"] = snapshot
         repaired["astrological_snapshot"] = snapshot
@@ -166,7 +195,7 @@ async def _enrich_case_snapshot(payload: ConsultationCasePayload) -> Consultatio
     if user.latitude is None or user.longitude is None or not user.place:
         return payload
 
-    astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+    astrology_url = get_settings().astrology_engine_url
     chart_req_data = {
         "chart_type": payload.chart_type.value,
         "name": user.full_name,
@@ -221,90 +250,105 @@ async def _enrich_case_snapshot(payload: ConsultationCasePayload) -> Consultatio
     })
     return payload.model_copy(update={"astrology_snapshot": enriched_snapshot})
 
-class ConsultationBookRequest(BaseModel):
+class ConsultationBookRequest(StrictRequestModel):
     question: str = Field(min_length=3, max_length=200)
     name: str = Field(min_length=1, max_length=80)
     gender: str = Field(pattern="^(male|female|other)$")
     birth_datetime_local: str = Field(min_length=16, max_length=32)
     location: LocationInput
-    payment_ref: str = Field(min_length=1)
-    whatsapp_no: str = Field(min_length=10, max_length=15, description="WhatsApp number with country code")
+    payment_ref: str = Field(min_length=1, max_length=120, pattern=ID_RE)
+    whatsapp_no: str = Field(min_length=6, max_length=24, pattern=PHONE_RE, description="WhatsApp number with country code")
 
-class AnswerRequest(BaseModel):
+    @field_validator("birth_datetime_local")
+    @classmethod
+    def validate_birth_datetime(cls, value: str) -> str:
+        parse_iso_datetime(value, "birth_datetime_local")
+        return value
+
+
+class AnswerRequest(StrictRequestModel):
     answer: str = Field(min_length=5, max_length=2000)
 
-class PublicConsultationRequest(BaseModel):
+
+class PublicConsultationRequest(StrictRequestModel):
     name: str = Field(min_length=1, max_length=120)
-    phone: str = Field(min_length=6, max_length=24)
-    email: str = Field(min_length=5, max_length=160)
-    date_of_birth: str = Field(min_length=4, max_length=20)
-    time_of_birth: str = Field(min_length=2, max_length=20)
+    phone: str = Field(min_length=6, max_length=24, pattern=PHONE_RE)
+    email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    date_of_birth: str = Field(min_length=10, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    time_of_birth: str = Field(min_length=5, max_length=8, pattern=r"^\d{2}:\d{2}(:\d{2})?$")
     place_of_birth: str = Field(min_length=1, max_length=160)
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    topic: str = Field(pattern="^(Career|Marriage|Business|Health|Prashna|Other)$")
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    topic: str = Field(pattern="^(Career|Marriage|Business|Health|Prashna|Birth Chart|Matchmaking|Other)$")
     question: str = Field(min_length=3, max_length=2000)
-    preferred_time: str = Field(default="", max_length=120)
-    payment_status: str = Field(default="not_paid", max_length=40)
+    preferred_date: Optional[str] = Field(default=None, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    preferred_time: str = Field(default="", max_length=8, pattern=r"^$|^\d{2}:\d{2}(:\d{2})?$")
+    payment_status: str = Field(default="not_paid", pattern=r"^(not_paid|pending|created)$")
+    quoted_price: Optional[float] = Field(default=None, gt=0, le=100000)
+    currency: str = Field(default="INR", max_length=3, pattern=r"^[A-Z]{3}$")
     chart_snapshot: Optional[dict] = None
 
-class AdminConsultationUpdate(BaseModel):
-    status: Optional[str] = Field(default=None, pattern="^(pending|reviewed|accepted|scheduled|in_progress|completed|rejected|cancelled|waiting_queue)$")
+class AdminConsultationUpdate(StrictRequestModel):
+    status: Optional[str] = Field(default=None, pattern="^(requested|pending_payment|confirmed|active|completed|cancelled|refunded|pending|reviewed|accepted|scheduled|in_progress|rejected|waiting_queue)$")
     meeting_link: Optional[str] = Field(default=None, max_length=500)
     scheduled_at: Optional[str] = Field(default=None, max_length=120)
     admin_notes: Optional[str] = Field(default=None, max_length=3000)
 
 
-@router.post("/consultation-cases")
+@router.post("/consultation-cases", dependencies=[Depends(booking_limiter)])
 async def create_case(
     payload: ConsultationCasePayload,
     auth: Optional[AuthState] = Depends(get_optional_current_user),
 ):
     try:
         payload = await _enrich_case_snapshot(payload)
-        result = await create_consultation_case(payload, user_id=auth.user_id if auth else None)
+        db = auth.client if auth else get_service_client()
+        result = await create_consultation_case(payload, user_id=auth.user_id if auth else None, db_client=db)
         if result.get("case"):
             result["case"] = _public_case(result["case"])
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to create consultation case") from exc
 
 
 @router.get("/consultation-cases/{case_id}")
-async def read_case(case_id: str):
-    case = await get_consultation_case(case_id)
+async def read_case(case_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)):
+    case = await get_consultation_case(case_id, auth.client)
     if not case:
         raise HTTPException(status_code=404, detail="Consultation case not found")
+    if not _can_read_own_case(auth, case):
+        raise HTTPException(status_code=403, detail="Not allowed to read this consultation case")
     return {"case": _public_case(case)}
 
 
 @router.get("/admin/consultation-cases")
 async def admin_list_cases(
-    status: Optional[str] = None,
+    status: Optional[str] = Query(default=None, max_length=40),
     source_type: Optional[str] = None,
     chart_type: Optional[str] = None,
     date: Optional[str] = None,
     user_name: Optional[str] = None,
-    case_id: Optional[str] = None,
-    auth: AuthState = Depends(RequireRole("admin")),
+    case_id: Optional[str] = Query(default=None, pattern=ID_RE),
+    auth: AuthState = Depends(RequireAdmin()),
 ):
     return {
         "cases": await list_consultation_cases(
-            status=status,
+            status=normalize_consultation_status(status) if status else None,
             source_type=source_type,
             chart_type=chart_type,
             user_name=user_name,
             case_id=case_id,
             created_date=date,
+            db_client=auth.client,
         )
     }
 
 
 @router.get("/admin/consultation-cases/{case_id}")
-async def admin_read_case(case_id: str, auth: AuthState = Depends(RequireRole("admin"))):
-    case = await get_consultation_case(case_id)
+async def admin_read_case(case_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(RequireAdmin())):
+    case = await get_consultation_case(case_id, auth.client)
     if not case:
         raise HTTPException(status_code=404, detail="Consultation case not found")
     case = await _ensure_case_snapshot(case)
@@ -313,17 +357,29 @@ async def admin_read_case(case_id: str, auth: AuthState = Depends(RequireRole("a
 
 @router.patch("/admin/consultation-cases/{case_id}")
 async def admin_patch_case(
-    case_id: str,
+    case_id: Annotated[str, Path(pattern=ID_RE)],
     payload: ConsultationCaseAdminUpdate,
-    auth: AuthState = Depends(RequireRole("admin")),
+    auth: AuthState = Depends(RequireAdmin()),
 ):
-    result = await update_consultation_case(case_id, payload.model_dump())
-    if not result["case"]:
-        raise HTTPException(status_code=404, detail="Consultation case not found")
+    before = await get_consultation_case(case_id, auth.client)
+    try:
+        result = await update_consultation_case(case_id, payload.model_dump(), auth.client)
+        if not result["case"]:
+            raise HTTPException(status_code=404, detail="Consultation case not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_admin_audit(
+        actor_user_id=auth.user_id,
+        entity_type="consultation_case",
+        entity_id=case_id,
+        action="update",
+        before_json=before,
+        after_json=result["case"],
+    )
     return result
 
 
-@router.get("/consultation/profile")
+@router.get("/consultation/profile", dependencies=[Depends(public_limiter)])
 async def consultation_profile():
     return {
         "consultant": await get_founder_consultant(),
@@ -331,13 +387,16 @@ async def consultation_profile():
     }
 
 
-@router.get("/consultation/request-status")
+@router.get("/consultation/request-status", dependencies=[Depends(public_limiter)])
 async def consultation_request_status():
-    return await get_public_consultation_queue_status()
+    return await get_public_consultation_queue_status(get_service_client())
 
 
-@router.post("/consultation/request")
-async def request_consultation(payload: PublicConsultationRequest):
+@router.post("/consultation/request", dependencies=[Depends(booking_limiter)])
+async def request_consultation(
+    payload: PublicConsultationRequest,
+    auth: Optional[AuthState] = Depends(get_optional_current_user),
+):
     try:
         data = payload.model_dump()
         
@@ -354,7 +413,7 @@ async def request_consultation(payload: PublicConsultationRequest):
                     local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
                 birth_utc = local_dt.astimezone(timezone.utc)
                 
-                astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+                astrology_url = get_settings().astrology_engine_url
                 chart_type = "prashna" if payload.topic == "Prashna" else "lagna"
                 
                 chart_req_data = {
@@ -369,15 +428,15 @@ async def request_consultation(payload: PublicConsultationRequest):
                     "asked_at_utc": birth_utc.isoformat()
                 }
                 
-                async with httpx.AsyncClient() as client:
-                    resp = await client.post(f"{astrology_url}/calculate", json=chart_req_data, timeout=30.0)
+                async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+                    resp = await client.post(f"{astrology_url}/calculate", json=chart_req_data)
                     
                 if resp.status_code == 200:
                     data["astrological_snapshot"] = json.dumps(resp.json()["chart"])
                 else:
-                    print(f"Warning: Chart generation returned {resp.status_code}: {resp.text}")
+                    logger.warning("public_consultation_chart_generation_failed status=%s", resp.status_code)
             except Exception as e:
-                print(f"Warning: Could not fetch astrological snapshot for Free Lead: {e}")
+                logger.warning("public_consultation_snapshot_failed")
                 
         # If frontend provided a snapshot directly, prefer that
         if payload.chart_snapshot:
@@ -387,39 +446,64 @@ async def request_consultation(payload: PublicConsultationRequest):
         data.pop("chart_snapshot", None)
 
                 
-        result = await create_consultation_request(data)
+        result = await create_consultation_request(
+            data,
+            user_id=auth.user_id if auth else None,
+            db_client=auth.client if auth else get_service_client(),
+        )
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to create consultation request") from e
 
 
 @router.get("/consultation/request/{request_id}")
-async def read_consultation_request(request_id: str):
-    request = await get_consultation_request(request_id)
+async def read_consultation_request(request_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)):
+    request = await get_consultation_request(request_id, auth.client)
     if not request:
         raise HTTPException(status_code=404, detail="Consultation request not found")
+    if not _can_read_own_case(auth, request):
+        raise HTTPException(status_code=403, detail="Not allowed to read this consultation request")
     return {"request": request}
 
 
 @router.get("/admin/consultations/requests")
-async def admin_list_consultation_requests(status: Optional[str] = None):
-    return {"requests": await list_consultation_requests(status)}
+async def admin_list_consultation_requests(
+    status: Optional[str] = Query(default=None, max_length=40),
+    auth: AuthState = Depends(RequireAdmin()),
+):
+    return {"requests": await list_consultation_requests(normalize_consultation_status(status) if status else None, auth.client)}
 
 
 @router.put("/admin/consultations/requests/{request_id}")
 @router.post("/admin/consultations/requests/{request_id}")
 async def admin_update_consultation_request(
-    request_id: str,
-    payload: AdminConsultationUpdate
+    request_id: Annotated[str, Path(pattern=ID_RE)],
+    payload: AdminConsultationUpdate,
+    auth: AuthState = Depends(RequireAdmin()),
 ):
-    result = await update_consultation_request(request_id, payload.model_dump())
-    if not result["request"]:
-        raise HTTPException(status_code=404, detail="Consultation request not found")
+    before = await get_consultation_request(request_id, auth.client)
+    try:
+        update_payload = payload.model_dump()
+        if update_payload.get("status"):
+            update_payload["status"] = normalize_consultation_status(update_payload["status"])
+        result = await update_consultation_request(request_id, update_payload, auth.client)
+        if not result["request"]:
+            raise HTTPException(status_code=404, detail="Consultation request not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_admin_audit(
+        actor_user_id=auth.user_id,
+        entity_type="consultation_request",
+        entity_id=request_id,
+        action="update",
+        before_json=before,
+        after_json=result["request"],
+    )
     return result
 
-@router.get("/consultation/status")
+@router.get("/consultation/status", dependencies=[Depends(public_limiter)])
 async def check_status():
     status = await get_queue_status()
     can_book = status["current_queue_size"] < status["max_capacity"]
@@ -428,8 +512,16 @@ async def check_status():
         "can_book": can_book
     }
 
-@router.post("/consultation/book")
+@router.post("/consultation/book", dependencies=[Depends(booking_limiter), Depends(llm_limiter)])
 async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = Depends(get_current_user)):
+    if _requires_verified_payment() and not is_verified_payment(
+        db=auth.client,
+        provider="razorpay",
+        provider_ref=payload.payment_ref,
+        user_id=auth.user_id,
+    ):
+        raise HTTPException(status_code=402, detail="A verified Razorpay payment is required before booking.")
+
     # 1. Check Capacity
     status = await get_queue_status()
     if status["current_queue_size"] >= status["max_capacity"]:
@@ -443,7 +535,7 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
             local_dt = local_dt.replace(tzinfo=ZoneInfo(tz_name))
         birth_utc = local_dt.astimezone(timezone.utc)
         
-        astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+        astrology_url = get_settings().astrology_engine_url
         
         payload_data = {
             "chart_type": "prashna",
@@ -457,8 +549,8 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
             "asked_at_utc": birth_utc.isoformat()
         }
             
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=5.0)) as client:
+            resp = await client.post(f"{astrology_url}/calculate", json=payload_data)
             
         if resp.status_code != 200:
             raise HTTPException(status_code=422, detail="Failed to calculate astrological snapshot for consultation.")
@@ -473,6 +565,7 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
         birth_time = payload.birth_datetime_local.split('T')[1]
         
         result = await create_consultation(
+            user_id=auth.user_id,
             user_name=payload.name,
             user_email=auth.email,
             question_text=payload.question,
@@ -484,27 +577,55 @@ async def book_consultation(payload: ConsultationBookRequest, auth: AuthState = 
             birth_time=birth_time,
             birth_place=payload.location.place_name
         )
+        if _requires_verified_payment():
+            update_payment_status(
+                provider="razorpay",
+                provider_ref=payload.payment_ref,
+                status="paid",
+                booking_id=result.get("id"),
+            )
         return result
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Failed to book consultation") from exc
 
 @router.get("/consultation/queue")
-async def get_queue():
+async def get_queue(auth: AuthState = Depends(RequireAdmin())):
     queue = await get_consultation_queue()
     for q in queue:
         q["astrological_snapshot"] = json.loads(q["astrological_snapshot"])
     return {"queue": queue}
 
 @router.post("/consultation/{consultation_id}/answer")
-async def answer_question(consultation_id: str, payload: AnswerRequest):
+async def answer_question(
+    consultation_id: Annotated[str, Path(pattern=ID_RE)],
+    payload: AnswerRequest,
+    auth: AuthState = Depends(RequireAdmin()),
+):
     success = await answer_consultation(consultation_id, payload.answer)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to answer consultation. Might not exist or is already answered.")
+    record_admin_audit(
+        actor_user_id=auth.user_id,
+        entity_type="paid_consultation",
+        entity_id=consultation_id,
+        action="answer",
+        after_json={"answered": True},
+    )
     return {"status": "success"}
 
 @router.post("/consultation/{consultation_id}/decline")
-async def decline_question(consultation_id: str):
+async def decline_question(
+    consultation_id: Annotated[str, Path(pattern=ID_RE)],
+    auth: AuthState = Depends(RequireAdmin()),
+):
     success = await decline_consultation(consultation_id)
     if not success:
         raise HTTPException(status_code=400, detail="Failed to decline consultation.")
+    record_admin_audit(
+        actor_user_id=auth.user_id,
+        entity_type="paid_consultation",
+        entity_id=consultation_id,
+        action="decline",
+        after_json={"declined": True},
+    )
     return {"status": "success"}

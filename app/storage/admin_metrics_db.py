@@ -19,6 +19,7 @@ def record_visit_event(
     referrer: str = "",
     user_agent: str = "",
     user_id: Optional[str] = None,
+    db: Any = None,
 ) -> Dict[str, Any]:
     event = {
         "id": f"visit_{uuid4().hex[:12]}",
@@ -30,39 +31,70 @@ def record_visit_event(
         "created_at": _iso(_now()),
     }
     try:
-        if supabase:
-            supabase.table("app_visit_events").insert(event).execute()
+        client = db or supabase
+        if client:
+            client.table("app_visit_events").insert(event).execute()
     except Exception as exc:
         print(f"Warning: record_visit_event failed: {exc}")
     return {"status": "recorded"}
 
 
-def admin_metrics() -> Dict[str, Any]:
+def admin_metrics(db: Any = None) -> Dict[str, Any]:
     now = _now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_start = today_start - timedelta(days=1)
     week_start = today_start - timedelta(days=6)
+    month_start = today_start - timedelta(days=29)
     live_cutoff = now - timedelta(minutes=5)
 
-    visits = _visit_metrics(today_start, yesterday_start, week_start, live_cutoff)
-    community = _community_metrics(today_start)
-    consultations = _consultation_metrics(today_start)
-    earnings = _earnings_metrics(today_start)
+    visit_rows = _select_all("app_visit_events", db=db)
+    user_rows = _select_all("users", db=db)
+    consultation_rows = _select_all("consultation_requests", db=db)
+    paid_rows = _select_all("paid_consultations", db=db)
+    match_rows = _select_all("match_requests", db=db)
+    community_app_rows = _select_all("community_applications", db=db)
+    membership_rows = _select_all("community_memberships", db=db)
+    message_rows = _select_all("community_messages", db=db)
+    report_rows = _select_all("community_reports", db=db)
+
+    visits = _visit_metrics(today_start, yesterday_start, week_start, live_cutoff, visit_rows)
+    growth = _growth_metrics(today_start, week_start, month_start, live_cutoff, visit_rows, user_rows)
+    retention = _retention_metrics(today_start, visit_rows, consultation_rows)
+    revenue = _revenue_metrics(today_start, week_start, month_start, paid_rows, consultation_rows)
+    domains = _domain_metrics(consultation_rows, match_rows)
+    matchmaking = _matchmaking_metrics(match_rows, consultation_rows)
+    community = _community_metrics(today_start, user_rows, community_app_rows, membership_rows, message_rows, report_rows)
+    consultations = _consultation_metrics(today_start, consultation_rows, paid_rows)
+    product_usage = _product_usage_metrics(visit_rows, consultation_rows, match_rows)
 
     return {
         "generated_at": _iso(now),
         "traffic": visits,
+        "growth": growth,
+        "retention": retention,
+        "revenue": revenue,
+        "domains": domains,
+        "matchmaking": matchmaking,
         "community": community,
         "consultations": consultations,
-        "earnings": earnings,
+        "earnings": revenue,
+        "product_usage": product_usage,
+        "revenue_generated": revenue["total_revenue"],
+        "total_signups": growth["total_signups"],
+        "dau": growth["daily_active_users"],
+        "active_users": growth["live_users"],
+        "consultation_applications": consultations["consultant_applications_total"],
+        "matchmaking_applications": matchmaking["total_reports"],
+        "top_domains": domains["top_domains"],
     }
 
 
-def _select_all(table: str, columns: str = "*") -> List[Dict[str, Any]]:
-    if not supabase:
+def _select_all(table: str, columns: str = "*", db: Any = None) -> List[Dict[str, Any]]:
+    client = db or supabase
+    if not client:
         return []
     try:
-        res = supabase.table(table).select(columns).execute()
+        res = client.table(table).select(columns).execute()
         return [dict(row) for row in (res.data or [])]
     except Exception as exc:
         print(f"Warning: metrics select failed for {table}: {exc}")
@@ -86,8 +118,8 @@ def _unique_count(rows: List[Dict[str, Any]], key: str) -> int:
     return len({row.get(key) for row in rows if row.get(key)})
 
 
-def _visit_metrics(today_start: datetime, yesterday_start: datetime, week_start: datetime, live_cutoff: datetime) -> Dict[str, Any]:
-    rows = _select_all("app_visit_events", "visitor_key, path, created_at")
+def _visit_metrics(today_start: datetime, yesterday_start: datetime, week_start: datetime, live_cutoff: datetime, rows: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    rows = rows if rows is not None else _select_all("app_visit_events", "visitor_key, path, created_at")
     with_dt = [(row, _parse_dt(row.get("created_at"))) for row in rows]
     today = [row for row, dt in with_dt if dt and dt >= today_start]
     yesterday = [row for row, dt in with_dt if dt and yesterday_start <= dt < today_start]
@@ -115,15 +147,128 @@ def _top_paths(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
-def _community_metrics(today_start: datetime) -> Dict[str, Any]:
-    user_rows = _select_all("users", "id, role, verification_status, community_access, created_at")
-    application_rows = _select_all("community_applications", "user_id, status, submitted_at")
-    membership_rows = _select_all("community_memberships", "user_id, status, approved_at")
+def _growth_metrics(today_start: datetime, week_start: datetime, month_start: datetime, live_cutoff: datetime, visits: List[Dict[str, Any]], users: List[Dict[str, Any]]) -> Dict[str, Any]:
+    today_visits = _since(visits, today_start)
+    week_visits = _since(visits, week_start)
+    month_visits = _since(visits, month_start)
+    live_visits = _since(visits, live_cutoff)
+    today_users = _since(users, today_start)
+    week_users = _since(users, week_start)
+    month_users = _since(users, month_start)
+    unique_visitors = _unique_identity(visits)
+    returning = _returning_identity_count(visits)
+
+    return {
+        "total_visits": len(visits),
+        "unique_visitors": len(unique_visitors),
+        "signups_today": len(today_users),
+        "signups_week": len(week_users),
+        "signups_month": len(month_users),
+        "total_signups": len(users),
+        "signup_conversion_rate": _percent(len(users), len(unique_visitors)),
+        "returning_users": returning,
+        "daily_active_users": len(_unique_identity(today_visits)),
+        "weekly_active_users": len(_unique_identity(week_visits)),
+        "monthly_active_users": len(_unique_identity(month_visits)),
+        "live_users": len(_unique_identity(live_visits)),
+    }
+
+
+def _retention_metrics(today_start: datetime, visits: List[Dict[str, Any]], consultations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    identities_with_consult = {_row_identity(row) for row in consultations if _row_identity(row)}
+    came_back_after_consult = 0
+    for identity in identities_with_consult:
+        request_times = [_parse_dt(row.get("created_at") or row.get("submitted_at")) for row in consultations if _row_identity(row) == identity]
+        visit_times = [_parse_dt(row.get("created_at")) for row in visits if _row_identity(row) == identity]
+        if any(v and r and v > r for r in request_times for v in visit_times):
+            came_back_after_consult += 1
+
+    return {
+        "came_back_after_consultation": came_back_after_consult,
+        "retention_1_day": _retention_rate(visits, 1),
+        "retention_7_day": _retention_rate(visits, 7),
+        "retention_30_day": _retention_rate(visits, 30),
+        "repeat_consultation_requests": _repeat_identity_count(consultations),
+    }
+
+
+def _revenue_metrics(today_start: datetime, week_start: datetime, month_start: datetime, paid: List[Dict[str, Any]], consultations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    total = _sum_amount(paid)
+    paid_users = len(_unique_identity(paid))
+    completed_paid = [
+        row for row in paid
+        if str(row.get("status") or "").lower() in {"answered", "completed", "complete"}
+    ]
+    paid_consultations = [row for row in consultations if str(row.get("payment_status") or "").lower() == "paid"]
+
+    return {
+        "total_paid_users": paid_users,
+        "total_revenue": total,
+        "revenue_today": _sum_amount(_since(paid, today_start)),
+        "revenue_week": _sum_amount(_since(paid, week_start)),
+        "revenue_month": _sum_amount(_since(paid, month_start)),
+        "paid_consultations_count": len(paid) + len(paid_consultations),
+        "matchmaking_consultation_bookings": len([row for row in consultations if _source_group(row) == "matchmaking"]),
+        "average_revenue_per_user": round(total / paid_users, 2) if paid_users else 0,
+        "completed_paid_cases": len(completed_paid) + len([row for row in paid_consultations if str(row.get("status") or "").lower() == "completed"]),
+    }
+
+
+def _domain_metrics(consultations: List[Dict[str, Any]], matches: List[Dict[str, Any]]) -> Dict[str, Any]:
+    domain_counts: Dict[str, int] = {}
+    source_split: Dict[str, Dict[str, int]] = {}
+    for row in consultations:
+        domain = _detect_domain(row)
+        source = _source_group(row)
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        source_split.setdefault(source, {})
+        source_split[source][domain] = source_split[source].get(domain, 0) + 1
+    for row in matches:
+        domain = _detect_domain(row)
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        source_split.setdefault("matchmaking", {})
+        source_split["matchmaking"][domain] = source_split["matchmaking"].get(domain, 0) + 1
+    total = sum(domain_counts.values())
+    top_domains = [
+        {"name": name, "count": count, "percentage": _percent(count, total)}
+        for name, count in sorted(domain_counts.items(), key=lambda item: item[1], reverse=True)
+    ]
+    return {
+        "most_asked_domains": top_domains,
+        "top_domains": top_domains[:6],
+        "domain_split": source_split,
+    }
+
+
+def _matchmaking_metrics(matches: List[Dict[str, Any]], consultations: List[Dict[str, Any]]) -> Dict[str, Any]:
+    bookings = len([row for row in consultations if _source_group(row) == "matchmaking"])
+    requested = bookings + len([row for row in matches if str(row.get("status") or "").lower() in {"consultation_booked", "accepted", "scheduled", "completed"}])
+    return {
+        "total_reports": len(matches),
+        "consultation_requested": requested,
+        "free_report_to_consultation_rate": _percent(requested, len(matches)),
+    }
+
+
+def _community_metrics(
+    today_start: datetime,
+    user_rows: Optional[List[Dict[str, Any]]] = None,
+    application_rows: Optional[List[Dict[str, Any]]] = None,
+    membership_rows: Optional[List[Dict[str, Any]]] = None,
+    message_rows: Optional[List[Dict[str, Any]]] = None,
+    report_rows: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    user_rows = user_rows if user_rows is not None else _select_all("users", "id, role, verification_status, community_access, created_at")
+    application_rows = application_rows if application_rows is not None else _select_all("community_applications", "user_id, status, submitted_at")
+    membership_rows = membership_rows if membership_rows is not None else _select_all("community_memberships", "user_id, status, approved_at")
+    message_rows = message_rows if message_rows is not None else _select_all("community_messages")
+    report_rows = report_rows if report_rows is not None else _select_all("community_reports")
     legacy_pending = [row for row in user_rows if row.get("verification_status") == "pending"]
     today_apps = [
         row for row in application_rows
         if (dt := _parse_dt(row.get("submitted_at"))) and dt >= today_start
     ]
+    today_messages = _since(message_rows, today_start)
 
     return {
         "applications_total": len(application_rows) or len([row for row in user_rows if row.get("role") == "astrologer"]),
@@ -131,12 +276,19 @@ def _community_metrics(today_start: datetime) -> Dict[str, Any]:
         "pending_applications": len([row for row in application_rows if row.get("status") in {"SUBMITTED", "UNDER_REVIEW"}]) or len(legacy_pending),
         "approved_members": len([row for row in membership_rows if row.get("status") == "ACTIVE"]) or len([row for row in user_rows if row.get("community_access") is True]),
         "rejected_applications": len([row for row in application_rows if row.get("status") == "REJECTED"]),
+        "total_astrologers": len([row for row in user_rows if row.get("role") == "astrologer"]) or len(membership_rows),
+        "verified_astrologers": len([row for row in user_rows if row.get("verification_status") in {"verified", "APPROVED", "approved"}]) or len([row for row in membership_rows if row.get("status") == "ACTIVE"]),
+        "active_community_users": len(_unique_identity(today_messages)),
+        "messages_per_day": len(today_messages),
+        "most_active_channels": _top_counts(message_rows, "channel_name", 6),
+        "reported_deleted_posts": len(report_rows) + len([row for row in message_rows if row.get("is_deleted") is True or row.get("deleted_at")]),
+        "engagement_by_user": _top_counts(message_rows, "sender_id", 6),
     }
 
 
-def _consultation_metrics(today_start: datetime) -> Dict[str, Any]:
-    public_requests = _select_all("consultation_requests", "id, status, payment_status, created_at")
-    paid = _select_all("paid_consultations", "id, status, amount, created_at, answered_at")
+def _consultation_metrics(today_start: datetime, public_requests: Optional[List[Dict[str, Any]]] = None, paid: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    public_requests = public_requests if public_requests is not None else _select_all("consultation_requests", "id, status, payment_status, created_at")
+    paid = paid if paid is not None else _select_all("paid_consultations", "id, status, amount, created_at, answered_at")
     today_public = [
         row for row in public_requests
         if (dt := _parse_dt(row.get("created_at"))) and dt >= today_start
@@ -157,24 +309,128 @@ def _consultation_metrics(today_start: datetime) -> Dict[str, Any]:
     }
 
 
-def _earnings_metrics(today_start: datetime) -> Dict[str, Any]:
-    paid = _select_all("paid_consultations", "status, amount, created_at")
-    stats = _select_all("consultant_platform_stats", "total_platform_earnings, consultant_earnings")
-    paid_total = sum(float(row.get("amount") or 0) for row in paid)
-    paid_today = sum(
-        float(row.get("amount") or 0)
-        for row in paid
-        if (dt := _parse_dt(row.get("created_at"))) and dt >= today_start
-    )
-    platform_earnings = paid_total * 0.4
-    consultant_earnings = paid_total * 0.6
-    if stats:
-        platform_earnings = float(stats[0].get("total_platform_earnings") or platform_earnings)
-        consultant_earnings = float(stats[0].get("consultant_earnings") or consultant_earnings)
-
-    return {
-        "gross_revenue_total": paid_total,
-        "gross_revenue_today": paid_today,
-        "platform_earnings_total": platform_earnings,
-        "consultant_earnings_total": consultant_earnings,
+def _product_usage_metrics(visits: List[Dict[str, Any]], consultations: List[Dict[str, Any]], matches: List[Dict[str, Any]]) -> Dict[str, Any]:
+    features = {
+        "prashna": _feature_count(visits, consultations, "prashna"),
+        "lagna": _feature_count(visits, consultations, "lagna"),
+        "matchmaking": len(matches),
+        "consultation": len(consultations),
     }
+    return {
+        "prashna_charts_generated": features["prashna"],
+        "lagna_charts_generated": features["lagna"],
+        "matchmaking_reports_generated": len(matches),
+        "chart_downloads_shares": 0,
+        "most_used_features": [{"name": key, "count": value} for key, value in sorted(features.items(), key=lambda item: item[1], reverse=True)],
+        "drop_off_points": _top_paths(visits),
+        "failed_chart_generations": 0,
+        "api_errors_by_feature": [],
+    }
+
+
+def _since(rows: List[Dict[str, Any]], start: datetime) -> List[Dict[str, Any]]:
+    return [
+        row for row in rows
+        if (dt := _parse_dt(row.get("created_at") or row.get("submitted_at") or row.get("approved_at"))) and dt >= start
+    ]
+
+
+def _row_identity(row: Dict[str, Any]) -> Optional[str]:
+    return row.get("user_id") or row.get("visitor_key") or row.get("email") or row.get("sender_id")
+
+
+def _unique_identity(rows: List[Dict[str, Any]]) -> set[str]:
+    return {identity for row in rows if (identity := _row_identity(row))}
+
+
+def _returning_identity_count(rows: List[Dict[str, Any]]) -> int:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        identity = _row_identity(row)
+        if identity:
+            counts[identity] = counts.get(identity, 0) + 1
+    return len([identity for identity, count in counts.items() if count > 1])
+
+
+def _repeat_identity_count(rows: List[Dict[str, Any]]) -> int:
+    return _returning_identity_count(rows)
+
+
+def _retention_rate(visits: List[Dict[str, Any]], days: int) -> int:
+    first_seen: Dict[str, datetime] = {}
+    retained: set[str] = set()
+    for row in sorted(visits, key=lambda item: str(item.get("created_at") or "")):
+        identity = _row_identity(row)
+        dt = _parse_dt(row.get("created_at"))
+        if not identity or not dt:
+            continue
+        if identity not in first_seen:
+            first_seen[identity] = dt
+        elif dt >= first_seen[identity] + timedelta(days=days):
+            retained.add(identity)
+    return _percent(len(retained), len(first_seen))
+
+
+def _sum_amount(rows: List[Dict[str, Any]]) -> float:
+    total = 0.0
+    for row in rows:
+        try:
+            total += float(row.get("amount") or row.get("price") or row.get("total") or 0)
+        except Exception:
+            continue
+    return round(total, 2)
+
+
+def _percent(value: int, total: int) -> int:
+    return int(round((value / total) * 100)) if total else 0
+
+
+def _source_group(row: Dict[str, Any]) -> str:
+    text = " ".join(str(row.get(key) or "") for key in ("source_type", "chart_type", "type", "category", "question")).lower()
+    if "match" in text:
+        return "matchmaking"
+    if "prashna" in text:
+        return "prashna"
+    if "lagna" in text or "birth" in text:
+        return "lagna"
+    return "consultation"
+
+
+def _detect_domain(row: Dict[str, Any]) -> str:
+    text = " ".join(str(row.get(key) or "") for key in ("domain", "topic", "question", "category", "source_type", "chart_type")).lower()
+    keyword_map = {
+        "marriage": ("marriage", "shaadi", "match", "spouse", "wedding"),
+        "career": ("career", "job", "promotion", "work", "profession"),
+        "wealth": ("wealth", "money", "finance", "income", "loan"),
+        "health": ("health", "disease", "medical", "illness"),
+        "education": ("education", "exam", "study", "college", "school"),
+        "legal": ("legal", "court", "case", "law"),
+        "foreign travel": ("foreign", "travel", "visa", "abroad"),
+        "property": ("property", "land", "house", "home"),
+        "relationship": ("relationship", "love", "partner", "breakup"),
+        "business": ("business", "startup", "company", "trade"),
+    }
+    for domain, keywords in keyword_map.items():
+        if any(keyword in text for keyword in keywords):
+            return domain
+    return "other"
+
+
+def _top_counts(rows: List[Dict[str, Any]], key: str, limit: int = 5) -> List[Dict[str, Any]]:
+    counts: Dict[str, int] = {}
+    for row in rows:
+        name = row.get(key) or "unknown"
+        counts[str(name)] = counts.get(str(name), 0) + 1
+    return [
+        {"name": name, "count": count}
+        for name, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:limit]
+    ]
+
+
+def _feature_count(visits: List[Dict[str, Any]], consultations: List[Dict[str, Any]], keyword: str) -> int:
+    visit_count = len([row for row in visits if keyword in str(row.get("path") or "").lower()])
+    consultation_count = len([
+        row for row in consultations
+        if keyword in " ".join(str(row.get(key) or "") for key in ("source_type", "chart_type", "question")).lower()
+    ])
+    return max(visit_count, consultation_count)

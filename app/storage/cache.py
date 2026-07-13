@@ -1,10 +1,10 @@
-import os
 import json
 import redis
 from typing import Optional, Any
+from app.config import get_settings
 
 # Get Redis URL from environment or fallback to localhost
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = get_settings().redis_url
 
 try:
     redis_client = redis.from_url(REDIS_URL, decode_responses=True)

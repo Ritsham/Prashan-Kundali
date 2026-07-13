@@ -12,6 +12,7 @@ from app.llm_engine.config import (
     api_keys_for,
     selected_provider_label,
 )
+from app.config import get_settings
 from app.llm_engine.http_client import post_json, call_rotating_chat_completion
 
 
@@ -132,7 +133,7 @@ def call_openrouter(sys_prompt: str, usr_prompt: str, model: str = None, stream:
                 url="https://openrouter.ai/api/v1/chat/completions",
                 payload=payload,
                 headers={
-                    "HTTP-Referer": "https://localhost",
+                    "HTTP-Referer": get_settings().public_site_url,
                     "X-Title": "KundaliStudio",
                     "Content-Type": "application/json",
                 },
@@ -155,7 +156,7 @@ def call_openrouter(sys_prompt: str, usr_prompt: str, model: str = None, stream:
         url="https://openrouter.ai/api/v1/chat/completions",
         payload=payload,
         headers={
-            "HTTP-Referer": "https://localhost",
+            "HTTP-Referer": get_settings().public_site_url,
             "X-Title": "KundaliStudio",
             "Content-Type": "application/json",
         },

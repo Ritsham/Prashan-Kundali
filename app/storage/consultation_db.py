@@ -1,13 +1,22 @@
 import json
+import os
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
-import os
 
+from app.core.consultation_lifecycle import (
+    ACTIVE_CONSULTATION_STATUSES,
+    CONSULTATION_STATUS_CONFIRMED,
+    CONSULTATION_STATUS_PENDING_PAYMENT,
+    CONSULTATION_STATUS_REQUESTED,
+    assert_consultation_transition,
+    normalize_consultation_status,
+    validate_price_amount,
+)
+from app.config import get_settings
 from app.storage.database import supabase
 from app.schemas.consultation_case import ConsultationCasePayload
 
-ACTIVE_CONSULTATION_STATUSES = ["pending", "accepted", "in_progress"]
 MAX_ACTIVE_CONSULTATION_REQUESTS = 20
 
 FOUNDER_CONSULTANT = {
@@ -15,12 +24,14 @@ FOUNDER_CONSULTANT = {
     "name": "Rupesh Kumar",
     "title": "Founder Astrologer / Primary Consultant",
     "photo_url": "https://www.shanitemple.com/index_images/astrology-puja/janamkundli.png",
-    "bio": "Founder astrologer at Prashna Astro, focused on practical guidance through Birth Chart, Prashna Kundali, prediction analysis, and case-based consultation.",
+    "bio": "Founder astrologer at Shree Lakshmi Astro, focused on practical guidance through Birth Chart, Prashna Kundali, prediction analysis, and case-based consultation.",
     "experience": "3+ years",
     "systems": ["Vedic Astrology", "Prashna Kundali", "Lagna Kundali", "KP-oriented analysis"],
     "languages": ["Hindi", "English"],
     "consultation_type": "Birth Chart, Prashna, Career, Marriage, Business, Health, and personal guidance",
     "consultation_fee": None,
+    "contact_phone": "",
+    "whatsapp_number": "",
     "is_active": True,
 }
 
@@ -30,7 +41,12 @@ async def init_consultation_db() -> None:
 
 
 async def get_founder_consultant() -> Dict[str, Any]:
-    return FOUNDER_CONSULTANT
+    settings = get_settings()
+    consultant = dict(FOUNDER_CONSULTANT)
+    consultant["consultation_fee"] = float(validate_price_amount(settings.consultation_price_inr))
+    consultant["contact_phone"] = os.getenv("FOUNDER_CONSULTANT_PHONE", consultant.get("contact_phone") or "").strip()
+    consultant["whatsapp_number"] = os.getenv("FOUNDER_CONSULTANT_WHATSAPP", consultant.get("whatsapp_number") or "").strip()
+    return consultant
 
 
 def _now_iso() -> str:
@@ -97,20 +113,63 @@ def _normalize_case_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "preferred_time": case.get("preferred_time") or contract.get("preferred_time"),
         "consultation_mode": case.get("consultation_mode") or contract.get("consultation_mode"),
         "payment_status": case.get("payment_status"),
+        "quoted_price": case.get("quoted_price"),
+        "currency": case.get("currency") or "INR",
     }
     return case
 
 
-async def create_consultation_case(payload: ConsultationCasePayload, user_id: Optional[str] = None) -> Dict[str, Any]:
-    active_count = await count_active_consultation_requests()
-    status = "pending" if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else "waiting_queue"
-    queue_number = None if status == "pending" else await next_waiting_queue_number()
+def _status_filter_values() -> list[str]:
+    return sorted(ACTIVE_CONSULTATION_STATUSES | {"pending", "accepted", "scheduled", "in_progress", "waiting_queue", "QUEUED"})
+
+
+async def _has_active_booking_conflict(
+    db: Any,
+    *,
+    user_id: Optional[str],
+    email: Optional[str],
+    consultant_id: str,
+    preferred_date: Optional[str],
+    preferred_time: Optional[str],
+) -> bool:
+    if not db:
+        return False
+    try:
+        query = db.table("consultation_requests").select("id, status")
+        query = query.eq("consultant_id", consultant_id)
+        query = query.in_("status", _status_filter_values())
+        if preferred_date:
+            query = query.eq("preferred_date", preferred_date)
+        if preferred_time:
+            query = query.eq("preferred_time", preferred_time)
+        if user_id:
+            query = query.eq("user_id", user_id)
+        elif email:
+            query = query.eq("email", email)
+        else:
+            return False
+        res = query.limit(1).execute()
+        return bool(res.data)
+    except Exception as exc:
+        print(f"Warning: consultation conflict lookup failed: {exc}")
+        return False
+
+
+async def create_consultation_case(
+    payload: ConsultationCasePayload,
+    user_id: Optional[str] = None,
+    db_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    db = db_client or supabase
+    active_count = await count_active_consultation_requests(db)
+    status = CONSULTATION_STATUS_REQUESTED
+    queue_number = None if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else await next_waiting_queue_number(db)
     now = _now_iso()
 
     if payload.idempotency_key:
         try:
             res = (
-                supabase.table("consultation_requests")
+                db.table("consultation_requests")
                 .select("*")
                 .eq("idempotency_key", payload.idempotency_key)
                 .limit(1)
@@ -130,6 +189,15 @@ async def create_consultation_case(payload: ConsultationCasePayload, user_id: Op
     user = payload.user
     consultation = payload.consultation
     snapshot = payload.astrology_snapshot.model_dump(mode="json", exclude_none=True)
+    if await _has_active_booking_conflict(
+        db,
+        user_id=user_id,
+        email=user.email,
+        consultant_id=FOUNDER_CONSULTANT["id"],
+        preferred_date=consultation.preferred_date,
+        preferred_time=consultation.preferred_time,
+    ):
+        raise ValueError("You already have an active consultation request for this astrologer and time.")
 
     row = {
         "id": case_id,
@@ -158,6 +226,8 @@ async def create_consultation_case(payload: ConsultationCasePayload, user_id: Op
         "preferred_time": consultation.preferred_time or "",
         "consultation_mode": consultation.consultation_mode,
         "payment_status": consultation.payment_status or "not_paid",
+        "quoted_price": consultation.quoted_price,
+        "currency": consultation.currency or "INR",
         "status": status,
         "queue_number": queue_number,
         "astrology_snapshot": _encode_json(snapshot),
@@ -172,14 +242,14 @@ async def create_consultation_case(payload: ConsultationCasePayload, user_id: Op
     }
 
     try:
-        supabase.table("consultation_requests").insert(row).execute()
+        db.table("consultation_requests").insert(row).execute()
     except Exception as exc:
         if "PGRST204" not in str(exc):
             print(f"Error: consultation case insert failed: {exc}")
             raise ValueError(f"Supabase Security Error: {exc}")
         legacy_row = _legacy_consultation_case_row(row, payload, snapshot)
         try:
-            supabase.table("consultation_requests").insert(legacy_row).execute()
+            db.table("consultation_requests").insert(legacy_row).execute()
             row = _normalize_case_row(legacy_row)
         except Exception as legacy_exc:
             print(f"Error: consultation case legacy insert failed: {legacy_exc}")
@@ -187,10 +257,10 @@ async def create_consultation_case(payload: ConsultationCasePayload, user_id: Op
 
     return {
         "case": _normalize_case_row(row),
-        "slot_available": status == "pending",
+        "slot_available": queue_number is None,
         "message": (
-            "Your consultation case has been received. The consultant will review it soon."
-            if status == "pending"
+            "Your consultation request has been received. Payment is not collected yet; the consultant will confirm next steps."
+            if queue_number is None
             else "Currently, all consultation slots are full. You have been added to the waiting queue."
         ),
         "duplicate": False,
@@ -236,9 +306,10 @@ def _legacy_consultation_case_row(row: Dict[str, Any], payload: ConsultationCase
     }
 
 
-async def get_consultation_case(case_id: str) -> Optional[Dict[str, Any]]:
+async def get_consultation_case(case_id: str, db_client: Optional[Any] = None) -> Optional[Dict[str, Any]]:
     try:
-        res = supabase.table("consultation_requests").select("*").eq("id", case_id).execute()
+        db = db_client or supabase
+        res = db.table("consultation_requests").select("*").eq("id", case_id).execute()
         if not res.data:
             return None
         return _normalize_case_row(dict(res.data[0]))
@@ -254,9 +325,11 @@ async def list_consultation_cases(
     user_name: Optional[str] = None,
     case_id: Optional[str] = None,
     created_date: Optional[str] = None,
+    db_client: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     try:
-        query = supabase.table("consultation_requests").select("*")
+        db = db_client or supabase
+        query = db.table("consultation_requests").select("*")
         if status:
             query = query.eq("status", status)
         if source_type:
@@ -276,11 +349,16 @@ async def list_consultation_cases(
         return []
 
 
-async def update_consultation_case(case_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+async def update_consultation_case(case_id: str, updates: Dict[str, Any], db_client: Optional[Any] = None) -> Dict[str, Any]:
+    db = db_client or supabase
     update_row: Dict[str, Any] = {}
+    current = await get_consultation_case(case_id, db)
     if updates.get("case_status") is not None:
         status_value = updates["case_status"]
-        update_row["status"] = getattr(status_value, "value", status_value)
+        next_status = normalize_consultation_status(getattr(status_value, "value", status_value))
+        if current:
+            assert_consultation_transition(current.get("status"), next_status)
+        update_row["status"] = next_status
     for key in ["admin_notes", "assigned_astrologer", "meeting_link", "scheduled_at"]:
         if updates.get(key) is not None:
             update_row[key] = updates[key]
@@ -290,35 +368,43 @@ async def update_consultation_case(case_id: str, updates: Dict[str, Any]) -> Dic
         update_row["astrological_snapshot"] = json.dumps(snapshot)
 
     update_row["updated_at"] = _now_iso()
-    supabase.table("consultation_requests").update(update_row).eq("id", case_id).execute()
+    db.table("consultation_requests").update(update_row).eq("id", case_id).execute()
 
     promoted = None
-    if update_row.get("status") in {"completed", "rejected", "cancelled"}:
+    if update_row.get("status") in {"completed", "cancelled", "refunded"}:
         promoted = await promote_oldest_waiting_request()
 
-    return {"case": await get_consultation_case(case_id), "promoted_case": promoted}
+    return {"case": await get_consultation_case(case_id, db), "promoted_case": promoted}
 
 
-async def count_active_consultation_requests() -> int:
+async def count_active_consultation_requests(db_client: Optional[Any] = None) -> int:
+    db = db_client or supabase
     try:
-        stats_res = supabase.table("consultant_platform_stats").select("current_queue_size").eq("id", 1).execute()
+        stats_res = db.table("consultant_platform_stats").select("current_queue_size").eq("id", 1).execute()
         if stats_res.data:
             return int(stats_res.data[0].get("current_queue_size") or 0)
     except Exception as exc:
         print(f"Warning: consultation stats count failed: {exc}")
 
     try:
-        res = supabase.table("paid_consultations").select("id").eq("status", "QUEUED").execute()
+        res = db.table("consultation_requests").select("id").in_("status", _status_filter_values()).execute()
+        return len(res.data or [])
+    except Exception as exc:
+        print(f"Warning: active consultation request count failed: {exc}")
+
+    try:
+        res = db.table("paid_consultations").select("id").in_("status", _status_filter_values()).execute()
         return len(res.data or [])
     except Exception as exc:
         print(f"Warning: active consultation request count failed: {exc}")
         return 0
 
 
-async def get_public_consultation_queue_status() -> Dict[str, Any]:
-    active_count = await count_active_consultation_requests()
+async def get_public_consultation_queue_status(db_client: Optional[Any] = None) -> Dict[str, Any]:
+    db = db_client or supabase
+    active_count = await count_active_consultation_requests(db)
     try:
-        stats_res = supabase.table("consultant_platform_stats").select("max_capacity").eq("id", 1).execute()
+        stats_res = db.table("consultant_platform_stats").select("max_capacity").eq("id", 1).execute()
         max_active = int(stats_res.data[0].get("max_capacity") or MAX_ACTIVE_CONSULTATION_REQUESTS) if stats_res.data else MAX_ACTIVE_CONSULTATION_REQUESTS
     except Exception as exc:
         print(f"Warning: consultation capacity lookup failed: {exc}")
@@ -332,10 +418,11 @@ async def get_public_consultation_queue_status() -> Dict[str, Any]:
     }
 
 
-async def next_waiting_queue_number() -> int:
+async def next_waiting_queue_number(db_client: Optional[Any] = None) -> int:
+    db = db_client or supabase
     try:
         res = (
-            supabase.table("consultation_requests")
+            db.table("consultation_requests")
             .select("queue_number")
             .eq("status", "waiting_queue")
             .order("queue_number", desc=True)
@@ -350,12 +437,27 @@ async def next_waiting_queue_number() -> int:
         return 1
 
 
-async def create_consultation_request(payload: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
-    active_count = await count_active_consultation_requests()
-    status = "pending" if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else "waiting_queue"
-    queue_number = None if status == "pending" else await next_waiting_queue_number()
+async def create_consultation_request(
+    payload: Dict[str, Any],
+    user_id: Optional[str] = None,
+    db_client: Optional[Any] = None,
+) -> Dict[str, Any]:
+    db = db_client or supabase
+    active_count = await count_active_consultation_requests(db)
+    payment_status = str(payload.get("payment_status") or "not_paid").lower()
+    status = CONSULTATION_STATUS_PENDING_PAYMENT if payment_status in {"pending", "created"} else CONSULTATION_STATUS_REQUESTED
+    queue_number = None if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else await next_waiting_queue_number(db)
     now = _now_iso()
     request_id = f"creq_{uuid4().hex[:12]}"
+    if await _has_active_booking_conflict(
+        db,
+        user_id=user_id,
+        email=payload.get("email"),
+        consultant_id=payload.get("consultant_id") or FOUNDER_CONSULTANT["id"],
+        preferred_date=payload.get("preferred_date"),
+        preferred_time=payload.get("preferred_time"),
+    ):
+        raise ValueError("You already have an active consultation request for this astrologer and time.")
 
     row = {
         "id": request_id,
@@ -370,7 +472,9 @@ async def create_consultation_request(payload: Dict[str, Any], user_id: Optional
         "topic": payload.get("topic", "Other"),
         "question": payload.get("question", ""),
         "preferred_time": payload.get("preferred_time", ""),
-        "payment_status": payload.get("payment_status", "not_paid"),
+        "payment_status": payment_status,
+        "quoted_price": payload.get("quoted_price"),
+        "currency": payload.get("currency", "INR"),
         "status": status,
         "queue_number": queue_number,
         "astrological_snapshot": payload.get("astrological_snapshot"),
@@ -381,25 +485,63 @@ async def create_consultation_request(payload: Dict[str, Any], user_id: Optional
         "updated_at": now,
     }
     try:
-        supabase.table("consultation_requests").insert(row).execute()
+        db.table("consultation_requests").insert(row).execute()
     except Exception as exc:
         print(f"Error: consultation_requests insert failed: {exc}")
         raise ValueError(f"Supabase Security Error: {exc}")
 
+    if queue_number is not None:
+        message = "Currently, all consultation slots are full. You have been added to the waiting queue. You will be notified when your turn comes."
+    elif status == CONSULTATION_STATUS_PENDING_PAYMENT:
+        message = "Your consultation request has been created. Complete payment to confirm it for astrologer review."
+    else:
+        message = "Your consultation request has been received. Payment is not collected yet; the consultant will confirm next steps."
+
     return {
         "request": row,
-        "slot_available": status == "pending",
-        "message": (
-            "Your consultation request has been received. The consultant will review it soon."
-            if status == "pending"
-            else "Currently, all consultation slots are full. You have been added to the waiting queue. You will be notified when your turn comes."
-        ),
+        "slot_available": queue_number is None,
+        "message": message,
     }
 
 
-async def list_consultation_requests(status: Optional[str] = None) -> List[Dict[str, Any]]:
+async def mark_consultation_request_paid(
+    request_id: str,
+    *,
+    provider: str,
+    provider_ref: str,
+    payment_id: Optional[str] = None,
+    db_client: Optional[Any] = None,
+) -> Optional[Dict[str, Any]]:
+    db = db_client or supabase
+    current = await get_consultation_request(request_id, db)
+    if not current:
+        return None
+
+    notes = current.get("admin_notes") or ""
+    payment_note = f"Payment verified via {provider}: order={provider_ref}"
+    if payment_id:
+        payment_note += f", payment={payment_id}"
+    if payment_note not in notes:
+        notes = (notes + "\n" + payment_note).strip()
+
+    updates = {
+        "payment_status": "paid",
+        "status": CONSULTATION_STATUS_CONFIRMED,
+        "admin_notes": notes,
+        "updated_at": _now_iso(),
+    }
     try:
-        query = supabase.table("consultation_requests").select("*")
+        db.table("consultation_requests").update(updates).eq("id", request_id).execute()
+    except Exception as exc:
+        print(f"Warning: mark_consultation_request_paid failed: {exc}")
+        return None
+    return await get_consultation_request(request_id, db)
+
+
+async def list_consultation_requests(status: Optional[str] = None, db_client: Optional[Any] = None) -> List[Dict[str, Any]]:
+    try:
+        db = db_client or supabase
+        query = db.table("consultation_requests").select("*")
         if status:
             query = query.eq("status", status)
         res = query.order("created_at").execute()
@@ -409,9 +551,10 @@ async def list_consultation_requests(status: Optional[str] = None) -> List[Dict[
         return []
 
 
-async def get_consultation_request(request_id: str) -> Optional[Dict[str, Any]]:
+async def get_consultation_request(request_id: str, db_client: Optional[Any] = None) -> Optional[Dict[str, Any]]:
     try:
-        res = supabase.table("consultation_requests").select("*").eq("id", request_id).execute()
+        db = db_client or supabase
+        res = db.table("consultation_requests").select("*").eq("id", request_id).execute()
         if not res.data:
             return None
         return _normalize_case_row(dict(res.data[0]))
@@ -420,16 +563,23 @@ async def get_consultation_request(request_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def update_consultation_request(request_id: str, updates: Dict[str, Any]) -> Dict[str, Any]:
+async def update_consultation_request(request_id: str, updates: Dict[str, Any], db_client: Optional[Any] = None) -> Dict[str, Any]:
+    db = db_client or supabase
     updates = {key: value for key, value in updates.items() if value is not None}
+    if "status" in updates:
+        current = await get_consultation_request(request_id, db)
+        next_status = normalize_consultation_status(updates["status"])
+        if current:
+            assert_consultation_transition(current.get("status"), next_status)
+        updates["status"] = next_status
     updates["updated_at"] = _now_iso()
-    supabase.table("consultation_requests").update(updates).eq("id", request_id).execute()
+    db.table("consultation_requests").update(updates).eq("id", request_id).execute()
 
     promoted = None
-    if updates.get("status") in {"completed", "rejected", "cancelled"}:
+    if updates.get("status") in {"completed", "cancelled", "refunded"}:
         promoted = await promote_oldest_waiting_request()
 
-    request = await get_consultation_request(request_id)
+    request = await get_consultation_request(request_id, db)
     return {"request": request, "promoted_request": promoted}
 
 
@@ -441,17 +591,20 @@ async def promote_oldest_waiting_request() -> Optional[Dict[str, Any]]:
     res = (
         supabase.table("consultation_requests")
         .select("*")
-        .eq("status", "waiting_queue")
+        .eq("status", CONSULTATION_STATUS_REQUESTED)
         .order("created_at")
-        .limit(1)
+        .limit(25)
         .execute()
     )
     if not res.data:
         return None
 
-    waiting = dict(res.data[0])
+    waiting_row = next((row for row in res.data if row.get("queue_number") is not None), None)
+    if not waiting_row:
+        return None
+    waiting = dict(waiting_row)
     updates = {
-        "status": "pending",
+        "status": CONSULTATION_STATUS_REQUESTED,
         "queue_number": None,
         "updated_at": _now_iso(),
         "admin_notes": ((waiting.get("admin_notes") or "") + "\nAuto moved from waiting queue to pending.").strip(),
@@ -472,6 +625,7 @@ async def get_queue_status() -> Dict[str, Any]:
     return {"current_queue_size": 0, "max_capacity": 20}
 
 async def create_consultation(
+    user_id: Optional[str],
     user_name: str, 
     user_email: str, 
     question_text: str, 
@@ -498,10 +652,12 @@ async def create_consultation(
                 current_size = stats["current_queue_size"]
                 if current_size >= stats["max_capacity"]:
                     raise Exception("Queue is full")
+            amount = validate_price_amount(get_settings().consultation_price_inr)
 
             # Insert consultation
             supabase.table("paid_consultations").insert({
                 "id": consultation_id,
+                "user_id": user_id,
                 "user_name": user_name,
                 "user_email": user_email,
                 "question_text": question_text,
@@ -511,9 +667,10 @@ async def create_consultation(
                 "birth_date": birth_date,
                 "birth_time": birth_time,
                 "birth_place": birth_place,
-                "status": "QUEUED",
+                "status": CONSULTATION_STATUS_CONFIRMED,
                 "payment_ref": payment_ref,
-                "amount": 299.0,
+                "amount": float(amount),
+                "currency": "INR",
                 "created_at": created_at,
                 "sla_deadline": sla_deadline
             }).execute()
@@ -527,7 +684,7 @@ async def create_consultation(
         
     return {
         "id": consultation_id,
-        "status": "QUEUED",
+        "status": CONSULTATION_STATUS_CONFIRMED,
         "created_at": created_at,
         "sla_deadline": sla_deadline
     }
@@ -535,7 +692,7 @@ async def create_consultation(
 async def get_consultation_queue() -> List[Dict[str, Any]]:
     try:
         if supabase:
-            res = supabase.table("paid_consultations").select("*").eq("status", "QUEUED").order("sla_deadline").execute()
+            res = supabase.table("paid_consultations").select("*").in_("status", [CONSULTATION_STATUS_CONFIRMED, "QUEUED"]).order("sla_deadline").execute()
             return [dict(row) for row in res.data]
     except Exception as e:
         print(f"Warning: Supabase get_consultation_queue failed: {e}")
@@ -547,7 +704,7 @@ async def answer_consultation(consultation_id: str, answer_text: str) -> bool:
         if supabase:
             # Get consultation
             res = supabase.table("paid_consultations").select("status, amount").eq("id", consultation_id).execute()
-            if not res.data or res.data[0]["status"] != 'QUEUED':
+            if not res.data or normalize_consultation_status(res.data[0]["status"]) != CONSULTATION_STATUS_CONFIRMED:
                 return False
                 
             amount = res.data[0]["amount"]
@@ -556,7 +713,7 @@ async def answer_consultation(consultation_id: str, answer_text: str) -> bool:
             
             # Update consultation
             supabase.table("paid_consultations").update({
-                "status": "ANSWERED",
+                "status": "completed",
                 "answered_at": now,
                 "answer_text": answer_text
             }).eq("id", consultation_id).execute()
@@ -580,11 +737,11 @@ async def decline_consultation(consultation_id: str) -> bool:
     try:
         if supabase:
             res = supabase.table("paid_consultations").select("status").eq("id", consultation_id).execute()
-            if not res.data or res.data[0]["status"] != 'QUEUED':
+            if not res.data or normalize_consultation_status(res.data[0]["status"]) != CONSULTATION_STATUS_CONFIRMED:
                 return False
                 
             supabase.table("paid_consultations").update({
-                "status": "DECLINED",
+                "status": "cancelled",
                 "answered_at": now
             }).eq("id", consultation_id).execute()
             

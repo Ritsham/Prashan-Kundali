@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.request
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Depends, Path
+from pydantic import Field, field_validator
 
-from app.config import get_supabase_url
+from app.config import get_settings
+from app.core.rate_limiter import booking_limiter
+from app.core.consultation_lifecycle import ACTIVE_CONSULTATION_STATUSES, TERMINAL_CONSULTATION_STATUSES
 from app.storage.database import (
     get_chart,
     get_consultant_booking,
@@ -18,6 +19,7 @@ from app.storage.database import (
     save_consultant_message,
 )
 from app.dependencies import get_current_user, AuthState
+from app.schemas.common import ID_RE, PHONE_RE, StrictRequestModel, parse_iso_datetime
 
 router = APIRouter()
 
@@ -32,31 +34,60 @@ CONSULTANTS = [
 ]
 
 
-class BirthDetails(BaseModel):
+class BirthDetails(StrictRequestModel):
     name: str = Field(min_length=1, max_length=80)
-    gender: str = Field(default="", max_length=20)
+    gender: str = Field(default="", pattern="^(|male|female|other)$")
     birth_datetime_local: str = Field(default="", max_length=32)
     place_name: str = Field(default="", max_length=160)
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+
+    @field_validator("birth_datetime_local")
+    @classmethod
+    def validate_birth_datetime(cls, value: str) -> str:
+        if value:
+            parse_iso_datetime(value, "birth_datetime_local")
+        return value
 
 
-class BookingRequest(BaseModel):
+class BookingRequest(StrictRequestModel):
     consultant_id: str = Field(min_length=1, max_length=80)
     consultation_type: str = Field(pattern="^(same_prashna|kundali|lagna)$")
     client_name: str = Field(min_length=1, max_length=80)
-    client_email: str = Field(min_length=5, max_length=160)
-    client_phone: str = Field(min_length=6, max_length=24)
+    client_email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    client_phone: str = Field(min_length=6, max_length=24, pattern=PHONE_RE)
     query_text: str = Field(min_length=3, max_length=2000)
-    chart_id: str = Field(default="", max_length=80)
+    chart_id: str = Field(default="", max_length=128, pattern=r"^$|[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
     chart: Optional[dict] = None
     birth_details: Optional[BirthDetails] = None
 
 
-class MessageRequest(BaseModel):
+class MessageRequest(StrictRequestModel):
     sender_role: str = Field(pattern="^(user|astrologer)$")
     sender_name: str = Field(min_length=1, max_length=80)
     message_text: str = Field(min_length=1, max_length=3000)
+
+
+def can_access_booking(auth: AuthState, booking: dict) -> bool:
+    return auth.is_admin or booking.get("user_id") == auth.user_id or booking.get("client_email") == auth.email
+
+
+def has_active_booking_conflict(auth: AuthState, consultant_id: str) -> bool:
+    if not auth.client:
+        return False
+    try:
+        res = (
+            auth.client.table("consultant_bookings")
+            .select("id, status")
+            .eq("user_id", auth.user_id)
+            .eq("consultant_id", consultant_id)
+            .in_("status", sorted(ACTIVE_CONSULTATION_STATUSES | {"pending", "accepted", "scheduled", "in_progress"}))
+            .limit(1)
+            .execute()
+        )
+        return bool(res.data)
+    except Exception:
+        return False
 
 
 @router.get("/consultants")
@@ -64,11 +95,15 @@ def list_consultants() -> dict:
     return {"consultants": CONSULTANTS}
 
 
-@router.post("/consultants/bookings")
+@router.post("/consultants/bookings", dependencies=[Depends(booking_limiter)])
 def create_booking(payload: BookingRequest, auth: AuthState = Depends(get_current_user)) -> dict:
     consultant = consultant_by_id(payload.consultant_id)
     if not consultant:
         raise HTTPException(status_code=404, detail="Consultant not found.")
+    if payload.client_email.lower() != auth.email.lower():
+        raise HTTPException(status_code=400, detail="Booking email must match the signed-in user.")
+    if has_active_booking_conflict(auth, payload.consultant_id):
+        raise HTTPException(status_code=409, detail="You already have an active booking with this consultant.")
 
     chart = payload.chart
     chart_id = payload.chart_id
@@ -117,21 +152,34 @@ def create_booking(payload: BookingRequest, auth: AuthState = Depends(get_curren
 
 
 @router.get("/consultants/bookings/{booking_id}")
-def read_booking(booking_id: str, auth: AuthState = Depends(get_current_user)) -> dict:
+def read_booking(booking_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)) -> dict:
     booking = get_consultant_booking(auth.client, booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
+    if not can_access_booking(auth, booking):
+        raise HTTPException(status_code=403, detail="Not allowed to read this booking.")
     return {"booking": booking, "messages": list_consultant_messages(auth.client, booking_id)}
 
 
 @router.post("/consultants/bookings/{booking_id}/messages")
-def create_message(booking_id: str, payload: MessageRequest, auth: AuthState = Depends(get_current_user)) -> dict:
+def create_message(
+    booking_id: Annotated[str, Path(pattern=ID_RE)],
+    payload: MessageRequest,
+    auth: AuthState = Depends(get_current_user),
+    _ = Depends(booking_limiter),
+) -> dict:
     booking = get_consultant_booking(auth.client, booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found.")
+    if not can_access_booking(auth, booking):
+        raise HTTPException(status_code=403, detail="Not allowed to message this booking.")
+    if str(booking.get("status") or "").lower() in TERMINAL_CONSULTATION_STATUSES:
+        raise HTTPException(status_code=400, detail="This booking is closed for new messages.")
+    if payload.sender_role != "user" and not auth.is_admin:
+        raise HTTPException(status_code=403, detail="Only admins can send astrologer messages from this endpoint.")
     message = {
         "booking_id": booking_id,
-        "sender_role": payload.sender_role,
+        "sender_role": payload.sender_role if auth.is_admin else "user",
         "sender_name": payload.sender_name,
         "message_text": payload.message_text,
     }
@@ -163,10 +211,11 @@ def supabase_booking_payload(booking: dict) -> dict:
 
 
 def sync_supabase(table: str, payload: dict) -> dict:
-    url = get_supabase_url()
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+    settings = get_settings()
+    url = settings.supabase_url
+    key = settings.supabase_service_role_key
     if not url or not key:
-        return {"enabled": False, "reason": "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY to sync."}
+        return {"enabled": False, "reason": "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to sync."}
     request = urllib.request.Request(
         f"{url}/rest/v1/{table}",
         data=json.dumps(payload).encode("utf-8"),

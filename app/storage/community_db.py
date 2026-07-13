@@ -209,11 +209,14 @@ async def delete_message(message_id: str, user_id: Optional[str] = None, moderat
             row = rows[0]
             if not moderator and user_id and str(row.get("sender_id") or row.get("user_name")) != str(user_id):
                 return None
-            deleted_at = _now()
-            content = "This message was removed by a moderator." if moderator else "This message was deleted."
-            payload = {"is_deleted": True, "content": content, "image_base64": None, "deleted_at": deleted_at, "updated_at": deleted_at}
-            res = supabase.table("community_messages").update(payload).eq("id", message_id).execute()
-            return dict(_safe_data(res)[0]) if _safe_data(res) else {**row, **payload}
+            for table in ("message_reactions", "community_saved_messages", "community_threads"):
+                try:
+                    column = "parent_message_id" if table == "community_threads" else "message_id"
+                    supabase.table(table).delete().eq(column, message_id).execute()
+                except Exception as cleanup_error:
+                    print(f"Warning: delete_message cleanup skipped for {table}: {cleanup_error}")
+            supabase.table("community_messages").delete().eq("id", message_id).execute()
+            return dict(row)
     except Exception as e:
         print(f"Warning: delete_message failed: {e}")
     return None
@@ -274,23 +277,53 @@ async def get_thread_replies(parent_message_id: str) -> List[Dict[str, Any]]:
     return []
 
 
-async def toggle_reaction(message_id: str, user_id: str, reaction_type: str) -> bool:
+async def toggle_reaction(message_id: str, user_id: str, reaction_type: str, previous_reaction: Optional[str] = None) -> str:
     try:
         if supabase:
+            if previous_reaction and previous_reaction != reaction_type:
+                supabase.table("message_reactions").delete().eq("message_id", message_id).eq("user_id", user_id).execute()
+                supabase.table("message_reactions").insert({
+                    "id": _id("rxn"),
+                    "message_id": message_id,
+                    "user_id": user_id,
+                    "reaction_type": reaction_type,
+                }).execute()
+                return "replaced"
             res = supabase.table("message_reactions").select("*").eq("message_id", message_id).eq("user_id", user_id).eq("reaction_type", reaction_type).execute()
             if _safe_data(res):
                 supabase.table("message_reactions").delete().eq("message_id", message_id).eq("user_id", user_id).eq("reaction_type", reaction_type).execute()
-                return False
+                current = supabase.table("community_messages").select("stars").eq("id", message_id).limit(1).execute()
+                rows = _safe_data(current)
+                if rows:
+                    stars = max(0, int(rows[0].get("stars") or 0) - 1)
+                    supabase.table("community_messages").update({"stars": stars}).eq("id", message_id).execute()
+                return "removed"
             supabase.table("message_reactions").insert({
                 "id": _id("rxn"),
                 "message_id": message_id,
                 "user_id": user_id,
                 "reaction_type": reaction_type,
             }).execute()
-            return True
+            current = supabase.table("community_messages").select("stars").eq("id", message_id).limit(1).execute()
+            rows = _safe_data(current)
+            if rows:
+                stars = int(rows[0].get("stars") or 0) + 1
+                supabase.table("community_messages").update({"stars": stars}).eq("id", message_id).execute()
+            return "added"
     except Exception as e:
         print(f"Warning: toggle_reaction failed: {e}")
-    return False
+        try:
+            if supabase:
+                current = supabase.table("community_messages").select("stars").eq("id", message_id).limit(1).execute()
+                rows = _safe_data(current)
+                if rows:
+                    delta = -1 if previous_reaction == reaction_type else 0 if previous_reaction else 1
+                    stars = max(0, int(rows[0].get("stars") or 0) + delta)
+                    supabase.table("community_messages").update({"stars": stars}).eq("id", message_id).execute()
+                    return "removed" if delta < 0 else "replaced" if delta == 0 else "added"
+        except Exception as fallback_error:
+            print(f"Warning: toggle_reaction fallback failed: {fallback_error}")
+    return "removed"
 
 
 async def get_reactions(message_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:

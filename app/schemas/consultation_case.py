@@ -6,6 +6,8 @@ from typing import Any, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.consultation_lifecycle import CONSULTATION_STATUSES, normalize_consultation_status
+
 
 class ConsultationSourceType(str, Enum):
     prashna = "prashna"
@@ -20,6 +22,11 @@ class ConsultationChartType(str, Enum):
 
 
 class ConsultationStatus(str, Enum):
+    requested = "requested"
+    pending_payment = "pending_payment"
+    confirmed = "confirmed"
+    active = "active"
+    refunded = "refunded"
     pending = "pending"
     reviewed = "reviewed"
     accepted = "accepted"
@@ -90,12 +97,14 @@ class AstrologySnapshot(BaseModel):
 
 
 class UserConsultationDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     full_name: str = Field(min_length=1, max_length=120)
-    email: str = Field(min_length=5, max_length=160)
-    mobile_number: str = Field(min_length=6, max_length=24)
-    gender: Optional[str] = Field(default=None, max_length=40)
-    date_of_birth: Optional[str] = Field(default=None, max_length=40)
-    time_of_birth: Optional[str] = Field(default=None, max_length=40)
+    email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    mobile_number: str = Field(min_length=6, max_length=24, pattern=r"^\+?[0-9 ()-]{6,24}$")
+    gender: Optional[str] = Field(default=None, pattern="^(male|female|other)$")
+    date_of_birth: Optional[str] = Field(default=None, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    time_of_birth: Optional[str] = Field(default=None, max_length=8, pattern=r"^\d{2}:\d{2}(:\d{2})?$")
     place: Optional[str] = Field(default=None, max_length=180)
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     longitude: Optional[float] = Field(default=None, ge=-180, le=180)
@@ -103,15 +112,21 @@ class UserConsultationDetails(BaseModel):
 
 
 class ConsultationDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     question: str = Field(min_length=3, max_length=2000)
     additional_message: Optional[str] = Field(default=None, max_length=4000)
     preferred_date: Optional[str] = Field(default=None, max_length=40)
     preferred_time: Optional[str] = Field(default=None, max_length=120)
     consultation_mode: Optional[str] = Field(default=None, max_length=80)
-    payment_status: Optional[str] = Field(default=None, max_length=40)
+    payment_status: Optional[str] = Field(default=None, max_length=40, pattern=r"^(not_paid|pending|created|paid|failed|refunded)?$")
+    quoted_price: Optional[float] = Field(default=None, gt=0, le=100000)
+    currency: Optional[str] = Field(default="INR", max_length=3, pattern=r"^[A-Z]{3}$")
 
 
 class ConsultationCasePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     source_type: ConsultationSourceType
     chart_type: ConsultationChartType
     user: UserConsultationDetails
@@ -142,8 +157,20 @@ class ConsultationCase(ConsultationCasePayload):
 
 
 class ConsultationCaseAdminUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
     case_status: Optional[ConsultationStatus] = None
     admin_notes: Optional[str] = Field(default=None, max_length=5000)
     assigned_astrologer: Optional[str] = Field(default=None, max_length=120)
     meeting_link: Optional[str] = Field(default=None, max_length=500)
     scheduled_at: Optional[str] = Field(default=None, max_length=120)
+
+    @field_validator("case_status", mode="before")
+    @classmethod
+    def normalize_case_status(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        normalized = normalize_consultation_status(value)
+        if normalized in CONSULTATION_STATUSES:
+            return normalized
+        return value

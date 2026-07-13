@@ -1,27 +1,37 @@
-from dotenv import load_dotenv
-load_dotenv()
-
 import json
 from typing import Optional
 from uuid import uuid4
 from supabase import create_client, Client
-import os
-from app.config import get_supabase_url
+from app.config import get_settings, is_placeholder_value
 
-SUPABASE_URL = get_supabase_url()
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+settings = get_settings()
+SUPABASE_URL = settings.supabase_url
+SUPABASE_ANON_KEY = settings.supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY = settings.supabase_service_role_key
 
-# Initialize Supabase Client safely
-supabase = None
-if SUPABASE_URL:
-    # Use Service Role Key to bypass RLS if available, otherwise fallback to Anon Key
-    key_to_use = SUPABASE_SERVICE_ROLE_KEY if SUPABASE_SERVICE_ROLE_KEY else SUPABASE_ANON_KEY
-    if key_to_use and "your-" not in SUPABASE_URL and "your-" not in key_to_use:
-        try:
-            supabase = create_client(SUPABASE_URL, key_to_use)
-        except Exception as e:
-            print(f"Warning: Failed to initialize Supabase client: {e}")
+def _create_supabase_client(key: str, label: str) -> Optional[Client]:
+    if not SUPABASE_URL or not key:
+        return None
+    if is_placeholder_value("SUPABASE_URL", SUPABASE_URL) or is_placeholder_value(label, key):
+        return None
+    try:
+        return create_client(SUPABASE_URL, key)
+    except Exception as e:
+        print(f"Warning: Failed to initialize {label} Supabase client: {e}")
+        return None
+
+
+# Default client is anon-scoped so imports do not silently bypass RLS.
+supabase = _create_supabase_client(SUPABASE_ANON_KEY, "anon")
+service_supabase = _create_supabase_client(SUPABASE_SERVICE_ROLE_KEY, "service-role")
+
+
+def get_service_client() -> Optional[Client]:
+    return service_supabase
+
+
+def get_public_client() -> Optional[Client]:
+    return supabase
 
 def init_db() -> None:
     # No-op since Supabase handles the database schema remotely
@@ -100,20 +110,22 @@ def get_chart(db: Client, chart_id: str) -> Optional[dict]:
         return None
     try:
         # First, try to query prashna_charts
-        res = db.table("prashna_charts").select("id, chart_json, created_at").eq("id", chart_id).execute()
+        res = db.table("prashna_charts").select("id, user_id, chart_json, created_at").eq("id", chart_id).execute()
         if res.data:
             row = res.data[0]
             chart = json.loads(row["chart_json"])
             chart["id"] = row["id"]
+            chart["user_id"] = row.get("user_id")
             chart["created_at"] = row["created_at"]
             return chart
         
         # If not found, try to query lagna_charts
-        res = db.table("lagna_charts").select("id, chart_json, created_at").eq("id", chart_id).execute()
+        res = db.table("lagna_charts").select("id, user_id, chart_json, created_at").eq("id", chart_id).execute()
         if res.data:
             row = res.data[0]
             chart = json.loads(row["chart_json"])
             chart["id"] = row["id"]
+            chart["user_id"] = row.get("user_id")
             chart["created_at"] = row["created_at"]
             return chart
     except Exception as e:
@@ -166,6 +178,7 @@ def get_consultant_booking(db: Client, booking_id: str) -> Optional[dict]:
         row = res.data[0]
         return {
             "id": row["id"],
+            "user_id": row.get("user_id"),
             "consultant_id": row["consultant_id"],
             "consultant_name": row["consultant_name"],
             "consultation_type": row["consultation_type"],

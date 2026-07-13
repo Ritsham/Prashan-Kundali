@@ -1,4 +1,4 @@
-"""LLM Engine — Modular NLG layer for Kundali Studio.
+"""LLM Engine — Modular NLG layer for Shree Lakshmi Astro.
 
 Architecture:
     generator.py        Public entry point

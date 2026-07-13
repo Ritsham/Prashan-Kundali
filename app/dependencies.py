@@ -1,31 +1,127 @@
-from dotenv import load_dotenv
-load_dotenv()
-
-from fastapi import Header, HTTPException, Depends
-from typing import Optional
+from fastapi import Header, HTTPException, Depends, WebSocket
+from typing import Any, Optional
 from supabase import create_client, Client, ClientOptions
-import os
-from app.config import get_supabase_url
-from app.storage.community_access_db import has_active_community_membership
+from app.config import get_settings
+from app.storage.database import get_service_client
 
-SUPABASE_URL = get_supabase_url()
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+settings = get_settings()
+SUPABASE_URL = settings.supabase_url
+SUPABASE_ANON_KEY = settings.supabase_anon_key
+
+
+ROLE_USER = "user"
+ROLE_ASTROLOGER_PENDING = "astrologer_pending"
+ROLE_ASTROLOGER_VERIFIED = "astrologer_verified"
+ROLE_ADMIN = "admin"
+VALID_ROLES = {
+    ROLE_USER,
+    ROLE_ASTROLOGER_PENDING,
+    ROLE_ASTROLOGER_VERIFIED,
+    ROLE_ADMIN,
+}
+
+
+def _mock_admin_enabled() -> bool:
+    return not get_settings().is_production and get_settings().allow_mock_admin_token
+
+
+def auth_error(message: str = "Authentication required") -> HTTPException:
+    return HTTPException(status_code=401, detail={"code": "unauthorized", "message": message})
+
+
+def permission_error(message: str = "Insufficient permissions") -> HTTPException:
+    return HTTPException(status_code=403, detail={"code": "forbidden", "message": message})
+
+
+def normalize_role(profile: Optional[dict[str, Any]]) -> str:
+    if not profile:
+        return ROLE_USER
+
+    raw_role = str(profile.get("role") or ROLE_USER).lower()
+    verification_status = str(profile.get("verification_status") or "").lower()
+    community_status = str(profile.get("community_verification_status") or "").lower()
+    community_access = profile.get("community_access") is True
+
+    if raw_role == ROLE_ADMIN:
+        return ROLE_ADMIN
+    if raw_role in {ROLE_ASTROLOGER_VERIFIED, "verified_astrologer"}:
+        return ROLE_ASTROLOGER_VERIFIED
+    if raw_role in {ROLE_ASTROLOGER_PENDING, "pending_astrologer"}:
+        return ROLE_ASTROLOGER_PENDING
+    if raw_role == "astrologer":
+        if verification_status in {"verified", "approved"} or community_status in {"verified", "approved"} or community_access:
+            return ROLE_ASTROLOGER_VERIFIED
+        return ROLE_ASTROLOGER_PENDING
+    if raw_role in VALID_ROLES:
+        return raw_role
+    return ROLE_USER
+
 
 class AuthState:
-    def __init__(self, client: Client, user_id: str, email: str, user_metadata: Optional[dict] = None):
+    def __init__(
+        self,
+        client: Optional[Client],
+        user_id: str,
+        email: str,
+        user_metadata: Optional[dict] = None,
+        role: str = ROLE_USER,
+        profile: Optional[dict[str, Any]] = None,
+    ):
         self.client = client
         self.user_id = user_id
         self.email = email
         self.user_metadata = user_metadata or {}
+        self.role = role
+        self.profile = profile or {}
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == ROLE_ADMIN
+
+    @property
+    def is_verified_astrologer(self) -> bool:
+        return self.role == ROLE_ASTROLOGER_VERIFIED
+
+
+def _load_user_profile(user_id: str, fallback_client: Optional[Client] = None) -> dict[str, Any]:
+    db = get_service_client() or fallback_client
+    if not db:
+        return {}
+    try:
+        res = (
+            db.table("users")
+            .select("id, email, name, full_name, role, verification_status, community_access, community_verification_status")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        return dict(res.data[0]) if res.data else {}
+    except Exception:
+        return {}
+
+
+def _auth_state_from_user(client: Optional[Client], user: Any) -> AuthState:
+    profile = _load_user_profile(user.id, client)
+    role = normalize_role(profile)
+    return AuthState(
+        client=client,
+        user_id=user.id,
+        email=user.email,
+        user_metadata=getattr(user, "user_metadata", None) or {},
+        role=role,
+        profile=profile,
+    )
 
 def get_current_user(authorization: str = Header(None)) -> AuthState:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization token")
+        raise auth_error("Missing or invalid authorization token")
     token = authorization.split(" ")[1]
     
     if token == "mock-admin-token":
+        if not _mock_admin_enabled():
+            raise auth_error("Invalid token")
         # Local development bypass using service role key
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        service_role_key = get_settings().supabase_service_role_key
         if service_role_key:
             import httpx
             timeout = httpx.Timeout(60.0)
@@ -35,8 +131,8 @@ def get_current_user(authorization: str = Header(None)) -> AuthState:
                 httpx_client=custom_client,
             )
             client = create_client(SUPABASE_URL, service_role_key, options=options)
-            return AuthState(client=client, user_id="mock-admin", email="admin@local.dev")
-        return AuthState(client=None, user_id="mock-admin", email="admin@local.dev")
+            return AuthState(client=client, user_id="mock-admin", email="admin@local.dev", role=ROLE_ADMIN)
+        return AuthState(client=None, user_id="mock-admin", email="admin@local.dev", role=ROLE_ADMIN)
     try:
         # Initialize request-scoped Supabase client with user's JWT token
         import httpx
@@ -53,16 +149,13 @@ def get_current_user(authorization: str = Header(None)) -> AuthState:
         # Verify the token against Supabase auth server
         res = client.auth.get_user(token)
         if not res or not res.user:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise auth_error("Invalid token")
             
-        return AuthState(
-            client=client,
-            user_id=res.user.id,
-            email=res.user.email,
-            user_metadata=getattr(res.user, "user_metadata", None) or {},
-        )
-    except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+        return _auth_state_from_user(client, res.user)
+    except HTTPException:
+        raise
+    except Exception:
+        raise auth_error("Authentication failed")
 
 def get_optional_current_user(authorization: Optional[str] = Header(None)) -> Optional[AuthState]:
     if not authorization:
@@ -74,46 +167,57 @@ class RequireRole:
         self.role = role
 
     def __call__(self, auth_state: AuthState = Depends(get_current_user)):
-        if auth_state.user_id == "mock-admin" and self.role == "admin":
-            return auth_state
-            
-        res = auth_state.client.table("users").select("role").eq("id", auth_state.user_id).execute()
-        if not res.data or res.data[0].get("role") != self.role:
-            raise HTTPException(status_code=403, detail=f"Requires {self.role} role")
+        required_role = normalize_role({"role": self.role})
+        if auth_state.role != required_role:
+            raise permission_error(f"Requires {required_role} role")
         return auth_state
+
+
+class RequireAnyRole:
+    def __init__(self, *roles: str):
+        self.roles = {normalize_role({"role": role}) for role in roles}
+
+    def __call__(self, auth_state: AuthState = Depends(get_current_user)):
+        if auth_state.role not in self.roles:
+            allowed = ", ".join(sorted(self.roles))
+            raise permission_error(f"Requires one of: {allowed}")
+        return auth_state
+
+
+class RequireAdmin:
+    def __call__(self, auth_state: AuthState = Depends(get_current_user)):
+        if not auth_state.is_admin:
+            raise permission_error("Admin access required")
+        return auth_state
+
 
 class RequireVerifiedAstrologer:
     def __call__(self, auth_state: AuthState = Depends(get_current_user)):
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not service_role_key:
-            raise HTTPException(status_code=500, detail="Server misconfiguration: Missing service role key")
-            
+        if auth_state.role == ROLE_ADMIN or auth_state.role == ROLE_ASTROLOGER_VERIFIED:
+            return auth_state
+        raise permission_error("Verified astrologer access required")
+
+
+def get_current_user_from_token(token: str) -> Optional[AuthState]:
+    if not token:
+        return None
+    try:
         import httpx
         custom_client = httpx.Client(timeout=httpx.Timeout(60.0))
         options = ClientOptions(
-            headers={"Authorization": f"Bearer {service_role_key}"},
+            headers={"Authorization": f"Bearer {token}"},
             httpx_client=custom_client,
+            storage_client_timeout=120,
+            postgrest_client_timeout=120,
         )
-        admin_client = create_client(SUPABASE_URL, service_role_key, options=options)
+        client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY, options=options)
+        res = client.auth.get_user(token)
+        if not res or not res.user:
+            return None
+        return _auth_state_from_user(client, res.user)
+    except Exception:
+        return None
 
-        membership = has_active_community_membership(admin_client, auth_state.user_id)
-        if membership is True:
-            return auth_state
-        if membership is False:
-            raise HTTPException(status_code=403, detail="Community access requires active Astro Community membership")
 
-        res = admin_client.table("users").select("role, verification_status, community_access").eq("id", auth_state.user_id).execute()
-        if not res.data:
-            raise HTTPException(status_code=403, detail="Community access denied")
-
-        user = res.data[0]
-        is_verified_astrologer = (
-            user.get("role") == "astrologer"
-            and user.get("verification_status") == "verified"
-        )
-        
-        has_community_access = user.get("community_access") is True
-        
-        if not is_verified_astrologer and not has_community_access:
-            raise HTTPException(status_code=403, detail="Community access requires verified astrologer status or an approved community application")
-        return auth_state
+async def close_ws_unauthorized(websocket: WebSocket, reason: str = "Unauthorized") -> None:
+    await websocket.close(code=1008, reason=reason[:120])

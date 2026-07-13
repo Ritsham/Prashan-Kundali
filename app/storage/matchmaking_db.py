@@ -77,6 +77,24 @@ async def list_match_reports(status: str | None = None) -> list[dict[str, Any]]:
     return [public_match_row(row) for row in rows]
 
 
+async def update_match_report_status(match_id: str, status: str) -> dict[str, Any] | None:
+    row = _LOCAL_MATCHES.get(match_id)
+    updates = {"status": status, "updated_at": now_iso()}
+    try:
+        if supabase:
+            supabase.table("match_requests").update(updates).eq("id", match_id).execute()
+            res = supabase.table("match_requests").select("*").eq("id", match_id).execute()
+            if res.data:
+                row = dict(res.data[0])
+    except Exception as exc:
+        print(f"Warning: Supabase update_match_report_status failed: {exc}")
+    if row:
+        row.update(updates)
+        _LOCAL_MATCHES[match_id] = row
+        return public_match_row(row)
+    return None
+
+
 async def create_matchmaking_consultation(
     *,
     user_id: str,

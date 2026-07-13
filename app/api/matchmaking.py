@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from pydantic import Field, field_validator
 
-from app.dependencies import AuthState, RequireRole, get_current_user
+from app.core.rate_limiter import booking_limiter, llm_limiter
+from app.dependencies import AuthState, RequireAdmin, get_current_user
 from app.schemas.consultation_case import AstrologySnapshot, ConsultationCasePayload
 from app.services.matchmaking_service import build_match_report
 from app.storage.consultation_db import create_consultation_case, get_founder_consultant, get_public_consultation_queue_status
@@ -13,15 +14,18 @@ from app.storage.matchmaking_db import (
     get_match_report,
     list_match_reports,
     save_match_report,
+    update_match_report_status,
 )
+from app.storage.audit_db import record_admin_audit
+from app.schemas.common import ID_RE, PHONE_RE, StrictRequestModel
 
 router = APIRouter()
 
 
-class MatchBirthInput(BaseModel):
+class MatchBirthInput(StrictRequestModel):
     name: str = Field(min_length=1, max_length=80)
-    date_of_birth: str = Field(min_length=10, max_length=10)
-    time_of_birth: str = Field(default="", max_length=8)
+    date_of_birth: str = Field(min_length=10, max_length=10, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    time_of_birth: str = Field(default="", max_length=8, pattern=r"^$|\d{2}:\d{2}(:\d{2})?$")
     birth_place: str = Field(min_length=2, max_length=160)
     selected_place_name: str = Field(default="", max_length=180)
     latitude: Optional[float] = Field(default=None, ge=-90, le=90)
@@ -30,22 +34,26 @@ class MatchBirthInput(BaseModel):
     birth_time_accuracy: str = Field(pattern="^(exact|approximate|unknown)$")
 
 
-class MatchCreateRequest(BaseModel):
+class MatchCreateRequest(StrictRequestModel):
     boy: MatchBirthInput
     girl: MatchBirthInput
 
 
-class MatchConsultationRequest(BaseModel):
+class MatchConsultationRequest(StrictRequestModel):
     question: str = Field(default="Please review this Kundali match for marriage compatibility.", max_length=2000)
-    contact_email: str = Field(default="", max_length=160)
-    phone: str = Field(default="", max_length=24)
-    payment_ref: str = Field(default="match_free_review", max_length=120)
+    contact_email: str = Field(default="", max_length=160, pattern=r"^$|[^@\s]+@[^@\s]+\.[^@\s]+$")
+    phone: str = Field(default="", max_length=24, pattern=r"^$|\+?[0-9 ()-]{6,24}$")
+    payment_ref: str = Field(default="match_free_review", max_length=120, pattern=ID_RE)
     scheduled_at: Optional[str] = Field(default=None, max_length=120)
     preferred_slot: str = Field(default="", max_length=120)
     report_snapshot: Optional[dict] = None
 
 
-@router.post("/matchmaking/requests")
+class AdminMatchStatusUpdate(StrictRequestModel):
+    status: str = Field(pattern="^(calculated|consultation_booked|completed|rejected|cancelled)$")
+
+
+@router.post("/matchmaking/requests", dependencies=[Depends(llm_limiter)])
 async def create_matchmaking_request(payload: MatchCreateRequest, auth: AuthState = Depends(get_current_user)) -> dict:
     try:
         report = await build_match_report(payload.boy.model_dump(), payload.girl.model_dump())
@@ -59,7 +67,7 @@ async def create_matchmaking_request(payload: MatchCreateRequest, auth: AuthStat
 
 
 @router.get("/matchmaking/requests/{match_id}")
-async def read_matchmaking_result(match_id: str, auth: AuthState = Depends(get_current_user)) -> dict:
+async def read_matchmaking_result(match_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)) -> dict:
     result = await get_match_report(match_id, auth.user_id)
     if not result:
         raise HTTPException(status_code=404, detail="Match report not found.")
@@ -67,7 +75,7 @@ async def read_matchmaking_result(match_id: str, auth: AuthState = Depends(get_c
 
 
 @router.get("/matchmaking/requests/{match_id}/astrologer")
-async def recommend_astrologer_for_match(match_id: str, auth: AuthState = Depends(get_current_user)) -> dict:
+async def recommend_astrologer_for_match(match_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)) -> dict:
     result = await get_match_report(match_id, auth.user_id)
     if not result:
         raise HTTPException(status_code=404, detail="Match report not found.")
@@ -81,9 +89,10 @@ async def recommend_astrologer_for_match(match_id: str, auth: AuthState = Depend
 
 @router.post("/matchmaking/requests/{match_id}/consultation")
 async def create_matchmaking_consultation_request(
-    match_id: str,
+    match_id: Annotated[str, Path(pattern=ID_RE)],
     payload: MatchConsultationRequest,
     auth: AuthState = Depends(get_current_user),
+    _ = Depends(booking_limiter),
 ) -> dict:
     result = await get_match_report(match_id, auth.user_id)
     report = result["report"] if result else payload.report_snapshot
@@ -110,10 +119,31 @@ async def create_matchmaking_consultation_request(
 
 @router.get("/admin/matchmaking/requests")
 async def admin_list_matchmaking_requests(
-    status: Optional[str] = None,
-    auth: AuthState = Depends(RequireRole("admin")),
+    status: Optional[str] = Query(default=None, max_length=40),
+    auth: AuthState = Depends(RequireAdmin()),
 ) -> dict:
     return {"requests": await list_match_reports(status)}
+
+
+@router.patch("/admin/matchmaking/requests/{match_id}")
+async def admin_update_matchmaking_request(
+    match_id: Annotated[str, Path(pattern=ID_RE)],
+    payload: AdminMatchStatusUpdate,
+    auth: AuthState = Depends(RequireAdmin()),
+) -> dict:
+    before = await get_match_report(match_id)
+    request = await update_match_report_status(match_id, payload.status)
+    if not request:
+        raise HTTPException(status_code=404, detail="Match report not found.")
+    record_admin_audit(
+        actor_user_id=auth.user_id,
+        entity_type="matchmaking_request",
+        entity_id=match_id,
+        action="status_update",
+        before_json=before,
+        after_json=request,
+    )
+    return {"request": request}
 
 
 def build_matchmaking_booking_payload(

@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any
 from app.celery_app import celery_app
 from app.llm_engine import generate_interpretation_answer
-from app.storage.database import supabase, update_prashna_chart
+from app.storage.database import get_service_client, update_prashna_chart
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ def generate_reading_task(chart_id: str, chart: Dict[str, Any], interpretation: 
         chart["interpretation"] = interpretation
         
         # Update Supabase with the final generated text
-        update_prashna_chart(supabase, chart_id, chart)
+        update_prashna_chart(get_service_client(), chart_id, chart)
         logger.info(f"Successfully generated and saved reading for chart {chart_id}")
         return "SUCCESS"
     except Exception as e:

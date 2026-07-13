@@ -1,51 +1,67 @@
-import os
+import hashlib
+import logging
 import time
-from fastapi import HTTPException, Request, Depends
+from typing import Optional
+
+from fastapi import Depends, HTTPException, Request
 from redis.asyncio import Redis
 
-# Use a connection pool for efficiency
-redis_pool = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"), decode_responses=True)
+from app.config import get_settings
+
+
+redis_pool = Redis.from_url(get_settings().redis_url, decode_responses=True)
+logger = logging.getLogger("kundali.rate_limit")
+_memory_buckets: dict[str, list[float]] = {}
+
 
 async def get_redis() -> Redis:
     return redis_pool
 
+
 class RateLimiter:
-    def __init__(self, requests: int, window: int):
-        """
-        :param requests: Max number of requests allowed
-        :param window: Time window in seconds
-        """
+    def __init__(self, requests: int, window: int, scope: Optional[str] = None):
         self.requests = requests
         self.window = window
+        self.scope = scope
 
     async def __call__(self, request: Request, redis: Redis = Depends(get_redis)):
-        # Identify client by IP for unauthenticated users, or user_id if we have it in state
-        # In a real production setup you'd extract the user ID from the JWT token
+        scope = self.scope or request.url.path
         client_ip = request.client.host if request.client else "127.0.0.1"
-        key = f"rate_limit:{request.url.path}:{client_ip}"
-        
+        identity = request.headers.get("authorization") or client_ip
+        identity_hash = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+        key = f"rate_limit:{scope}:{identity_hash}"
+
         current_time = time.time()
         window_start = current_time - self.window
 
-        async with redis.pipeline(transaction=True) as pipe:
-            # 1. Remove timestamps older than the window
-            pipe.zremrangebyscore(key, 0, window_start)
-            # 2. Count requests in the current window
-            pipe.zcard(key)
-            # 3. Add the current request timestamp
-            pipe.zadd(key, {str(current_time): current_time})
-            # 4. Set TTL on the key to automatically clean it up
-            pipe.expire(key, self.window)
-            
-            # Execute pipeline
-            results = await pipe.execute()
-            
-        request_count = results[1] # result of zcard
-        
+        try:
+            async with redis.pipeline(transaction=True) as pipe:
+                pipe.zremrangebyscore(key, 0, window_start)
+                pipe.zcard(key)
+                pipe.zadd(key, {str(current_time): current_time})
+                pipe.expire(key, self.window)
+                results = await pipe.execute()
+            request_count = int(results[1])
+        except Exception:
+            logger.warning("redis_rate_limiter_unavailable scope=%s", scope, exc_info=True)
+            bucket = [stamp for stamp in _memory_buckets.get(key, []) if stamp >= window_start]
+            request_count = len(bucket)
+            bucket.append(current_time)
+            _memory_buckets[key] = bucket
+
         if request_count >= self.requests:
             raise HTTPException(
                 status_code=429,
-                detail=f"Rate limit exceeded. Try again in {self.window} seconds."
+                detail={"message": "Rate limit exceeded", "retry_after_seconds": self.window},
+                headers={"Retry-After": str(self.window)},
             )
-        
+
         return True
+
+
+public_limiter = RateLimiter(requests=60, window=60, scope="public")
+auth_limiter = RateLimiter(requests=30, window=60, scope="auth")
+llm_limiter = RateLimiter(requests=10, window=60, scope="llm")
+booking_limiter = RateLimiter(requests=8, window=60, scope="booking")
+payment_limiter = RateLimiter(requests=12, window=60, scope="payment")
+websocket_limiter = RateLimiter(requests=20, window=60, scope="websocket")

@@ -1,12 +1,8 @@
-import os
 from celery import Celery
-from dotenv import load_dotenv
-
-load_dotenv()
+from app.config import get_settings
 
 # We use Redis as both the broker (message queue) and the result backend.
-# The URL defaults to localhost for local development.
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = get_settings().redis_url
 
 celery_app = Celery(
     "kundali_worker",

@@ -2,17 +2,18 @@ from datetime import datetime, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
+from pydantic import Field, field_validator
 
-import os
 import httpx
+from app.config import get_settings
 from app.services.geocoding_service import geocode_place, reverse_geocode_place
 from app.services.timezone_service import timezone_at
 from app.storage.database import get_chart, save_prashna_chart, save_lagna_chart, sync_user, update_prashna_chart
 from app.dependencies import get_current_user, AuthState
-from app.core.rate_limiter import RateLimiter
+from app.core.rate_limiter import RateLimiter, llm_limiter, public_limiter
 from app.insight_engine import build_interpretation
+from app.schemas.common import ID_RE, LocationInput, StrictRequestModel, parse_iso_datetime
 
 router = APIRouter()
 
@@ -22,13 +23,7 @@ lagna_rate_limiter = RateLimiter(requests=10, window=60)
 
 
 
-class LocationInput(BaseModel):
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
-    place_name: str = Field(min_length=1, max_length=160)
-
-
-class PrashnaRequest(BaseModel):
+class PrashnaRequest(StrictRequestModel):
     name: str = Field(min_length=1, max_length=80)
     question: str = Field(min_length=3, max_length=1000)
     question_domain: str = Field(default="", max_length=40)
@@ -36,17 +31,34 @@ class PrashnaRequest(BaseModel):
     location: LocationInput
     asked_at_utc: Optional[str] = None
 
+    @field_validator("asked_at_utc")
+    @classmethod
+    def validate_asked_at_utc(cls, value: Optional[str]) -> Optional[str]:
+        if value:
+            parse_iso_datetime(value, "asked_at_utc")
+        return value
 
-class LagnaRequest(BaseModel):
+
+class LagnaRequest(StrictRequestModel):
     name: str = Field(min_length=1, max_length=80)
     gender: str = Field(pattern="^(male|female|other)$")
     birth_datetime_local: str = Field(min_length=16, max_length=32)
     location: LocationInput
 
+    @field_validator("birth_datetime_local")
+    @classmethod
+    def validate_birth_datetime(cls, value: str) -> str:
+        parse_iso_datetime(value, "birth_datetime_local")
+        return value
 
-class UserSyncRequest(BaseModel):
-    email: str = Field(min_length=5, max_length=160)
+
+class UserSyncRequest(StrictRequestModel):
+    email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     name: str = Field(default="", max_length=120)
+
+
+def _is_admin(auth: AuthState) -> bool:
+    return auth.is_admin
 
 
 @router.post("/users/sync")
@@ -69,7 +81,7 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
                 raise HTTPException(status_code=400, detail="Invalid asked_at_utc ISO datetime.") from exc
         
         try:
-            astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+            astrology_url = get_settings().astrology_engine_url
             
             payload_data = {
                 "chart_type": "prashna",
@@ -117,8 +129,8 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
         if interpretation:
             answer = None
             try:
-                llm_url = os.getenv("LLM_ENGINE_URL", "http://localhost:8002")
-                async with httpx.AsyncClient() as client:
+                llm_url = get_settings().llm_engine_url
+                async with httpx.AsyncClient(timeout=httpx.Timeout(25.0, connect=5.0)) as client:
                     llm_resp = await client.post(
                         f"{llm_url}/generate/sync",
                         json={
@@ -126,7 +138,6 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
                             "chart": chart,
                             "interpretation": interpretation
                         },
-                        timeout=25.0
                     )
                 if llm_resp.status_code == 200:
                     answer = llm_resp.json().get("answer")
@@ -146,9 +157,9 @@ async def create_prashna(payload: PrashnaRequest, auth: AuthState = Depends(get_
     except HTTPException:
         raise
     except Exception as exc:
-        import traceback
-        tb = traceback.format_exc()
-        raise HTTPException(status_code=500, detail={"error": str(exc), "traceback": tb})
+        import logging
+        logging.getLogger(__name__).exception("create_prashna_failed")
+        raise HTTPException(status_code=500, detail="Failed to create Prashna chart") from exc
 
 
 @router.post("/lagna")
@@ -157,7 +168,7 @@ async def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_curr
         try:
             tz_name = timezone_at(payload.location.latitude, payload.location.longitude)
             local_dt = datetime.fromisoformat(payload.birth_datetime_local)
-            astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+            astrology_url = get_settings().astrology_engine_url
             
             payload_data = {
                 "chart_type": "lagna",
@@ -192,9 +203,9 @@ async def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_curr
     except HTTPException:
         raise
     except Exception as exc:
-        import traceback
-        tb = traceback.format_exc()
-        raise HTTPException(status_code=500, detail={"error": str(exc), "traceback": tb})
+        import logging
+        logging.getLogger(__name__).exception("create_lagna_failed")
+        raise HTTPException(status_code=500, detail="Failed to create Lagna chart") from exc
 
 
 def local_interpretation_answer(chart: dict, interpretation: dict) -> dict:
@@ -260,34 +271,48 @@ The chart leans according to the balance of support and obstruction described ab
 
 
 @router.get("/charts/{chart_id}")
-def read_chart(chart_id: str) -> dict:
-    from app.storage.database import supabase
-    chart = get_chart(supabase, chart_id)
+def read_chart(chart_id: str = Path(pattern=ID_RE), auth: AuthState = Depends(get_current_user)) -> dict:
+    chart = get_chart(auth.client, chart_id)
     if not chart:
         raise HTTPException(status_code=404, detail="Chart not found")
+    if chart.get("user_id") != auth.user_id and not _is_admin(auth):
+        raise HTTPException(status_code=403, detail="Not allowed to read this chart")
     return {"chart_id": chart_id, "chart": chart}
 
 
 @router.get("/geocode")
-def geocode(query: str, limit: int = 6) -> dict:
+def geocode(
+    query: str = Query(min_length=2, max_length=160),
+    limit: int = Query(default=6, ge=1, le=8),
+    _ = Depends(public_limiter),
+) -> dict:
     if len(query.strip()) < 2:
         raise HTTPException(status_code=400, detail="Enter at least 2 characters.")
     return {"query": query, "results": geocode_place(query, limit=max(1, min(limit, 8)))}
 
 
 @router.get("/reverse_geocode")
-def reverse_geocode(lat: float, lon: float) -> dict:
+def reverse_geocode(
+    lat: float = Query(ge=-90, le=90),
+    lon: float = Query(ge=-180, le=180),
+    _ = Depends(public_limiter),
+) -> dict:
     return reverse_geocode_place(lat, lon)
 
 from fastapi.responses import StreamingResponse
 import redis
 import json
-import os
 
 @router.get("/stream/{chart_id}")
-def stream_chart(chart_id: str):
+def stream_chart(chart_id: str = Path(pattern=ID_RE), auth: AuthState = Depends(get_current_user), _ = Depends(llm_limiter)):
+    chart = get_chart(auth.client, chart_id)
+    if not chart:
+        raise HTTPException(status_code=404, detail="Chart not found")
+    if chart.get("user_id") != auth.user_id and not _is_admin(auth):
+        raise HTTPException(status_code=403, detail="Not allowed to stream this chart")
+
     def event_stream():
-        redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+        redis_client = redis.Redis.from_url(get_settings().redis_url)
         pubsub = redis_client.pubsub()
         pubsub.subscribe(f"stream:{chart_id}")
         

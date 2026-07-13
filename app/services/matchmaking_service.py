@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
+from app.config import get_settings
 
 from app.astrology.constants import NAKSHATRAS, SIGNS
 from app.astrology.divisional import build_d1, build_divisional_chart_from_moon
@@ -195,7 +195,7 @@ async def generate_birth_chart(person: dict[str, Any]) -> dict[str, Any]:
             "place_name": place["place_name"],
         },
     }
-    astrology_url = os.getenv("ASTROLOGY_ENGINE_URL", "http://localhost:8001")
+    astrology_url = get_settings().astrology_engine_url
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.post(f"{astrology_url}/calculate", json=payload, timeout=30.0)

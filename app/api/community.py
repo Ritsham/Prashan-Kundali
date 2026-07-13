@@ -1,11 +1,12 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import json
 import logging
-import os
+import time
 from supabase import create_client, ClientOptions
 
-from app.config import get_supabase_url
+from app.config import get_settings
+from app.core.rate_limiter import RateLimiter, booking_limiter
 from app.storage.community_db import (
     get_channels,
     save_message,
@@ -21,71 +22,46 @@ from app.storage.community_db import (
     mark_channel_read,
     update_message_author_name,
 )
-from app.dependencies import AuthState, RequireVerifiedAstrologer, get_current_user
-from app.storage.community_access_db import has_active_community_membership
+from app.dependencies import AuthState, RequireAdmin, RequireVerifiedAstrologer, get_current_user, get_current_user_from_token
+from app.storage.audit_db import record_admin_audit
+from app.storage.database import get_service_client
+from app.schemas.common import ID_RE, PHONE_RE, StrictRequestModel
 
 router = APIRouter(prefix="/community", tags=["community"])
 
 logger = logging.getLogger(__name__)
+_ws_attempts: dict[str, list[float]] = {}
+community_chat_limiter = RateLimiter(requests=30, window=60, scope="community_chat")
 
 
-def get_websocket_auth_context(token: str) -> Optional[Dict[str, str]]:
-    if not token:
+def _websocket_rate_limited(websocket: WebSocket, scope: str, limit: int = 20, window: int = 60) -> bool:
+    client_host = websocket.client.host if websocket.client else "unknown"
+    key = f"{scope}:{client_host}"
+    now = time.time()
+    attempts = [stamp for stamp in _ws_attempts.get(key, []) if stamp >= now - window]
+    if len(attempts) >= limit:
+        _ws_attempts[key] = attempts
+        return True
+    attempts.append(now)
+    _ws_attempts[key] = attempts
+    return False
+
+
+def get_websocket_auth_context(token: str) -> Optional[Dict[str, Any]]:
+    auth = get_current_user_from_token(token)
+    if not auth:
         return None
-    try:
-        import httpx
-        timeout = httpx.Timeout(60.0)
-        custom_client = httpx.Client(timeout=timeout)
-        options = ClientOptions(
-            headers={"Authorization": f"Bearer {token}"},
-            httpx_client=custom_client,
-            storage_client_timeout=120,
-            postgrest_client_timeout=120
-        )
-        client = create_client(get_supabase_url(), os.getenv("SUPABASE_ANON_KEY", ""), options=options)
-        user_res = client.auth.get_user(token)
-        if not user_res or not user_res.user:
-            return None
-
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-        if not service_role_key:
-            logger.error("Community websocket auth failed: missing SUPABASE_SERVICE_ROLE_KEY")
-            return None
-        admin_options = ClientOptions(
-            headers={"Authorization": f"Bearer {service_role_key}"},
-            httpx_client=httpx.Client(timeout=httpx.Timeout(60.0)),
-        )
-        admin_client = create_client(get_supabase_url(), service_role_key, options=admin_options)
-
-        membership = has_active_community_membership(admin_client, user_res.user.id)
-        if membership is not None:
-            if not membership:
-                return None
-            metadata = getattr(user_res.user, "user_metadata", None) or {}
-            return {
-                "user_id": user_res.user.id,
-                "display_name": metadata.get("full_name") or metadata.get("name") or (user_res.user.email or "Astrologer").split("@")[0],
-            }
-        profile_res = admin_client.table("users").select("full_name, role, verification_status, community_access").eq("id", user_res.user.id).execute()
-        if not profile_res.data:
-            return None
-        profile = profile_res.data[0]
-        
-        is_verified_astrologer = (
-            profile.get("role") == "astrologer"
-            and profile.get("verification_status") == "verified"
-        )
-        has_community_access = profile.get("community_access") is True
-        if not is_verified_astrologer and not has_community_access:
-            return None
-
-        return {
-            "user_id": user_res.user.id,
-            "display_name": profile.get("full_name") or (getattr(user_res.user, "user_metadata", None) or {}).get("full_name") or (getattr(user_res.user, "user_metadata", None) or {}).get("name") or (user_res.user.email or "Astrologer").split("@")[0],
-        }
-    except Exception as exc:
-        logger.error("Community websocket auth failed: %s", exc)
+    if not auth.is_admin and not auth.is_verified_astrologer:
         return None
+    profile = auth.profile or {}
+    metadata = auth.user_metadata or {}
+    email_name = (auth.email or "Astrologer").split("@")[0]
+    return {
+        "user_id": auth.user_id,
+        "display_name": profile.get("full_name") or metadata.get("full_name") or metadata.get("name") or email_name,
+        "role": auth.role,
+        "is_admin": auth.is_admin,
+    }
 
 
 def websocket_has_verified_access(token: str) -> bool:
@@ -102,6 +78,25 @@ def resolve_display_name(auth: AuthState) -> str:
     except Exception as exc:
         logger.error("Community display name lookup failed: %s", exc)
     return auth.user_metadata.get("full_name") or auth.user_metadata.get("name") or (auth.email or auth.user_id).split("@")[0]
+
+
+def _application_db():
+    db = get_service_client()
+    if not db:
+        raise HTTPException(status_code=500, detail="Community application storage is not configured")
+    return db
+
+
+def _redact_application_for_owner(app_data: Dict[str, Any]) -> Dict[str, Any]:
+    hidden_fields = {
+        "admin_internal_notes",
+        "reviewed_by",
+        "reviewed_at",
+        "approved_at",
+        "rejected_at",
+        "suspended_at",
+    }
+    return {key: value for key, value in app_data.items() if key not in hidden_fields}
 
 class ConnectionManager:
     def __init__(self):
@@ -162,7 +157,7 @@ async def api_get_messages(
 
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uuid
 import mimetypes
 
@@ -171,57 +166,70 @@ async def api_get_threads(message_id: str, auth: AuthState = Depends(RequireVeri
     return await get_thread_replies(message_id)
 
 
-class ApplicationPayload(BaseModel):
-    full_name: str
-    email: str
-    mobile_number: str
-    state: str
-    country: str
-    applicant_type: str
-    experience_range: str
-    systems: List[str]
-    background_description: str
-    proofs: List[Dict]
-    additional_information: str = ""
+class ApplicationPayload(StrictRequestModel):
+    full_name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=5, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    mobile_number: str = Field(min_length=6, max_length=24, pattern=PHONE_RE)
+    state: str = Field(min_length=1, max_length=80)
+    country: str = Field(min_length=1, max_length=80)
+    applicant_type: str = Field(min_length=1, max_length=80)
+    experience_range: str = Field(min_length=1, max_length=80)
+    systems: List[str] = Field(min_length=1, max_length=20)
+    background_description: str = Field(min_length=20, max_length=5000)
+    proofs: List[Dict[str, Any]] = Field(min_length=1, max_length=10)
+    additional_information: str = Field(default="", max_length=3000)
 
 @router.get("/application/status")
 async def get_application_status(auth: AuthState = Depends(get_current_user)):
     from app.storage.community_access_db import get_community_application
-    app_data = get_community_application(auth.client, auth.user_id)
+    app_data = get_community_application(_application_db(), auth.user_id)
     if not app_data:
         return {"status": "NOT_APPLIED"}
-    return app_data
+    return _redact_application_for_owner(app_data)
 
-@router.post("/application")
+@router.post("/application", dependencies=[Depends(booking_limiter)])
 async def submit_application(payload: ApplicationPayload, auth: AuthState = Depends(get_current_user)):
     from app.storage.community_access_db import save_community_application, get_community_application
     
     # Check if already applied and not allowed to reapply
-    existing = get_community_application(auth.client, auth.user_id)
+    app_db = _application_db()
+    existing = get_community_application(app_db, auth.user_id)
     if existing and existing.get("status") not in ["REJECTED", "NOT_APPLIED"] and not existing.get("reapply_allowed"):
         raise HTTPException(status_code=400, detail="Application already submitted or pending.")
         
     if not payload.proofs:
         raise HTTPException(status_code=400, detail="At least one supporting proof is required.")
         
-    success = save_community_application(auth.client, auth.user_id, payload.model_dump())
+    success = save_community_application(app_db, auth.user_id, payload.model_dump())
     if not success:
         raise HTTPException(status_code=500, detail="Failed to submit application.")
     return {"message": "Application submitted successfully", "status": "PENDING"}
 
-@router.post("/application/upload-proof")
+@router.post("/application/upload-proof", dependencies=[Depends(booking_limiter)])
 async def upload_proof(file: UploadFile = File(...), auth: AuthState = Depends(get_current_user)):
     MAX_SIZE = 10 * 1024 * 1024 # 10MB
     contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
     if len(contents) > MAX_SIZE:
         raise HTTPException(status_code=400, detail="File size exceeds 10MB limit.")
         
-    mime_type, _ = mimetypes.guess_type(file.filename)
-    allowed_types = ["application/pdf", "image/jpeg", "image/png", "image/jpg"]
+    filename = file.filename or ""
+    guessed_type, _ = mimetypes.guess_type(filename)
+    mime_type = file.content_type or guessed_type
+    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
     if mime_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Invalid file format. Only PDF, JPG, JPEG, and PNG are allowed.")
+
+    file_signature_ok = (
+        (mime_type == "application/pdf" and contents.startswith(b"%PDF-"))
+        or (mime_type in {"image/jpeg", "image/jpg"} and contents.startswith(b"\xff\xd8\xff"))
+        or (mime_type == "image/png" and contents.startswith(b"\x89PNG\r\n\x1a\n"))
+    )
+    if not file_signature_ok:
+        raise HTTPException(status_code=400, detail="File content does not match the declared format.")
         
-    ext = file.filename.split('.')[-1] if '.' in file.filename else 'bin'
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else 'bin'
     safe_filename = f"{auth.user_id}/{uuid.uuid4().hex}.{ext}"
     
     try:
@@ -239,14 +247,15 @@ async def upload_proof(file: UploadFile = File(...), auth: AuthState = Depends(g
         logger.error(f"Failed to upload proof: {exc}")
         raise HTTPException(status_code=500, detail="Failed to upload file.")
 
-class MoreInfoPayload(BaseModel):
-    response_text: str
-    proof: Optional[Dict] = None
+class MoreInfoPayload(StrictRequestModel):
+    response_text: str = Field(min_length=3, max_length=4000)
+    proof: Optional[Dict[str, Any]] = None
 
-@router.post("/application/more-info")
+@router.post("/application/more-info", dependencies=[Depends(booking_limiter)])
 async def submit_more_info(payload: MoreInfoPayload, auth: AuthState = Depends(get_current_user)):
     from app.storage.community_access_db import get_community_application
-    app_data = get_community_application(auth.client, auth.user_id)
+    app_db = _application_db()
+    app_data = get_community_application(app_db, auth.user_id)
     if not app_data or app_data.get("status") != "NEEDS_MORE_INFORMATION":
         raise HTTPException(status_code=400, detail="Application is not in NEEDS_MORE_INFORMATION state.")
         
@@ -259,7 +268,7 @@ async def submit_more_info(payload: MoreInfoPayload, auth: AuthState = Depends(g
             "status": "PENDING",
             "updated_at": "now()"
         }
-        auth.client.table("community_applications").update(update_data).eq("id", app_id).execute()
+        app_db.table("community_applications").update(update_data).eq("id", app_id).execute()
         
         # Save additional proof if provided
         if payload.proof:
@@ -272,10 +281,10 @@ async def submit_more_info(payload: MoreInfoPayload, auth: AuthState = Depends(g
                 "mime_type": payload.proof.get("mime_type"),
                 "file_size": payload.proof.get("file_size")
             }
-            auth.client.table("community_application_proofs").insert(proof_data).execute()
+            app_db.table("community_application_proofs").insert(proof_data).execute()
             
         # Log response in reviews table
-        auth.client.table("community_application_reviews").insert({
+        app_db.table("community_application_reviews").insert({
             "application_id": app_id,
             "admin_id": auth.user_id, # using user's id to denote they submitted it, or leave null
             "previous_status": "NEEDS_MORE_INFORMATION",
@@ -290,6 +299,9 @@ async def submit_more_info(payload: MoreInfoPayload, auth: AuthState = Depends(g
 
 @router.websocket("/ws/{channel_name}")
 async def websocket_endpoint(websocket: WebSocket, channel_name: str):
+    if _websocket_rate_limited(websocket, "community"):
+        await websocket.close(code=1008)
+        return
     token = websocket.query_params.get("token", "")
     auth_context = get_websocket_auth_context(token)
     if not auth_context:
@@ -306,7 +318,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                 action = payload.get("action")
                 
                 if action == "send_message":
-                    if channel_name == "announcements":
+                    if channel_name == "announcements" and not auth_context.get("is_admin"):
                         await websocket.send_text(json.dumps({"type": "error", "message": "Only admins can post in announcements."}))
                         continue
                     
@@ -330,20 +342,24 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                 elif action == "toggle_reaction":
                     msg_id = payload.get("message_id")
                     reaction_type = payload.get("reaction_type")
+                    previous_reaction = payload.get("previous_reaction")
                     user_id = auth_context["user_id"]
-                    added = await toggle_reaction(msg_id, user_id, reaction_type)
+                    reaction_status = await toggle_reaction(msg_id, user_id, reaction_type, previous_reaction)
                     await manager.broadcast(
-                        json.dumps({"type": "reaction_added" if added else "reaction_removed", "message_id": msg_id, "reaction_type": reaction_type, "user_id": user_id}),
+                        json.dumps({"type": f"reaction_{reaction_status}", "message_id": msg_id, "reaction_type": reaction_type, "previous_reaction": previous_reaction, "user_id": user_id}),
                         channel_name
                     )
 
                 elif action == "delete_message":
                     msg_id = payload.get("message_id")
-                    await delete_message(msg_id, auth_context["user_id"])
-                    await manager.broadcast(
-                        json.dumps({"type": "message_deleted", "message_id": msg_id}),
-                        channel_name
-                    )
+                    deleted = await delete_message(msg_id, auth_context["user_id"])
+                    if deleted:
+                        await manager.broadcast(
+                            json.dumps({"type": "message_deleted", "message_id": msg_id, "data": deleted}),
+                            channel_name
+                        )
+                    else:
+                        await websocket.send_text(json.dumps({"type": "error", "message": "Message not found or not deletable."}))
                     
                 elif action == "star_message":
                     msg_id = payload.get("message_id")
@@ -362,7 +378,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                         sender_id=auth_context["user_id"],
                     )
                     await manager.broadcast(
-                        json.dumps({"type": "thread_reply_created", "data": saved_reply}),
+                        json.dumps({"type": "thread_reply_created", "data": saved_reply, "parent_message_id": payload.get("parent_message_id")}),
                         channel_name
                     )
                 elif action == "typing_started":
@@ -377,10 +393,8 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
     except WebSocketDisconnect:
         await manager.disconnect(websocket, channel_name)
 
-from app.dependencies import RequireRole
-
 @router.get("/admin/applications")
-async def admin_list_applications(auth: AuthState = Depends(RequireRole("admin"))):
+async def admin_list_applications(auth: AuthState = Depends(RequireAdmin())):
     try:
         app_res = auth.client.table("community_applications").select("*, community_application_systems(system_name), community_application_proofs(*)").order("created_at", desc=True).execute()
         apps = app_res.data
@@ -396,7 +410,7 @@ async def admin_list_applications(auth: AuthState = Depends(RequireRole("admin")
         raise HTTPException(status_code=500, detail="Failed to list applications.")
 
 @router.get("/admin/applications/{app_id}")
-async def admin_get_application(app_id: str, auth: AuthState = Depends(RequireRole("admin"))):
+async def admin_get_application(app_id: str, auth: AuthState = Depends(RequireAdmin())):
     try:
         app_res = auth.client.table("community_applications").select("*").eq("id", app_id).execute()
         if not app_res.data:
@@ -417,22 +431,25 @@ async def admin_get_application(app_id: str, auth: AuthState = Depends(RequireRo
         logger.error(f"Failed to get application detail: {exc}")
         raise HTTPException(status_code=500, detail="Failed to get application detail.")
 
-class AdminStatusUpdatePayload(BaseModel):
-    status: str
-    message: str = ""
+class AdminStatusUpdatePayload(StrictRequestModel):
+    status: str = Field(pattern="^(APPROVED|REJECTED|NEEDS_MORE_INFORMATION|SUSPENDED|PENDING|SUBMITTED)$")
+    message: str = Field(default="", max_length=2000)
     reapply_allowed: bool = False
-    reapply_after_days: int = 30
+    reapply_after_days: int = Field(default=30, ge=0, le=365)
 
 @router.post("/admin/applications/{app_id}/status")
-async def admin_update_application_status(app_id: str, payload: AdminStatusUpdatePayload, auth: AuthState = Depends(RequireRole("admin"))):
+async def admin_update_application_status(app_id: str, payload: AdminStatusUpdatePayload, auth: AuthState = Depends(RequireAdmin())):
     try:
         # Get current app state
-        app_res = auth.client.table("community_applications").select("status", "user_id").eq("id", app_id).execute()
+        app_res = auth.client.table("community_applications").select("*").eq("id", app_id).execute()
         if not app_res.data:
             raise HTTPException(status_code=404, detail="Application not found")
             
-        current_status = app_res.data[0]["status"]
-        user_id = app_res.data[0]["user_id"]
+        before_app = app_res.data[0]
+        current_status = before_app["status"]
+        user_id = before_app["user_id"]
+        if user_id == auth.user_id:
+            raise HTTPException(status_code=403, detail="Admins cannot approve or reject their own application")
         
         from datetime import datetime, timedelta
         
@@ -463,11 +480,36 @@ async def admin_update_application_status(app_id: str, payload: AdminStatusUpdat
             "internal_note": payload.message
         }).execute()
         
-        # If APPROVED, update user's community_access
+        # If APPROVED, update user's community access and canonical role.
         if payload.status == "APPROVED":
-            auth.client.table("users").update({"community_access": True}).eq("id", user_id).execute()
+            auth.client.table("users").update({
+                "role": "astrologer_verified",
+                "verification_status": "verified",
+                "community_access": True,
+                "community_verification_status": "APPROVED",
+            }).eq("id", user_id).execute()
         elif payload.status in ["SUSPENDED", "REJECTED"]:
-            auth.client.table("users").update({"community_access": False}).eq("id", user_id).execute()
+            auth.client.table("users").update({
+                "role": "user",
+                "verification_status": "rejected" if payload.status == "REJECTED" else "suspended",
+                "community_access": False,
+                "community_verification_status": payload.status,
+            }).eq("id", user_id).execute()
+        elif payload.status in {"NEEDS_MORE_INFORMATION", "PENDING", "SUBMITTED"}:
+            auth.client.table("users").update({
+                "role": "astrologer_pending",
+                "verification_status": "pending",
+                "community_access": False,
+                "community_verification_status": payload.status,
+            }).eq("id", user_id).execute()
+        record_admin_audit(
+            actor_user_id=auth.user_id,
+            entity_type="community_application",
+            entity_id=app_id,
+            action="status_update",
+            before_json={"status": current_status, "user_id": user_id},
+            after_json={"status": payload.status, "user_id": user_id, "message": payload.message, "reapply_allowed": payload.reapply_allowed},
+        )
             
         # Send WhatsApp Notification
         try:
@@ -493,14 +535,16 @@ async def admin_update_application_status(app_id: str, payload: AdminStatusUpdat
             logger.error(f"Failed to send WhatsApp notification: {wa_exc}")
             
         return {"message": f"Application status updated to {payload.status}"}
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(f"Failed to update application status: {exc}")
-        import traceback
-        raise HTTPException(status_code=500, detail=f"Failed to update application status: {str(exc)}\n{traceback.format_exc()}")
+        logger.exception("community_application_status_update_failed")
+        raise HTTPException(status_code=500, detail="Failed to update application status") from exc
 
 
 @router.get("/admin/astrologers/applications")
-async def admin_list_astrologer_applications_compat(auth: AuthState = Depends(RequireRole("admin"))):
+async def admin_list_astrologer_applications_compat(auth: AuthState = Depends(RequireAdmin())):
     apps = await admin_list_applications(auth)
     formatted = []
     for app in apps:
@@ -545,15 +589,18 @@ async def admin_list_astrologer_applications_compat(auth: AuthState = Depends(Re
     return {"applications": formatted}
 
 
-class AstrologerApplicationCompatUpdate(BaseModel):
-    status: str
+class AstrologerApplicationCompatUpdate(StrictRequestModel):
+    status: str = Field(pattern="^(approved|approve|rejected|reject|pending|submitted|needs_more_information|suspended)$")
+    message: str = Field(default="", max_length=2000)
+    reapply_allowed: bool = False
+    reapply_after_days: int = Field(default=30, ge=0, le=365)
 
 
 @router.post("/admin/astrologers/applications/{app_id}")
 async def admin_update_astrologer_application_compat(
     app_id: str,
     payload: AstrologerApplicationCompatUpdate,
-    auth: AuthState = Depends(RequireRole("admin")),
+    auth: AuthState = Depends(RequireAdmin()),
 ):
     status_map = {
         "approved": "APPROVED",
@@ -562,11 +609,18 @@ async def admin_update_astrologer_application_compat(
         "reject": "REJECTED",
         "pending": "SUBMITTED",
         "submitted": "SUBMITTED",
+        "needs_more_information": "NEEDS_MORE_INFORMATION",
+        "suspended": "SUSPENDED",
     }
     target = status_map.get(payload.status.lower(), payload.status.upper())
     return await admin_update_application_status(
         app_id,
-        AdminStatusUpdatePayload(status=target),
+        AdminStatusUpdatePayload(
+            status=target,
+            message=payload.message,
+            reapply_allowed=payload.reapply_allowed,
+            reapply_after_days=payload.reapply_after_days,
+        ),
         auth,
     )
 
@@ -575,14 +629,15 @@ async def api_get_profile(auth: AuthState = Depends(RequireVerifiedAstrologer())
     """Return a minimal profile object so the frontend knows the user has access.
     We derive the profile from the users table since community_profiles may not exist yet."""
     try:
-        service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        settings = get_settings()
+        service_role_key = settings.supabase_service_role_key
         import httpx
         custom_client = httpx.Client(timeout=httpx.Timeout(60.0))
         options = ClientOptions(
             headers={"Authorization": f"Bearer {service_role_key}"},
             httpx_client=custom_client,
         )
-        admin_client = create_client(get_supabase_url(), service_role_key, options=options)
+        admin_client = create_client(settings.supabase_url, service_role_key, options=options)
 
         res = admin_client.table("users").select(
             "id, email, full_name, role, verification_status, community_access, community_verification_status"
@@ -590,12 +645,7 @@ async def api_get_profile(auth: AuthState = Depends(RequireVerifiedAstrologer())
         if not res.data:
             return None
         u = res.data[0]
-        is_verified_astrologer = (
-            u.get("role") == "astrologer"
-            and u.get("verification_status") == "verified"
-        )
-        has_community_access = u.get("community_access") is True
-        if not is_verified_astrologer and not has_community_access:
+        if not auth.is_admin and not auth.is_verified_astrologer:
             return None
         email_name = u.get("email", "").split("@")[0]
         metadata_name = auth.user_metadata.get("full_name") or auth.user_metadata.get("name")
@@ -619,16 +669,16 @@ async def api_get_profile(auth: AuthState = Depends(RequireVerifiedAstrologer())
         logger.error(f"Error fetching profile: {e}")
         return None
 
-class ProfilePayload(BaseModel):
-    username: str
-    display_name: str
-    bio: str
-    state: str = ""
-    country: str = ""
-    experience_years: str = ""
-    specializations: List[str] = []
-    languages: List[str] = []
-    systems_practiced: List[str] = []
+class ProfilePayload(StrictRequestModel):
+    username: str = Field(min_length=3, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    display_name: str = Field(min_length=1, max_length=120)
+    bio: str = Field(default="", max_length=1000)
+    state: str = Field(default="", max_length=80)
+    country: str = Field(default="", max_length=80)
+    experience_years: str = Field(default="", max_length=40)
+    specializations: List[str] = Field(default_factory=list, max_length=20)
+    languages: List[str] = Field(default_factory=list, max_length=20)
+    systems_practiced: List[str] = Field(default_factory=list, max_length=20)
 
 @router.post("/profile")
 async def api_upsert_profile(payload: ProfilePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
@@ -658,14 +708,26 @@ async def api_join_channel(channel_id: str, auth: AuthState = Depends(RequireVer
 
 
 from app.storage.community_db import toggle_reaction
-class ReactionPayload(BaseModel):
-    reaction_type: str
+class ReactionPayload(StrictRequestModel):
+    reaction_type: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_.:-]+$")
+    previous_reaction: Optional[str] = Field(default=None, max_length=40, pattern=r"^[A-Za-z0-9_.:-]+$")
 
-@router.post("/messages/{message_id}/reactions")
+@router.post("/messages/{message_id}/reactions", dependencies=[Depends(community_chat_limiter)])
 async def api_toggle_reaction(message_id: str, payload: ReactionPayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
     try:
-        added = await toggle_reaction(message_id, auth.user_id, payload.reaction_type)
-        return {"status": "success", "added": added}
+        reaction_status = await toggle_reaction(message_id, auth.user_id, payload.reaction_type, payload.previous_reaction)
+        try:
+            message_res = auth.client.table("community_messages").select("channel_name").eq("id", message_id).limit(1).execute()
+            rows = getattr(message_res, "data", None) or []
+            channel_name = rows[0].get("channel_name") if rows else ""
+            if channel_name:
+                await manager.broadcast(
+                    json.dumps({"type": f"reaction_{reaction_status}", "message_id": message_id, "reaction_type": payload.reaction_type, "previous_reaction": payload.previous_reaction, "user_id": auth.user_id}),
+                    channel_name,
+                )
+        except Exception as broadcast_error:
+            logger.warning(f"Reaction broadcast skipped: {broadcast_error}")
+        return {"status": "success", "reaction_status": reaction_status}
     except Exception as e:
         logger.error(f"Error toggling reaction: {e}")
         raise HTTPException(status_code=500, detail="Failed to toggle reaction.")
@@ -679,41 +741,41 @@ from app.storage.community_db import get_thread_replies
 
 from app.storage.community_db import save_message
 
-class SendMessagePayload(BaseModel):
-    content: str
-    content_type: str = "STANDARD"
-    chart_id: Optional[str] = None
-    image_base64: Optional[str] = None
-    reply_to_message_id: Optional[str] = None
-    client_id: Optional[str] = None
+class SendMessagePayload(StrictRequestModel):
+    content: str = Field(min_length=1, max_length=4000)
+    content_type: str = Field(default="STANDARD", max_length=40, pattern=r"^[A-Z_]+$")
+    chart_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
+    image_base64: Optional[str] = Field(default=None, max_length=2_000_000)
+    reply_to_message_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
+    client_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
 
 
-class UpdateMessagePayload(BaseModel):
-    content: str
+class UpdateMessagePayload(StrictRequestModel):
+    content: str = Field(min_length=1, max_length=4000)
 
 
-class ThreadReplyPayload(BaseModel):
-    content: str
-    image_base64: Optional[str] = None
+class ThreadReplyPayload(StrictRequestModel):
+    content: str = Field(min_length=1, max_length=4000)
+    image_base64: Optional[str] = Field(default=None, max_length=2_000_000)
 
 
-class ReadStatePayload(BaseModel):
-    last_read_message_id: Optional[str] = None
+class ReadStatePayload(StrictRequestModel):
+    last_read_message_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
 
 
-class AdminCommunityMessagePayload(BaseModel):
-    content: str
-    content_type: str = "STANDARD"
-    image_base64: Optional[str] = None
+class AdminCommunityMessagePayload(StrictRequestModel):
+    content: str = Field(default="", max_length=4000)
+    content_type: str = Field(default="STANDARD", max_length=40, pattern=r"^[A-Z_]+$")
+    image_base64: Optional[str] = Field(default=None, max_length=2_000_000)
 
 
-class AdminCommunityBroadcastPayload(BaseModel):
-    channel_name: str
-    title: Optional[str] = None
-    body: Optional[str] = None
-    link_url: Optional[str] = None
-    link_label: Optional[str] = None
-    image_base64: Optional[str] = None
+class AdminCommunityBroadcastPayload(StrictRequestModel):
+    channel_name: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    title: Optional[str] = Field(default=None, max_length=160)
+    body: Optional[str] = Field(default=None, max_length=4000)
+    link_url: Optional[str] = Field(default=None, max_length=500)
+    link_label: Optional[str] = Field(default=None, max_length=120)
+    image_base64: Optional[str] = Field(default=None, max_length=2_000_000)
 
 
 from app.storage.community_db import get_community_members, get_community_member, report_message
@@ -740,10 +802,10 @@ async def api_get_member(user_id: str, auth: AuthState = Depends(RequireVerified
         logger.error(f"Error fetching member: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch member")
 
-class ReportPayload(BaseModel):
-    reason: str
+class ReportPayload(StrictRequestModel):
+    reason: str = Field(min_length=3, max_length=1000)
 
-@router.post("/messages/{message_id}/report")
+@router.post("/messages/{message_id}/report", dependencies=[Depends(community_chat_limiter)])
 async def api_report_message(message_id: str, payload: ReportPayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
     try:
         success = await report_message(message_id, auth.user_id, payload.reason)
@@ -773,7 +835,7 @@ async def api_read_notifications(auth: AuthState = Depends(RequireVerifiedAstrol
         raise HTTPException(status_code=500, detail="Failed to mark notifications read")
 
 @router.get("/admin/reports")
-async def api_get_reports(auth: AuthState = Depends(RequireRole("admin"))):
+async def api_get_reports(auth: AuthState = Depends(RequireAdmin())):
     try:
         return await get_community_reports()
     except Exception as e:
@@ -781,9 +843,16 @@ async def api_get_reports(auth: AuthState = Depends(RequireRole("admin"))):
         return []
 
 @router.delete("/admin/messages/{message_id}")
-async def api_admin_delete_message(message_id: str, auth: AuthState = Depends(RequireRole("admin"))):
+async def api_admin_delete_message(message_id: str, auth: AuthState = Depends(RequireAdmin())):
     try:
         success = await delete_community_message(message_id)
+        record_admin_audit(
+            actor_user_id=auth.user_id,
+            entity_type="community_message",
+            entity_id=message_id,
+            action="delete",
+            after_json={"success": success},
+        )
         if success:
             # Broadcast deletion so clients remove it
             await manager.broadcast(
@@ -796,9 +865,16 @@ async def api_admin_delete_message(message_id: str, auth: AuthState = Depends(Re
         raise HTTPException(status_code=500, detail="Failed to delete message")
 
 @router.post("/admin/users/{user_id}/ban")
-async def api_admin_ban_user(user_id: str, auth: AuthState = Depends(RequireRole("admin"))):
+async def api_admin_ban_user(user_id: str, auth: AuthState = Depends(RequireAdmin())):
     try:
         success = await ban_community_user(user_id)
+        record_admin_audit(
+            actor_user_id=auth.user_id,
+            entity_type="community_user",
+            entity_id=user_id,
+            action="ban",
+            after_json={"success": success},
+        )
         return {"status": "success" if success else "failed"}
     except Exception as e:
         logger.error(f"Error banning user: {e}")
@@ -809,7 +885,7 @@ async def api_admin_ban_user(user_id: str, auth: AuthState = Depends(RequireRole
 async def api_admin_send_channel_message(
     channel_name: str,
     payload: AdminCommunityMessagePayload,
-    auth: AuthState = Depends(RequireRole("admin")),
+    auth: AuthState = Depends(RequireAdmin()),
 ):
     if channel_name not in {"announcements", "general"}:
         raise HTTPException(status_code=400, detail="Admin can post only to announcements or general.")
@@ -830,6 +906,13 @@ async def api_admin_send_channel_message(
             json.dumps({"type": "message_created", "data": saved_msg, "message": saved_msg}),
             channel_name,
         )
+        record_admin_audit(
+            actor_user_id=auth.user_id,
+            entity_type="community_message",
+            entity_id=saved_msg.get("id", ""),
+            action="send_admin_message",
+            after_json={"channel_name": channel_name, "content_type": payload.content_type},
+        )
         return {"status": "success", "message": saved_msg}
     except Exception as e:
         logger.error(f"Error sending admin community message: {e}")
@@ -839,7 +922,7 @@ async def api_admin_send_channel_message(
 @router.post("/admin/broadcast")
 async def api_admin_broadcast_message(
     payload: AdminCommunityBroadcastPayload,
-    auth: AuthState = Depends(RequireRole("admin")),
+    auth: AuthState = Depends(RequireAdmin()),
 ):
     channel_name = payload.channel_name.strip()
     if channel_name not in {"announcements", "general"}:
@@ -874,15 +957,22 @@ async def api_admin_broadcast_message(
             json.dumps({"type": "message_created", "data": saved_msg, "message": saved_msg}),
             channel_name,
         )
+        record_admin_audit(
+            actor_user_id=auth.user_id,
+            entity_type="community_broadcast",
+            entity_id=saved_msg.get("id", ""),
+            action="broadcast",
+            after_json={"channel_name": channel_name, "title": title},
+        )
         return {"status": "success", "message": saved_msg}
     except Exception as e:
         logger.error(f"Error broadcasting admin community post: {e}")
         raise HTTPException(status_code=500, detail="Failed to broadcast community post")
 
 
-@router.post("/messages/{channel_name}")
+@router.post("/messages/{channel_name}", dependencies=[Depends(community_chat_limiter)])
 async def api_send_message(channel_name: str, payload: SendMessagePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
-    if channel_name == "announcements":
+    if channel_name == "announcements" and not auth.is_admin:
         raise HTTPException(status_code=403, detail="Only admins can post in announcements.")
     try:
         display_name = resolve_display_name(auth)
@@ -910,7 +1000,7 @@ async def api_send_message(channel_name: str, payload: SendMessagePayload, auth:
         raise HTTPException(status_code=500, detail="Failed to send message.")
 
 
-@router.patch("/messages/{message_id}")
+@router.patch("/messages/{message_id}", dependencies=[Depends(community_chat_limiter)])
 async def api_update_message(message_id: str, payload: UpdateMessagePayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
     try:
         updated = await update_message(message_id, auth.user_id, payload.content)
@@ -986,7 +1076,7 @@ async def api_mark_channel_read(channel_name: str, payload: ReadStatePayload, au
         raise HTTPException(status_code=500, detail="Failed to update read state.")
 
 
-@router.post("/messages/{message_id}/replies")
+@router.post("/messages/{message_id}/replies", dependencies=[Depends(community_chat_limiter)])
 async def api_create_thread_reply(message_id: str, payload: ThreadReplyPayload, auth: AuthState = Depends(RequireVerifiedAstrologer())):
     try:
         display_name = resolve_display_name(auth)
