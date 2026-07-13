@@ -3,6 +3,8 @@ import { prashnaApi } from '../../api/prashnaApi';
 import type { PrashnaPayload } from '../../types/prashna';
 import { MapPin, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { apiErrorMessage } from '../../api/errors';
+import { boundedText, validCoordinate } from '../../utils/validation';
 
 const PrashnaForm: React.FC = () => {
   const [step, setStep] = useState(1);
@@ -19,7 +21,18 @@ const PrashnaForm: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const navigate = useNavigate();
 
-  const handleNext = () => setStep((s) => Math.min(s + 1, 3));
+  const handleNext = () => {
+    setError('');
+    if (step === 1 && !boundedText(formData.name, 1, 80)) {
+      setError('Name must be between 1 and 80 characters.');
+      return;
+    }
+    if (step === 2 && !boundedText(formData.question, 3, 1000)) {
+      setError('Question must be between 3 and 1000 characters.');
+      return;
+    }
+    setStep((s) => Math.min(s + 1, 3));
+  };
   const handleBack = () => setStep((s) => Math.max(s - 1, 1));
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -27,14 +40,18 @@ const PrashnaForm: React.FC = () => {
   };
 
   const searchPlace = async () => {
-    if (locationSearch.length < 2) return;
+    if (locationSearch.trim().length < 2) {
+      setError('Enter at least 2 characters to search a place.');
+      return;
+    }
+    setError('');
     setIsSearching(true);
     try {
       const data = await prashnaApi.geocodePlace(locationSearch);
       setPlaces(data.results || []);
+      if (!data.results?.length) setError('No places found. Try a nearby city or enter coordinates manually.');
     } catch (err) {
-      console.error(err);
-      setError('Failed to fetch places');
+      setError(apiErrorMessage(err));
     } finally {
       setIsSearching(false);
     }
@@ -53,12 +70,32 @@ const PrashnaForm: React.FC = () => {
     setLocationSearch(place.place_name);
   };
 
+  const updateManualLocation = (patch: Partial<NonNullable<PrashnaPayload['location']>>) => {
+    setFormData({
+      ...formData,
+      location: {
+        latitude: formData.location?.latitude ?? 0,
+        longitude: formData.location?.longitude ?? 0,
+        place_name: formData.location?.place_name || locationSearch || 'Manual location',
+        ...patch,
+      },
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!formData.name || !formData.question || !formData.location) {
-      setError('Please fill in all required fields including location.');
+    if (!boundedText(formData.name, 1, 80)) {
+      setError('Name must be between 1 and 80 characters.');
+      return;
+    }
+    if (!boundedText(formData.question, 3, 1000)) {
+      setError('Question must be between 3 and 1000 characters.');
+      return;
+    }
+    if (!formData.location || !formData.location.place_name || !validCoordinate(formData.location.latitude, formData.location.longitude)) {
+      setError('Please select a valid location with latitude and longitude.');
       return;
     }
 
@@ -67,8 +104,8 @@ const PrashnaForm: React.FC = () => {
       const result = await prashnaApi.generatePrashna(formData as PrashnaPayload);
       // Pass the result to the result page (via state or context in the future)
       navigate('/prashna-result', { state: { result, formData } });
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate Prashna');
+    } catch (err) {
+      setError(apiErrorMessage(err));
     } finally {
       setIsGenerating(false);
     }
@@ -92,26 +129,28 @@ const PrashnaForm: React.FC = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {error && <div className="p-4 bg-red-50 text-red-600 rounded-lg text-sm">{error}</div>}
+      {error && <div className="app-alert app-alert--error" role="alert">{error}</div>}
 
         {/* Step 1 */}
         <div className={step === 1 ? 'block' : 'hidden'}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Name</label>
+              <label className="form-label" htmlFor="prashna-name">Name</label>
               <input 
+                id="prashna-name"
                 type="text" 
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
                 required 
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 focus:ring-2 focus:ring-purple-500" 
+                maxLength={80}
+                className="form-control"
                 placeholder="Your name"
               />
             </div>
           </div>
-          <div className="mt-6 flex justify-end">
-            <button type="button" onClick={handleNext} disabled={!formData.name} className="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50">
+          <div className="mt-6 action-row action-row--end">
+            <button type="button" onClick={handleNext} disabled={!formData.name} className="btn-primary">
               Next Step
             </button>
           </div>
@@ -121,24 +160,27 @@ const PrashnaForm: React.FC = () => {
         <div className={step === 2 ? 'block' : 'hidden'}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Question</label>
+              <label className="form-label" htmlFor="prashna-question">Question</label>
               <textarea 
+                id="prashna-question"
                 name="question"
                 value={formData.question}
                 onChange={handleChange}
                 required 
                 rows={4}
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 focus:ring-2 focus:ring-purple-500" 
+                maxLength={1000}
+                className="form-control"
                 placeholder="Ask the exact Prashna question"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Question Domain</label>
+              <label className="form-label" htmlFor="prashna-domain">Question Domain</label>
               <select 
+                id="prashna-domain"
                 name="question_domain"
                 value={formData.question_domain}
                 onChange={handleChange}
-                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 focus:ring-2 focus:ring-purple-500"
+                className="form-control"
               >
                 <option value="">General / not sure</option>
                 <option value="wealth">Wealth / money</option>
@@ -152,12 +194,13 @@ const PrashnaForm: React.FC = () => {
             </div>
             {formData.question_domain === 'job_career' && (
               <div>
-                <label className="block text-sm font-medium mb-1">Job Type</label>
+                <label className="form-label" htmlFor="prashna-subdomain">Job Type</label>
                 <select 
+                  id="prashna-subdomain"
                   name="question_subdomain"
                   value={formData.question_subdomain}
                   onChange={handleChange}
-                  className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 focus:ring-2 focus:ring-purple-500"
+                  className="form-control"
                 >
                   <option value="">Not sure</option>
                   <option value="government">Government job</option>
@@ -166,11 +209,11 @@ const PrashnaForm: React.FC = () => {
               </div>
             )}
           </div>
-          <div className="mt-6 flex justify-between">
-            <button type="button" onClick={handleBack} className="bg-gray-200 dark:bg-gray-700 px-6 py-2 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600">
+          <div className="mt-6 action-row">
+            <button type="button" onClick={handleBack} className="btn-secondary">
               Back
             </button>
-            <button type="button" onClick={handleNext} disabled={!formData.question} className="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 disabled:opacity-50">
+            <button type="button" onClick={handleNext} disabled={!formData.question} className="btn-primary">
               Next Step
             </button>
           </div>
@@ -180,20 +223,21 @@ const PrashnaForm: React.FC = () => {
         <div className={step === 3 ? 'block' : 'hidden'}>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">City / Place</label>
-              <div className="flex gap-2">
+              <label className="form-label" htmlFor="prashna-place">City / Place</label>
+              <div className="responsive-search-row">
                 <div className="relative flex-grow">
                   <input 
+                    id="prashna-place"
                     type="text" 
                     value={locationSearch}
                     onChange={(e) => setLocationSearch(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), searchPlace())}
-                    className="w-full p-3 pl-10 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 focus:ring-2 focus:ring-purple-500" 
+                    className="form-control pl-10"
                     placeholder="Type city name..."
                   />
                   <Search className="absolute left-3 top-3.5 text-gray-400" size={18} />
                 </div>
-                <button type="button" onClick={searchPlace} className="bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center gap-2">
+                <button type="button" onClick={searchPlace} disabled={isSearching} className="btn-secondary inline-flex items-center justify-center gap-2">
                   <MapPin size={18} /> Search
                 </button>
               </div>
@@ -229,8 +273,10 @@ const PrashnaForm: React.FC = () => {
                       <input 
                         type="number" step="any"
                         value={formData.location?.latitude || ''}
-                        onChange={(e) => setFormData({...formData, location: { ...formData.location!, latitude: parseFloat(e.target.value) }})}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700" 
+                        onChange={(e) => updateManualLocation({ latitude: Number(e.target.value) })}
+                        className="form-control"
+                        min={-90}
+                        max={90}
                       />
                     </div>
                     <div>
@@ -238,8 +284,10 @@ const PrashnaForm: React.FC = () => {
                       <input 
                         type="number" step="any"
                         value={formData.location?.longitude || ''}
-                        onChange={(e) => setFormData({...formData, location: { ...formData.location!, longitude: parseFloat(e.target.value) }})}
-                        className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700" 
+                        onChange={(e) => updateManualLocation({ longitude: Number(e.target.value) })}
+                        className="form-control"
+                        min={-180}
+                        max={180}
                       />
                     </div>
                  </div>
@@ -248,18 +296,18 @@ const PrashnaForm: React.FC = () => {
                     <input 
                       type="text"
                       value={formData.location?.place_name || ''}
-                      onChange={(e) => setFormData({...formData, location: { ...formData.location!, place_name: e.target.value }})}
-                      className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700" 
+                      onChange={(e) => updateManualLocation({ place_name: e.target.value })}
+                      className="form-control"
                     />
                  </div>
               </div>
             </details>
           </div>
-          <div className="mt-6 flex justify-between">
-            <button type="button" onClick={handleBack} className="bg-gray-200 dark:bg-gray-700 px-6 py-2 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600">
+          <div className="mt-6 action-row">
+            <button type="button" onClick={handleBack} className="btn-secondary">
               Back
             </button>
-            <button type="submit" disabled={isGenerating || !formData.location} className="bg-purple-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-purple-700 flex items-center gap-2 disabled:opacity-50">
+            <button type="submit" disabled={isGenerating || !formData.location} className="btn-primary inline-flex items-center justify-center gap-2">
               {isGenerating ? 'Generating...' : 'Generate Kundli'}
             </button>
           </div>

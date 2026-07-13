@@ -1,7 +1,7 @@
 version: "3.9"
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Kundali Studio — Production Microservice Orchestration
+#  Shree Lakshmi Astro — Production Microservice Orchestration
 #
 #  Services:
 #    redis            — Message broker + SSE pub/sub channel

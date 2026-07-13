@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
+import { useAuth } from '../../auth/useAuth';
 
 const Navbar: React.FC = () => {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -8,6 +9,8 @@ const Navbar: React.FC = () => {
     window.matchMedia('(prefers-color-scheme: dark)').matches
   );
   const location = useLocation();
+  const { session } = useAuth();
+  const isAdmin = session?.user?.role === 'admin';
 
   const toggleTheme = () => {
     setIsDark(!isDark);
@@ -33,7 +36,7 @@ const Navbar: React.FC = () => {
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center">
             <Link to="/" className="text-xl font-bold text-purple-600 dark:text-purple-400">
-              Prashna Kundli
+              Shree Lakshmi Astro
             </Link>
           </div>
           
@@ -57,12 +60,14 @@ const Navbar: React.FC = () => {
             >
               {isDark ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-            <Link 
-              to="/admin" 
-              className="text-sm font-medium bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-md"
-            >
-              Admin
-            </Link>
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="text-sm font-medium bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-md"
+              >
+                Admin
+              </Link>
+            )}
           </div>
 
           <div className="md:hidden flex items-center">

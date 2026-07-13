@@ -18,6 +18,8 @@ export interface BookingPayload {
   consultation_mode?: string;
   additional_message?: string;
   payment_status?: string;
+  quoted_price?: number | null;
+  currency?: string;
   chart_snapshot?: ConsultationCasePayload['astrology_snapshot'] | Record<string, unknown> | null;
 }
 

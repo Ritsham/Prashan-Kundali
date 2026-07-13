@@ -159,7 +159,6 @@ export class DashaWidget {
   }
 
   _buildShell() {
-    const d = this.dasha;
     if (this.variant === 'workstation') {
       return `
         <div class="dasha-widget dasha-widget--workstation">

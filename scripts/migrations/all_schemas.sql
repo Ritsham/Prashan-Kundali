@@ -409,7 +409,7 @@ INSERT INTO consultants (
     'founder-rupesh-kumar',
     'Rupesh Kumar',
     'https://www.shanitemple.com/index_images/astrology-puja/janamkundli.png',
-    'Founder astrologer at Prashna Astro, focused on practical guidance through Birth Chart, Prashna Kundali, prediction analysis, and case-based consultation.',
+    'Founder astrologer at Shree Lakshmi Astro, focused on practical guidance through Birth Chart, Prashna Kundali, prediction analysis, and case-based consultation.',
     '3+ years',
     ARRAY['Vedic Astrology', 'Prashna Kundali', 'Lagna Kundali', 'KP-oriented analysis'],
     ARRAY['Hindi', 'English'],

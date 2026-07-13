@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { CalendarClock, ChevronLeft, ChevronRight, ClipboardList, Compass, Sparkles } from 'lucide-react';
 import KundaliChartWrapper from '../components/charts/KundaliChartWrapper';
 
 const PrashnaResultPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'interpretation' | 'charts'>('interpretation');
+  const [activeChartSlide, setActiveChartSlide] = useState(0);
+  const chartTouchStartX = useRef<number | null>(null);
 
   // result and formData are passed via router state from the PrashnaForm
   const { result, formData } = (location.state as any) || {};
@@ -26,134 +29,235 @@ const PrashnaResultPage: React.FC = () => {
   }
 
   const { chart, interpretation } = result;
+  const planetEntries = useMemo<[string, any][]>(() => Object.entries(chart?.planets || {}) as [string, any][], [chart?.planets]);
+  const interpretationText = (() => {
+    if (!interpretation) return '';
+    if (typeof interpretation === 'string') return interpretation;
+    if (typeof interpretation === 'object') {
+      return interpretation.answer?.text || interpretation.verdict?.summary || JSON.stringify(interpretation, null, 2);
+    }
+    return String(interpretation);
+  })();
 
   const handleBookConsultation = () => {
-    navigate('/booking', { state: { snapshot: { result, formData } } });
+    window.location.href = '/consultation';
+  };
+
+  const jumpTo = (target: 'interpretation' | 'charts') => {
+    setActiveTab(target);
+    window.requestAnimationFrame(() => {
+      document.getElementById(target === 'interpretation' ? 'reading-section' : 'charts-section')?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+  };
+
+  const mobileChartSlides = [
+    { key: 'lagna', label: 'Lagna', icon: Compass },
+    { key: 'positions', label: 'Positions', icon: ClipboardList },
+    { key: 'dasha', label: 'Dashas', icon: CalendarClock },
+  ];
+
+  const moveSlide = (direction: -1 | 1) => {
+    setActiveChartSlide((current) => {
+      const next = current + direction;
+      return Math.max(0, Math.min(mobileChartSlides.length - 1, next));
+    });
+  };
+
+  const handleChartTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (chartTouchStartX.current === null) return;
+    const deltaX = chartTouchStartX.current - event.changedTouches[0].clientX;
+    chartTouchStartX.current = null;
+    if (Math.abs(deltaX) < 44) return;
+    moveSlide(deltaX > 0 ? 1 : -1);
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Prashna Kundli Result</h1>
-        <p className="text-gray-600 dark:text-gray-400">
+    <main className="prashna-result-page">
+      <section className="result-hero-panel">
+        <div>
+          <p className="result-eyebrow">Personalized Prashna Reading</p>
+          <h1>Prashna Kundli Result</h1>
+          <p className="result-question">
           Question: <span className="font-medium text-gray-900 dark:text-gray-100">{formData?.question || 'N/A'}</span>
-        </p>
-      </div>
+          </p>
+        </div>
+        <button type="button" onClick={handleBookConsultation} className="result-consult-btn">
+          <Sparkles size={18} />
+          Consult
+        </button>
+      </section>
+
+      <nav className="result-quick-nav" aria-label="Result sections">
+        <button type="button" className={activeTab === 'interpretation' ? 'active' : ''} onClick={() => jumpTo('interpretation')}>
+          Reading
+        </button>
+        <button type="button" className={activeTab === 'charts' ? 'active' : ''} onClick={() => jumpTo('charts')}>
+          Charts
+        </button>
+        <button type="button" onClick={() => { setActiveTab('charts'); setActiveChartSlide(1); }}>
+          Positions
+        </button>
+        <button type="button" onClick={() => { setActiveTab('charts'); setActiveChartSlide(2); }}>
+          Dashas
+        </button>
+      </nav>
 
       {/* Tabs Navigation */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6">
+      <div className="result-desktop-tabs">
         <button
           onClick={() => setActiveTab('interpretation')}
-          className={`py-3 px-6 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'interpretation'
-              ? 'border-purple-600 text-purple-600 dark:border-purple-400 dark:text-purple-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          }`}
+          className={activeTab === 'interpretation' ? 'active' : ''}
         >
           Interpretation
         </button>
         <button
           onClick={() => setActiveTab('charts')}
-          className={`py-3 px-6 font-medium text-sm border-b-2 transition-colors ${
-            activeTab === 'charts'
-              ? 'border-purple-600 text-purple-600 dark:border-purple-400 dark:text-purple-400'
-              : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-          }`}
+          className={activeTab === 'charts' ? 'active' : ''}
         >
           Charts & Positions
         </button>
       </div>
 
       {/* Tab Content */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 md:p-8">
+      <div className="result-content-card">
         
         {/* Interpretation Tab */}
         {activeTab === 'interpretation' && (
-          <div className="space-y-8">
-            <div className="prose dark:prose-invert max-w-none">
-              {interpretation ? (
-                // Properly rendering LLM formatted text (assuming it might have markdown or paragraphs)
-                <div 
-                  className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-wrap"
-                  dangerouslySetInnerHTML={{ __html: interpretation }} 
-                />
+          <section className="result-reading-stack" id="reading-section">
+            <div className="result-reading-copy">
+              {interpretationText ? (
+                <div>
+                  {interpretationText}
+                </div>
               ) : (
-                <p className="text-gray-500 italic">No interpretation available.</p>
+                <p>No interpretation available.</p>
               )}
             </div>
 
-            <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700 text-center bg-purple-50 dark:bg-purple-900/20 p-8 rounded-xl">
-              <h3 className="text-xl font-bold mb-2">Need Deeper Insights?</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
+            <div className="result-cta-panel">
+              <h3>Need Deeper Insights?</h3>
+              <p>
                 Consult an Astrologer for a detailed and personalized analysis of this chart.
               </p>
               <button 
                 onClick={handleBookConsultation}
-                className="bg-purple-600 text-white px-8 py-3 rounded-lg font-medium hover:bg-purple-700 transition"
+                className="btn-primary"
               >
                 Book Consultation
               </button>
             </div>
-          </div>
+          </section>
         )}
 
         {/* Charts & Positions Tab */}
         {activeTab === 'charts' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Left: Visual Chart */}
-            <div className="flex flex-col items-center border border-gray-200 dark:border-gray-700 rounded-xl p-4">
-              <h3 className="text-lg font-bold mb-4">Prashna Kundli (Lagna)</h3>
+          <section className="result-chart-workspace" id="charts-section">
+            <div className="chart-mobile-toolbar" aria-label="Chart carousel controls">
+              <button type="button" onClick={() => moveSlide(-1)} disabled={activeChartSlide === 0} aria-label="Previous chart panel">
+                <ChevronLeft size={18} />
+              </button>
+              <div className="chart-slide-tabs">
+                {mobileChartSlides.map((slide, index) => {
+                  const Icon = slide.icon;
+                  return (
+                    <button
+                      key={slide.key}
+                      type="button"
+                      className={activeChartSlide === index ? 'active' : ''}
+                      onClick={() => setActiveChartSlide(index)}
+                    >
+                      <Icon size={16} />
+                      <span>{slide.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <button type="button" onClick={() => moveSlide(1)} disabled={activeChartSlide === mobileChartSlides.length - 1} aria-label="Next chart panel">
+                <ChevronRight size={18} />
+              </button>
+            </div>
+
+            <div
+              className="chart-snap-track"
+              style={{ transform: `translateX(-${activeChartSlide * 100}%)` }}
+              onTouchStart={(event) => { chartTouchStartX.current = event.touches[0].clientX; }}
+              onTouchEnd={handleChartTouchEnd}
+            >
+              <article className="result-panel result-panel--chart">
+                <h3>Prashna Kundli (Lagna)</h3>
               {chart?.signs ? (
                 <KundaliChartWrapper data={chart.signs} />
               ) : (
-                <div className="aspect-square flex items-center justify-center text-gray-400 bg-gray-50 dark:bg-gray-900 w-full rounded-lg">
+                  <div className="chart-empty-state">
                   Chart Data Unavailable
                 </div>
               )}
-            </div>
+              </article>
 
-            {/* Right: Positions Data */}
-            <div className="space-y-6">
+              <article className="result-panel result-panel--positions">
               <div>
-                <h3 className="text-lg font-bold mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">Planetary Positions</h3>
-                {chart?.planets ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 dark:bg-gray-900 text-gray-500">
+                  <h3>Planetary Positions</h3>
+                  {planetEntries.length ? (
+                    <div className="result-table-wrap">
+                      <table className="result-data-table">
+                        <thead>
                         <tr>
-                          <th className="px-3 py-2">Planet</th>
-                          <th className="px-3 py-2">Sign</th>
-                          <th className="px-3 py-2">Degree</th>
+                            <th>Planet</th>
+                            <th>Sign</th>
+                            <th>Degree</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                        {Object.entries(chart.planets).map(([planet, details]: [string, any]) => (
+                        <tbody>
+                          {planetEntries.map(([planet, details]: [string, any]) => (
                           <tr key={planet}>
-                            <td className="px-3 py-2 font-medium">{planet}</td>
-                            <td className="px-3 py-2">{details.sign || '-'}</td>
-                            <td className="px-3 py-2 text-gray-500">{details.normDegree?.toFixed(2) || '-'}°</td>
+                              <td data-label="Planet">{planet}</td>
+                              <td data-label="Sign">{details.sign || '-'}</td>
+                              <td data-label="Degree">{details.normDegree?.toFixed(2) || '-'} deg</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 ) : (
-                  <p className="text-gray-500 text-sm">No planetary data available.</p>
+                    <p className="result-muted">No planetary data available.</p>
                 )}
               </div>
 
               {chart?.ascendant && (
-                <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                  <h4 className="font-semibold text-sm text-gray-500 uppercase tracking-wider mb-1">Ascendant (Lagna)</h4>
+                  <div className="result-stat-box">
+                    <h4>Ascendant (Lagna)</h4>
                   <p className="text-lg font-medium">{chart.ascendant.sign} ({chart.ascendant.normDegree?.toFixed(2)}°)</p>
                 </div>
               )}
+              </article>
+
+              <article className="result-panel result-panel--dashas">
+                <h3>Dasha Tools</h3>
+                <div className="dasha-mobile-grid">
+                  <div>
+                    <strong>Vimshottari</strong>
+                    <span>Ready for personalized dasha timelines when returned by the engine.</span>
+                  </div>
+                  <div>
+                    <strong>Daily Transit</strong>
+                    <span>Designed as a quick mobile section for upcoming transit data.</span>
+                  </div>
+                  <div>
+                    <strong>Yogas</strong>
+                    <span>Space reserved for chart combinations and highlights.</span>
+                  </div>
+                </div>
+                <p className="result-muted">No dasha timeline was included in this generated result.</p>
+              </article>
             </div>
-          </div>
+          </section>
         )}
 
       </div>
-    </div>
+    </main>
   );
 };
 

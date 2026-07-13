@@ -11,6 +11,8 @@ ALTER TABLE consultation_requests
   ADD COLUMN IF NOT EXISTS additional_message TEXT,
   ADD COLUMN IF NOT EXISTS preferred_date TEXT,
   ADD COLUMN IF NOT EXISTS consultation_mode TEXT,
+  ADD COLUMN IF NOT EXISTS quoted_price NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'INR',
   ADD COLUMN IF NOT EXISTS assigned_astrologer TEXT,
   ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
   ADD COLUMN IF NOT EXISTS astrology_snapshot JSONB;
@@ -41,3 +43,35 @@ ON consultation_requests (status, source_type, chart_type, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_consultation_requests_name
 ON consultation_requests (name);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'consultation_requests_status_lifecycle_check'
+  ) THEN
+    ALTER TABLE consultation_requests
+      ADD CONSTRAINT consultation_requests_status_lifecycle_check
+      CHECK (
+        status IN (
+          'requested', 'pending_payment', 'confirmed', 'active', 'completed', 'cancelled', 'refunded',
+          'pending', 'reviewed', 'accepted', 'scheduled', 'in_progress', 'rejected', 'waiting_queue'
+        )
+      ) NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'consultation_requests_price_check'
+  ) THEN
+    ALTER TABLE consultation_requests
+      ADD CONSTRAINT consultation_requests_price_check
+      CHECK (quoted_price IS NULL OR (quoted_price > 0 AND quoted_price <= 100000)) NOT VALID;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'consultation_requests_currency_check'
+  ) THEN
+    ALTER TABLE consultation_requests
+      ADD CONSTRAINT consultation_requests_currency_check
+      CHECK (currency ~ '^[A-Z]{3}$') NOT VALID;
+  END IF;
+END $$;

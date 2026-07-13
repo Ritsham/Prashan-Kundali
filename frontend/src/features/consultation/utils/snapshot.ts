@@ -43,6 +43,8 @@ export type ExistingBookingFormData = {
   preferred_time?: string;
   consultation_mode?: string;
   payment_status?: string;
+  quoted_price?: number | null;
+  currency?: string;
   additional_message?: string;
   chart_snapshot?: unknown;
 };
@@ -94,6 +96,8 @@ export const buildPrashnaConsultationPayload = (params: {
   preferred_time?: string;
   consultation_mode?: string;
   payment_status?: string;
+  quoted_price?: number | null;
+  currency?: string;
   idempotency_key?: string;
 }): ConsultationCasePayload => {
   const { result, formData, user } = params;
@@ -121,6 +125,8 @@ export const buildPrashnaConsultationPayload = (params: {
       preferred_time: params.preferred_time,
       consultation_mode: params.consultation_mode,
       payment_status: params.payment_status,
+      quoted_price: params.quoted_price,
+      currency: params.currency || 'INR',
     },
     astrology_snapshot: buildAstrologySnapshot(result, 'prashna'),
     idempotency_key: params.idempotency_key,
@@ -159,6 +165,8 @@ export const buildDirectConsultationPayload = (params: {
       preferred_time: formData.preferred_time,
       consultation_mode: formData.consultation_mode,
       payment_status: formData.payment_status,
+      quoted_price: formData.quoted_price,
+      currency: formData.currency || 'INR',
     },
     astrology_snapshot: buildAstrologySnapshot(
       params.astrologyResult || (formData.chart_snapshot as ExistingPrashnaResult | ChartData | null),

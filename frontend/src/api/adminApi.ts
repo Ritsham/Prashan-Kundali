@@ -13,6 +13,48 @@ export interface AdminMetrics {
   active_consultations?: number;
   completed_consultations?: number;
   revenue?: number;
+  [key: string]: number | string | undefined;
+}
+
+export interface AdminAstrologerApplication {
+  id: string;
+  user_id?: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  experience?: number | string;
+  expertise?: string;
+  bio?: string;
+  additional_information?: string;
+  state?: string;
+  country?: string;
+  status: string;
+  proofs?: Array<{
+    id?: string;
+    type?: string;
+    url?: string;
+    filename?: string;
+    mime_type?: string;
+  }>;
+  created_at?: string;
+}
+
+export interface AdminAuditLog {
+  id?: string;
+  actor_user_id?: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  before_json?: Record<string, unknown> | null;
+  after_json?: Record<string, unknown> | null;
+  created_at?: string;
+}
+
+export interface AstrologerApplicationUpdate {
+  status: 'approved' | 'rejected' | 'pending' | 'needs_more_information' | 'suspended';
+  message?: string;
+  reapply_allowed?: boolean;
+  reapply_after_days?: number;
 }
 
 export interface ConsultationRequest {
@@ -45,10 +87,8 @@ export interface ConsultationRequest {
 
 export const adminApi = {
   getMetrics: async () => {
-    // In a real app we'd need auth headers or a cookie, 
-    // assuming apiClient is configured to send them or the backend relies on a session cookie.
     const response = await apiClient.get('/api/admin/metrics');
-    return response.data;
+    return response.data as AdminMetrics;
   },
   
   getConsultationRequests: async () => {
@@ -81,5 +121,23 @@ export const adminApi = {
   updateConsultationCase: async (caseId: string, updateData: ConsultationCaseAdminUpdate) => {
     const response = await apiClient.patch(`/api/admin/consultation-cases/${encodeURIComponent(caseId)}`, updateData);
     return response.data as { case: ConsultationCase; promoted_case?: ConsultationCase | null };
+  },
+
+  getAstrologerApplications: async () => {
+    const response = await apiClient.get('/api/admin/astrologers/applications');
+    return response.data as { applications: AdminAstrologerApplication[] };
+  },
+
+  updateAstrologerApplication: async (applicationId: string, updateData: AstrologerApplicationUpdate) => {
+    const response = await apiClient.post(
+      `/api/admin/astrologers/applications/${encodeURIComponent(applicationId)}`,
+      updateData,
+    );
+    return response.data as { status?: string; message?: string };
+  },
+
+  getAuditLogs: async (params?: { limit?: number; entity_type?: string }) => {
+    const response = await apiClient.get('/api/admin/audit-logs', { params });
+    return response.data as { logs: AdminAuditLog[] };
   }
 };

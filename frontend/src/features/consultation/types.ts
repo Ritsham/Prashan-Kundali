@@ -3,6 +3,11 @@ export type ConsultationSourceType = 'prashna' | 'direct_consultation' | 'matchm
 export type ConsultationChartType = 'prashna' | 'lagna' | 'matchmaking';
 
 export type ConsultationStatus =
+  | 'requested'
+  | 'pending_payment'
+  | 'confirmed'
+  | 'active'
+  | 'refunded'
   | 'pending'
   | 'reviewed'
   | 'accepted'
@@ -101,6 +106,8 @@ export interface ConsultationDetails {
   preferred_time?: string;
   consultation_mode?: string;
   payment_status?: string;
+  quoted_price?: number | null;
+  currency?: string;
 }
 
 export interface ConsultationCasePayload {

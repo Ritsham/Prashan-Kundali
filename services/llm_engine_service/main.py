@@ -30,6 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.llm_engine import generate_interpretation_answer
+from app.config import get_settings
 
 app = FastAPI(
     title="LLM Engine",
@@ -39,7 +40,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(get_settings().cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

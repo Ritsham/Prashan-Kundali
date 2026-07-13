@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field
 from app.services.chart_calculator import CalculationDependencyError, calculate_prashna_chart
 from app.services.timezone_service import timezone_at
 from app.insight_engine import build_interpretation
+from app.config import get_settings
 
 app = FastAPI(
     title="Astrology Engine",
@@ -41,7 +42,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(get_settings().cors_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

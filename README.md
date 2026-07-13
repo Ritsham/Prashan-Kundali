@@ -1,4 +1,4 @@
-# ॐ Kundali Studio (Prashna & Lagna Engine)
+# Shree Lakshmi Astro (Prashna & Lagna Engine)
 
 An advanced, premium Vedic Astrology SaaS platform combining high-precision astronomical calculations (Swiss Ephemeris + Lahiri Ayanamsa) with an AI-driven interpretation engine, a real-time WebSocket-powered astrologer community board, and professional practitioner workspaces.
 
@@ -57,23 +57,17 @@ python3 scripts/download_ephemeris.py
 ```
 This populates the local `ephemeris/` directory with `sepl_18.se1`, `semo_18.se1`, and `seas_18.se1`.
 
-### Environment Configuration (`.env`)
-Create a `.env` file in the root directory (based on `.env.example`):
+### Environment Configuration
+Create backend and frontend environment files from the examples:
 
-```ini
-# Supabase Integration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# AI Interpretation API Keys
-PRASHNA_LLM_PROVIDER=gemini # Options: gemini, openai
-GEMINI_API_KEYS=AIzaSyA1...,AIzaSyA2...
-GEMINI_INTERPRETATION_MODEL=gemini-2.0-flash
-
-# Optional OpenAI keys
-OPENAI_API_KEYS=sk-proj-...,sk-proj-...
-OPENAI_INTERPRETATION_MODEL=gpt-4o
+```bash
+cp .env.example .env
+cp frontend/.env.example frontend/.env.local
 ```
+
+Backend secrets such as `SUPABASE_SERVICE_ROLE_KEY`, LLM provider keys, Redis credentials, and Razorpay secrets must stay in backend/server environment storage only. Browser builds may only receive public `VITE_` values such as `VITE_API_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`.
+
+See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for development, staging, and production requirements.
 
 ### Launching the Application
 Launch the ASGI development server:

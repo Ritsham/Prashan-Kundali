@@ -4,11 +4,13 @@ import {
   Bell,
   Bookmark,
   ChevronDown,
+  Copy,
+  Forward,
   Hash,
   Image,
+  Info,
   MessageSquare,
   Moon,
-  MoreHorizontal,
   Plus,
   Search,
   Send,
@@ -76,6 +78,14 @@ type Profile = {
   role?: string;
 };
 
+type CommunityMember = {
+  user_id?: string;
+  display_name?: string;
+  username?: string;
+  bio?: string;
+  systems_practiced?: string[];
+};
+
 const channelMetadata: Record<string, Pick<Channel, 'group' | 'description' | 'locked'>> = {
   announcements: { group: 'Important', description: 'Admin updates and platform notices.' },
   'community-guidelines': { group: 'Important', description: 'Shared norms for respectful learning and case privacy.' },
@@ -101,6 +111,19 @@ const quickNav = [
   { label: 'Saved Messages', icon: Bookmark, count: 0 },
   { label: 'Search', icon: Search, count: 0 },
 ];
+
+const reactionOptions = [
+  { type: 'Helpful', emoji: '😊', label: 'Helpful' },
+  { type: 'heart', emoji: '❤️', label: 'Love' },
+  { type: 'thumbs_up', emoji: '👍', label: 'Agree' },
+  { type: 'insightful', emoji: '💡', label: 'Insightful' },
+  { type: 'thanks', emoji: '🙏', label: 'Thanks' },
+];
+
+const reactionEmojiByType = reactionOptions.reduce<Record<string, string>>((acc, reaction) => {
+  acc[reaction.type] = reaction.emoji;
+  return acc;
+}, {});
 
 function StatusDot({ status }: { status: MemberStatus }) {
   return <span className={`astro-status-dot astro-status-${status}`} aria-label={`${status} status`} />;
@@ -227,6 +250,7 @@ function AstroCommunityPage() {
   const [selectedThread, setSelectedThread] = React.useState<Message | null>(null);
   const [threadReplies, setThreadReplies] = React.useState<ThreadReply[]>([]);
   const [threadDraft, setThreadDraft] = React.useState('');
+  const [pendingThreadAttachment, setPendingThreadAttachment] = React.useState<{ name: string; dataUrl: string; kind: 'file' | 'image' } | null>(null);
   const [loadingThread, setLoadingThread] = React.useState(false);
   const [sendingThread, setSendingThread] = React.useState(false);
   const [contextPanelOpen, setContextPanelOpen] = React.useState(false);
@@ -237,19 +261,29 @@ function AstroCommunityPage() {
   const [loadingMessages, setLoadingMessages] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [infoNotice, setInfoNotice] = React.useState('');
   const [connectionState, setConnectionState] = React.useState<'idle' | 'connecting' | 'connected' | 'offline'>('idle');
   const [onlineCount, setOnlineCount] = React.useState(0);
   const [theme, setTheme] = React.useState('dark');
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [communityMembers, setCommunityMembers] = React.useState<CommunityMember[]>([]);
+  const [mentionPickerOpen, setMentionPickerOpen] = React.useState(false);
+  const [activeMessageMenuId, setActiveMessageMenuId] = React.useState<string | null>(null);
+  const [forwardingMessage, setForwardingMessage] = React.useState<Message | null>(null);
+  const [reactionBadges, setReactionBadges] = React.useState<Record<string, { emoji: string; count: number }>>({});
   const [compactMode, setCompactMode] = React.useState(() => localStorage.getItem('community_compact_mode') === 'true');
   const [notifySounds, setNotifySounds] = React.useState(() => localStorage.getItem('community_notify_sounds') !== 'false');
   const [showTimestamps, setShowTimestamps] = React.useState(() => localStorage.getItem('community_show_timestamps') !== 'false');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const threadFileInputRef = React.useRef<HTMLInputElement>(null);
+  const threadImageInputRef = React.useRef<HTMLInputElement>(null);
   const composerInputRef = React.useRef<HTMLInputElement>(null);
+  const threadComposerInputRef = React.useRef<HTMLInputElement>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
   const messageListRef = React.useRef<HTMLDivElement>(null);
   const userIdRef = React.useRef<string | null>(null);
+  const messagesRef = React.useRef<Message[]>([]);
 
   const token = getToken();
   const activeChannel = channels.find((channel) => channel.id === activeChannelId);
@@ -258,10 +292,15 @@ function AstroCommunityPage() {
     : channels;
   const groupedVisibleChannels = groupChannels(searchedChannels);
   const channelSavedMessages = savedMessageRows.filter((message) => message.channelId === activeChannelId);
+  const forwardableChannels = channels.filter((channel) => channel.name !== 'announcements' && !channel.locked);
 
   React.useEffect(() => {
     localStorage.setItem('community_saved_messages', JSON.stringify([...savedMessages]));
   }, [savedMessages]);
+
+  React.useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   React.useEffect(() => {
     if (savedMessageRows.length > 0) {
@@ -272,6 +311,16 @@ function AstroCommunityPage() {
   React.useEffect(() => {
     localStorage.setItem('community_my_reactions', JSON.stringify([...myReactions]));
   }, [myReactions]);
+
+  React.useEffect(() => {
+    const closeFloatingMenus = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-message-menu-root="true"]')) return;
+      setActiveMessageMenuId(null);
+    };
+    document.addEventListener('pointerdown', closeFloatingMenus);
+    return () => document.removeEventListener('pointerdown', closeFloatingMenus);
+  }, []);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -297,6 +346,27 @@ function AstroCommunityPage() {
     }
     loadSavedMessages();
     return () => { cancelled = true; };
+  }, [activeChannelId, token]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadMembers() {
+      if (!token) return;
+      try {
+        const response = await fetch('/api/community/members', { headers: authHeaders(token) });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!cancelled && Array.isArray(data)) setCommunityMembers(data);
+      } catch {
+        if (!cancelled) setCommunityMembers([]);
+      }
+    }
+
+    loadMembers();
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
 
@@ -421,7 +491,7 @@ function AstroCommunityPage() {
                 gainNode.connect(audioCtx.destination);
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.1);
-              } catch (e) {
+              } catch {
                 // Ignore audio errors
               }
             }
@@ -433,13 +503,45 @@ function AstroCommunityPage() {
           setMessages((current) => current.map((message) => (message.id === next.id ? next : message)));
         }
         if (payload.type === 'message_deleted' && payload.message_id) {
-          setMessages((current) => current.map((message) => message.id === payload.message_id ? { ...message, isDeleted: true, body: row?.content || 'This message was deleted.', imageBase64: null } : message));
+          setMessages((current) => current.filter((message) => message.id !== payload.message_id));
+          setSavedMessages((current) => {
+            const next = new Set(current);
+            next.delete(payload.message_id);
+            return next;
+          });
+          setSavedMessageRows((current) => current.filter((message) => message.id !== payload.message_id));
         }
         if ((payload.type === 'message_starred' || payload.type === 'reaction_added') && payload.message_id) {
+          if (payload.user_id && payload.user_id === userIdRef.current) return;
           setMessages((current) => current.map((message) => message.id === payload.message_id ? { ...message, stars: message.stars + 1 } : message));
+          setReactionBadges((current) => ({
+            ...current,
+            [payload.message_id]: {
+              emoji: reactionEmojiByType[payload.reaction_type] || '😊',
+              count: (current[payload.message_id]?.count || 0) + 1,
+            },
+          }));
         }
         if (payload.type === 'reaction_removed' && payload.message_id) {
+          if (payload.user_id && payload.user_id === userIdRef.current) return;
           setMessages((current) => current.map((message) => message.id === payload.message_id ? { ...message, stars: Math.max(0, message.stars - 1) } : message));
+          setReactionBadges((current) => ({
+            ...current,
+            [payload.message_id]: {
+              emoji: current[payload.message_id]?.emoji || reactionEmojiByType[payload.reaction_type] || '😊',
+              count: Math.max(0, (current[payload.message_id]?.count || 1) - 1),
+            },
+          }));
+        }
+        if (payload.type === 'reaction_replaced' && payload.message_id) {
+          if (payload.user_id && payload.user_id === userIdRef.current) return;
+          setReactionBadges((current) => ({
+            ...current,
+            [payload.message_id]: {
+              emoji: reactionEmojiByType[payload.reaction_type] || current[payload.message_id]?.emoji || '😊',
+              count: current[payload.message_id]?.count || messagesRef.current.find((message) => message.id === payload.message_id)?.stars || 1,
+            },
+          }));
         }
         if (payload.type === 'thread_reply_created' && payload.parent_message_id && row?.id) {
           const next = mapMessage(row, activeChannelId);
@@ -463,6 +565,7 @@ function AstroCommunityPage() {
     setSelectedThread(null);
     setThreadReplies([]);
     setThreadDraft('');
+    setPendingThreadAttachment(null);
     setContextPanelOpen(false);
     setThreadViewActive(false);
   }, [activeChannelId]);
@@ -544,16 +647,32 @@ function AstroCommunityPage() {
 
   const toggleReaction = async (messageId: string, reaction: string) => {
     if (!token) return;
-    // Each user can only react once per message
-    if (myReactions.has(messageId)) return;
-    setMyReactions((current) => new Set([...current, messageId]));
-    setMessages((current) => current.map((message) => message.id === messageId ? { ...message, stars: message.stars + 1 } : message));
+    const previousReaction = reactionOptions.find((option) => myReactions.has(`${messageId}:${option.type}`))?.type;
+    const reactionKey = `${messageId}:${reaction}`;
+    const isRemoving = previousReaction === reaction;
+    const delta = isRemoving ? -1 : previousReaction ? 0 : 1;
+    setActiveMessageMenuId(null);
+    setMyReactions((current) => {
+      const next = new Set(current);
+      reactionOptions.forEach((option) => next.delete(`${messageId}:${option.type}`));
+      if (!isRemoving) next.add(reactionKey);
+      return next;
+    });
+    setMessages((current) => current.map((message) => message.id === messageId ? { ...message, stars: Math.max(0, message.stars + delta) } : message));
+    setReactionBadges((current) => ({
+      ...current,
+      [messageId]: {
+        emoji: reactionEmojiByType[isRemoving ? previousReaction : reaction] || '😊',
+        count: Math.max(0, (current[messageId]?.count ?? messages.find((message) => message.id === messageId)?.stars ?? 0) + delta),
+      },
+    }));
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         action: 'toggle_reaction',
         message_id: messageId,
         reaction_type: reaction,
+        previous_reaction: previousReaction || null,
       }));
       return;
     }
@@ -562,11 +681,23 @@ function AstroCommunityPage() {
       await fetch(`/api/community/messages/${encodeURIComponent(messageId)}/reactions`, {
         method: 'POST',
         headers: authHeaders(token),
-        body: JSON.stringify({ reaction_type: reaction }),
+        body: JSON.stringify({ reaction_type: reaction, previous_reaction: previousReaction || null }),
       });
     } catch {
-      setMyReactions((current) => { const next = new Set(current); next.delete(messageId); return next; });
-      setMessages((current) => current.map((message) => message.id === messageId ? { ...message, stars: Math.max(0, message.stars - 1) } : message));
+      setMyReactions((current) => {
+        const next = new Set(current);
+        reactionOptions.forEach((option) => next.delete(`${messageId}:${option.type}`));
+        if (previousReaction) next.add(`${messageId}:${previousReaction}`);
+        return next;
+      });
+      setMessages((current) => current.map((message) => message.id === messageId ? { ...message, stars: Math.max(0, message.stars - delta) } : message));
+      setReactionBadges((current) => ({
+        ...current,
+        [messageId]: {
+          emoji: previousReaction ? reactionEmojiByType[previousReaction] : current[messageId]?.emoji || reactionEmojiByType[reaction] || '😊',
+          count: Math.max(0, (current[messageId]?.count || 0) - delta),
+        },
+      }));
     }
   };
 
@@ -575,7 +706,6 @@ function AstroCommunityPage() {
     const wasSaved = savedMessages.has(messageId);
     const message = messages.find((item) => item.id === messageId);
 
-    // Optimistic update — immediately reflect in UI
     setSavedMessages((current) => {
       const next = new Set(current);
       if (wasSaved) next.delete(messageId);
@@ -593,27 +723,16 @@ function AstroCommunityPage() {
         method: 'POST',
         headers: authHeaders(token),
       });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.detail || 'Unable to save message');
-      }
+      if (!response.ok) throw new Error('Unable to save message');
       const result = await response.json();
-      // Sync with server state
       setSavedMessages((current) => {
         const next = new Set(current);
         if (result.saved) next.add(messageId);
         else next.delete(messageId);
         return next;
       });
-      setSavedMessageRows((current) => {
-        const filtered = current.filter((item) => item.id !== messageId);
-        if (result.saved && message) return [message, ...filtered];
-        return filtered;
-      });
-    } catch (exc) {
-      // Only show error — keep optimistic state so user can see saved in UI
-      console.error('Save failed:', exc);
-      // Silently keep the local save — it's already persisted to localStorage via the effect
+    } catch {
+      // Keep the local saved state as a fallback when the optional saved table is unavailable.
     }
   };
 
@@ -645,12 +764,13 @@ function AstroCommunityPage() {
     setSelectedThread(null);
     setThreadReplies([]);
     setThreadDraft('');
+    setPendingThreadAttachment(null);
   };
 
   const sendThreadReply = async (event: React.FormEvent) => {
     event.preventDefault();
     const content = threadDraft.trim();
-    if (!selectedThread || !content || !token || sendingThread) return;
+    if (!selectedThread || (!content && !pendingThreadAttachment) || !token || sendingThread) return;
 
     try {
       setSendingThread(true);
@@ -660,8 +780,10 @@ function AstroCommunityPage() {
           action: 'send_thread_reply',
           parent_message_id: selectedThread.id,
           content,
+          image_base64: pendingThreadAttachment?.dataUrl || null,
         }));
         setThreadDraft('');
+        setPendingThreadAttachment(null);
         setSendingThread(false);
         return;
       }
@@ -669,7 +791,7 @@ function AstroCommunityPage() {
       const response = await fetch(`/api/community/messages/${encodeURIComponent(selectedThread.id)}/replies`, {
         method: 'POST',
         headers: authHeaders(token),
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, image_base64: pendingThreadAttachment?.dataUrl || null }),
       });
       if (!response.ok) throw new Error('Thread reply could not be sent.');
       const result = await response.json();
@@ -678,6 +800,7 @@ function AstroCommunityPage() {
         setThreadReplies((current) => (current.some((item) => item.id === reply.id) ? current : [...current, reply]));
       }
       setThreadDraft('');
+      setPendingThreadAttachment(null);
     } catch (exc) {
       setError(exc instanceof Error ? exc.message : 'Thread reply could not be sent.');
     } finally {
@@ -691,9 +814,83 @@ function AstroCommunityPage() {
     setSelectedThread(null);
   };
 
+  const copyMessage = async (message: Message) => {
+    const text = message.body || message.adminPost?.linkUrl || 'Attachment message';
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(text);
+      setActiveMessageMenuId(null);
+      setInfoNotice('Message copied.');
+    } catch {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setActiveMessageMenuId(null);
+        setInfoNotice('Message copied.');
+      } catch {
+        setError('Unable to copy message.');
+      }
+    }
+  };
+
+  const showMessageInfo = (message: Message, authorName: string) => {
+    const seenCount = Math.max(0, onlineCount);
+    setInfoNotice(`${authorName} · ${message.time || 'Just now'} · Seen by ${seenCount} ${seenCount === 1 ? 'user' : 'users'}`);
+    setActiveMessageMenuId(null);
+  };
+
+  const forwardMessage = (message: Message) => {
+    setActiveMessageMenuId(null);
+    setForwardingMessage(message);
+  };
+
+  const forwardMessageToChannel = async (channelId: string) => {
+    if (!forwardingMessage || !token) return;
+    const targetChannel = channels.find((channel) => channel.id === channelId);
+    const content = forwardingMessage.body || forwardingMessage.adminPost?.linkUrl || '';
+
+    try {
+      const response = await fetch(`/api/community/messages/${encodeURIComponent(channelId)}`, {
+        method: 'POST',
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          content,
+          content_type: forwardingMessage.imageBase64 ? (forwardingMessage.imageBase64.startsWith('data:image') ? 'IMAGE' : 'ATTACHMENT') : 'STANDARD',
+          image_base64: forwardingMessage.imageBase64 || null,
+          client_id: crypto.randomUUID?.() || `${Date.now()}`,
+        }),
+      });
+      if (!response.ok) throw new Error('Unable to forward message.');
+
+      const result = await response.json();
+      if (channelId === activeChannelId && result?.message?.id) {
+        const sent = mapMessage(result.message, channelId);
+        setMessages((current) => (current.some((message) => message.id === sent.id) ? current : [...current, sent]));
+      }
+      setForwardingMessage(null);
+      setInfoNotice(`Message forwarded to #${targetChannel?.name || channelId}.`);
+    } catch (exc) {
+      setError(exc instanceof Error ? exc.message : 'Unable to forward message.');
+    }
+  };
+
   const deleteMessage = async (messageId: string) => {
     if (!token) return;
-    setMessages((current) => current.map((message) => message.id === messageId ? { ...message, isDeleted: true, body: 'This message was deleted.', imageBase64: null } : message));
+    const deletedMessage = messages.find((message) => message.id === messageId);
+    setMessages((current) => current.filter((message) => message.id !== messageId));
+    setSavedMessages((current) => {
+      const next = new Set(current);
+      next.delete(messageId);
+      return next;
+    });
+    setSavedMessageRows((current) => current.filter((message) => message.id !== messageId));
     
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
@@ -710,7 +907,15 @@ function AstroCommunityPage() {
       });
       if (!response.ok) throw new Error('Unable to delete message');
     } catch (exc) {
+      if (deletedMessage) setMessages((current) => current.some((message) => message.id === messageId) ? current : [...current, deletedMessage]);
       setError(exc instanceof Error ? exc.message : 'Unable to delete message.');
+    }
+  };
+
+  const confirmDeleteMessage = (messageId: string) => {
+    setActiveMessageMenuId(null);
+    if (window.confirm('Delete this message permanently?')) {
+      deleteMessage(messageId);
     }
   };
 
@@ -718,6 +923,7 @@ function AstroCommunityPage() {
     setActiveChannelId(channelId);
     setSidebarOpen(false);
     setChannelQuery('');
+    setActiveMessageMenuId(null);
   };
 
   const handleQuickNav = (label: string) => {
@@ -742,13 +948,56 @@ function AstroCommunityPage() {
     event.target.value = '';
   };
 
-  const insertMention = () => {
-    setDraft((current) => `${current}${current.endsWith(' ') || !current ? '' : ' '}@`);
-    requestAnimationFrame(() => composerInputRef.current?.focus());
+  const handleThreadAttachment = (event: React.ChangeEvent<HTMLInputElement>, kind: 'file' | 'image') => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setPendingThreadAttachment({ name: file.name, dataUrl: reader.result, kind });
+      }
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
   };
 
   const userName = profile?.display_name || profile?.username || 'User';
   const userId = profile?.user_id;
+  const mentionMembers = React.useMemo(() => {
+    const fallbackMember = {
+      user_id: userId,
+      display_name: userName,
+      username: profile?.username || userName.toLowerCase().replace(/[^a-z0-9]+/g, ''),
+    };
+    const members = communityMembers.length ? communityMembers : [fallbackMember];
+    const query = (draft.match(/@([\w.-]*)$/)?.[1] || '').toLowerCase();
+    return members
+      .filter((member) => {
+        const displayName = member.display_name || member.username || 'Astrologer';
+        const username = member.username || displayName;
+        return !query || `${displayName} ${username}`.toLowerCase().includes(query);
+      })
+      .slice(0, 8);
+  }, [communityMembers, draft, profile?.username, userId, userName]);
+
+  const insertMention = () => {
+    setDraft((current) => `${current}${current.endsWith(' ') || !current ? '' : ' '}@`);
+    setMentionPickerOpen(true);
+    requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+
+  const selectMention = (member: CommunityMember) => {
+    const displayName = member.display_name || member.username || 'Astrologer';
+    const mentionName = (member.username || displayName).replace(/^@/, '').replace(/\s+/g, '.');
+    setDraft((current) => {
+      const base = current.match(/@[\w.-]*$/) ? current.replace(/@[\w.-]*$/, '') : `${current}${current.endsWith(' ') || !current ? '' : ' '}`;
+      return `${base}@${mentionName} `;
+    });
+    setMentionPickerOpen(false);
+    requestAnimationFrame(() => composerInputRef.current?.focus());
+  };
+
   React.useEffect(() => {
     userIdRef.current = userId || null;
   }, [userId]);
@@ -950,9 +1199,6 @@ function AstroCommunityPage() {
 
       <main className="astro-community-main">
         <header className="astro-user-strip">
-          <button className="astro-icon-button desktop-hidden" type="button" aria-label="Open channels" onClick={() => setSidebarOpen(true)}>
-            <Hash size={18} />
-          </button>
           <button className="astro-channel-titlebar" type="button" onClick={() => setContextPanelOpen((prev) => !prev)} aria-label="Toggle saved messages panel">
             <Hash size={24} />
             <div>
@@ -1044,8 +1290,47 @@ function AstroCommunityPage() {
 
               {/* Reply composer */}
               <form className="astro-composer" onSubmit={sendThreadReply}>
+                <input
+                  ref={threadFileInputRef}
+                  className="astro-hidden-input"
+                  type="file"
+                  onChange={(event) => handleThreadAttachment(event, 'file')}
+                />
+                <input
+                  ref={threadImageInputRef}
+                  className="astro-hidden-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => handleThreadAttachment(event, 'image')}
+                />
+                <div className="astro-composer-tools">
+                  <button type="button" aria-label="Add attachment" onClick={() => threadFileInputRef.current?.click()} disabled={sendingThread}>
+                    <Plus size={20} />
+                  </button>
+                  <button type="button" aria-label="Add image" onClick={() => threadImageInputRef.current?.click()} disabled={sendingThread}>
+                    <Image size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Mention member"
+                    onClick={() => {
+                      setThreadDraft((current) => `${current}${current.endsWith(' ') || !current ? '' : ' '}@`);
+                      requestAnimationFrame(() => threadComposerInputRef.current?.focus());
+                    }}
+                    disabled={sendingThread}
+                  >
+                    <AtSign size={18} />
+                  </button>
+                </div>
                 <div className="astro-composer-field">
+                  {pendingThreadAttachment && (
+                    <button type="button" className="astro-pending-attachment" onClick={() => setPendingThreadAttachment(null)}>
+                      {pendingThreadAttachment.name}
+                      <span>Remove</span>
+                    </button>
+                  )}
                   <input
+                    ref={threadComposerInputRef}
                     value={threadDraft}
                     onChange={(event) => setThreadDraft(event.target.value)}
                     placeholder={`Reply in thread · #${activeChannel?.name || 'channel'}`}
@@ -1053,7 +1338,7 @@ function AstroCommunityPage() {
                     autoFocus
                   />
                 </div>
-                <button className="astro-send-button" type="submit" aria-label="Send reply" disabled={sendingThread || !threadDraft.trim()}>
+                <button className="astro-send-button" type="submit" aria-label="Send reply" disabled={sendingThread || (!threadDraft.trim() && !pendingThreadAttachment)}>
                   <Send size={18} />
                 </button>
               </form>
@@ -1062,6 +1347,7 @@ function AstroCommunityPage() {
           <div className="astro-channel-wrap">
             <section className="astro-conversation" aria-label={activeChannel ? `${activeChannel.name} conversation` : 'Community conversation'}>
               {error && <div className="astro-error-banner">{error}</div>}
+              {infoNotice && <div className="astro-info-banner">{infoNotice}</div>}
 
               <div className="astro-message-list" ref={messageListRef}>
                 {loadingMessages && <div className="astro-empty-channel"><h3>Loading messages...</h3></div>}
@@ -1123,8 +1409,64 @@ function AstroCommunityPage() {
                           <span>File attachment</span>
                         </button>
                       )}
-                      <div className="astro-message-actions">
-                        <button onClick={() => toggleReaction(message.id, 'Helpful')} disabled={message.isDeleted || myReactions.has(message.id)} className={myReactions.has(message.id) ? 'is-reacted' : ''}>
+                      {(() => {
+                        const badge = reactionBadges[message.id] || (message.stars > 0 ? { emoji: '😊', count: message.stars } : null);
+                        return badge && badge.count > 0 ? (
+                          <button
+                            type="button"
+                            className="astro-reaction-badge"
+                            onClick={() => setActiveMessageMenuId((current) => current === message.id ? null : message.id)}
+                            aria-label={`${badge.count} reactions`}
+                          >
+                            <span>{badge.emoji}</span>
+                            <em>{badge.count}</em>
+                          </button>
+                        ) : null;
+                      })()}
+                      <div className="astro-message-menu-host" data-message-menu-root="true">
+                        <button
+                          type="button"
+                          className={`astro-message-menu-trigger ${activeMessageMenuId === message.id ? 'is-open' : ''}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setActiveMessageMenuId((current) => current === message.id ? null : message.id);
+                          }}
+                          disabled={message.isDeleted}
+                          aria-label="Open message actions"
+                          aria-expanded={activeMessageMenuId === message.id}
+                        >
+                          <ChevronDown size={15} />
+                        </button>
+                        {activeMessageMenuId === message.id && (
+                          <div className="astro-message-menu" onClick={(event) => event.stopPropagation()}>
+                            <div className="astro-message-menu-list">
+                              <button type="button" onClick={() => showMessageInfo(message, authorName)}>
+                                <Info size={18} />
+                                <span>Message info</span>
+                              </button>
+                              <button type="button" onClick={() => openThread(message)} disabled={message.isDeleted}>
+                                <MessageSquare size={18} />
+                                <span>Reply</span>
+                              </button>
+                              <button type="button" onClick={() => copyMessage(message)} disabled={message.isDeleted || (!message.body && !message.imageBase64)}>
+                                <Copy size={18} />
+                                <span>Copy</span>
+                              </button>
+                              <button type="button" onClick={() => forwardMessage(message)} disabled={message.isDeleted || (!message.body && !message.imageBase64)}>
+                                <Forward size={18} />
+                                <span>Forward</span>
+                              </button>
+                              <hr />
+                              <button type="button" className="is-delete" onClick={() => confirmDeleteMessage(message.id)} disabled={message.isDeleted}>
+                                <Trash2 size={18} />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="astro-message-inline-actions">
+                        <button onClick={() => toggleReaction(message.id, 'Helpful')} disabled={message.isDeleted || myReactions.has(`${message.id}:Helpful`)} className={myReactions.has(`${message.id}:Helpful`) ? 'is-reacted' : ''}>
                           <Smile size={14} />
                           Helpful {message.stars > 0 ? message.stars : ''}
                         </button>
@@ -1134,14 +1476,15 @@ function AstroCommunityPage() {
                         </button>
                         <button onClick={() => openThread(message)} disabled={message.isDeleted}>
                           <MessageSquare size={14} />
-                          Thread
+                          Reply
                         </button>
-                        <button onClick={() => deleteMessage(message.id)} disabled={message.isDeleted} aria-label="Delete message">
+                        <button onClick={() => copyMessage(message)} disabled={message.isDeleted || (!message.body && !message.imageBase64)}>
+                          <Copy size={14} />
+                          Copy
+                        </button>
+                        <button onClick={() => confirmDeleteMessage(message.id)} disabled={message.isDeleted} aria-label="Delete message">
                           <Trash2 size={14} />
                           Delete
-                        </button>
-                        <button aria-label="More message actions" disabled={message.isDeleted}>
-                          <MoreHorizontal size={15} />
                         </button>
                       </div>
                     </div>
@@ -1193,10 +1536,35 @@ function AstroCommunityPage() {
                 <input
                   ref={composerInputRef}
                   value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
+                  onChange={(event) => {
+                    const nextDraft = event.target.value;
+                    setDraft(nextDraft);
+                    setMentionPickerOpen(/@[\w.-]*$/.test(nextDraft));
+                  }}
+                  onFocus={() => setMentionPickerOpen(/@[\w.-]*$/.test(draft))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') setMentionPickerOpen(false);
+                  }}
                   placeholder={activeChannel ? `Message #${activeChannel.name}` : 'Select a channel to message'}
                   disabled={!activeChannel || sending}
                 />
+                {mentionPickerOpen && mentionMembers.length > 0 && (
+                  <div className="astro-mention-menu" role="listbox" aria-label="Mention member">
+                    {mentionMembers.map((member) => {
+                      const displayName = member.display_name || member.username || 'Astrologer';
+                      const username = member.username || displayName.replace(/\s+/g, '.').toLowerCase();
+                      return (
+                        <button type="button" role="option" key={member.user_id || username} onMouseDown={(event) => event.preventDefault()} onClick={() => selectMention(member)}>
+                          <span className="astro-mention-avatar">{initials(displayName)}</span>
+                          <span>
+                            <strong>{displayName}</strong>
+                            <em>@{username.replace(/^@/, '')}</em>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <button className="astro-send-button" type="submit" aria-label="Send message" disabled={!activeChannel || sending}>
                 <Send size={18} />
@@ -1204,6 +1572,32 @@ function AstroCommunityPage() {
             </form>
             )}
           </div>
+          )}
+
+          {forwardingMessage && (
+            <div className="astro-forward-overlay" role="presentation" onMouseDown={() => setForwardingMessage(null)}>
+              <div className="astro-forward-dialog" role="dialog" aria-modal="true" aria-label="Forward message" onMouseDown={(event) => event.stopPropagation()}>
+                <div className="astro-forward-head">
+                  <div>
+                    <span>Forward message</span>
+                    <strong>{forwardingMessage.body || 'Attachment message'}</strong>
+                  </div>
+                  <button type="button" onClick={() => setForwardingMessage(null)} aria-label="Close forward menu">
+                    <X size={18} />
+                  </button>
+                </div>
+                <div className="astro-forward-list">
+                  {forwardableChannels.map((channel) => (
+                    <button type="button" key={channel.id} onClick={() => forwardMessageToChannel(channel.id)} disabled={channel.id === activeChannelId}>
+                      <Hash size={17} />
+                      <span>{channel.name}</span>
+                      <em>{channel.group}</em>
+                    </button>
+                  ))}
+                  {!forwardableChannels.length && <p>No channels available to forward.</p>}
+                </div>
+              </div>
+            </div>
           )}
 
           <aside className={`astro-context-panel${contextPanelOpen ? ' is-open' : ''}`} aria-label="Saved messages">
