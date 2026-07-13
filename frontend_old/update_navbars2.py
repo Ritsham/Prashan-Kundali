@@ -16,7 +16,6 @@ standard_navbar = """    <!-- Global Navbar -->
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
         <button type="button" id="btn-profile" class="nav-btn hidden" onclick="window.location.href='/profile.html'">Profile</button>
-        <button type="button" id="btn-dashboard" class="nav-btn hidden">Dashboard</button>
         <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
       </div>
     </nav>
@@ -49,5 +48,5 @@ def replace_navbar(filepath):
             print(f"Updated global-navbar in {filepath}")
 
 
-for f in glob.glob('/Users/riteshkumarsingh/Desktop/Kundali/frontend/*.html'):
+for f in glob.glob('/Users/riteshkumarsingh/Desktop/Kundali/frontend_old/*.html'):
     replace_navbar(f)

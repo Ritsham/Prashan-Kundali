@@ -7319,8 +7319,7 @@ body.has-result.result-prashna .technical-table-wrap {
     font-weight: 900 !important;
   }
 
-  #btn-profile,
-  #btn-dashboard {
+  #btn-profile {
     display: none !important;
   }
 

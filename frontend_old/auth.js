@@ -10,10 +10,11 @@ const AUTH_LAST_SEEN_KEY = 'astro_auth_last_seen_at';
 const AUTH_MAX_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Prevent FOUC (Flash of Unauthenticated Content) by checking localStorage eagerly
-const hasToken = !!localStorage.getItem('supabase_token');
+const hasHashToken = window.location.hash.includes('access_token=');
+const hasStorageToken = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+const hasToken = hasHashToken || hasStorageToken || !!localStorage.getItem('supabase_token');
 if (hasToken) {
   document.querySelector("#btn-logout")?.classList.remove("hidden");
-  document.querySelector("#btn-dashboard")?.classList.remove("hidden");
   document.querySelector("#btn-profile")?.classList.remove("hidden");
   document.querySelector("#btn-login-header")?.classList.add("hidden");
 }
@@ -88,7 +89,6 @@ function bindAuthUI() {
   document.addEventListener('astro:authChanged', (e) => {
     const session = e.detail;
     document.querySelector("#btn-logout")?.classList.toggle("hidden", !session);
-    document.querySelector("#btn-dashboard")?.classList.toggle("hidden", !session);
     document.querySelector("#btn-profile")?.classList.toggle("hidden", !session);
     document.querySelector("#btn-login-header")?.classList.toggle("hidden", !!session);
   });
