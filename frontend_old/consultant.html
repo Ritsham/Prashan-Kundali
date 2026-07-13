@@ -232,7 +232,13 @@
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
-        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+        <div class="profile-menu hidden" id="profile-menu">
+          <button type="button" id="btn-profile" class="profile-avatar" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">U</button>
+          <div class="profile-menu-panel hidden" id="profile-menu-panel" role="menu">
+            <button type="button" id="btn-profile-page" class="profile-menu-item" role="menuitem">Profile</button>
+            <button type="button" id="btn-logout" class="profile-menu-item" role="menuitem">Sign Out</button>
+          </div>
+        </div>
       </div>
     </nav>
     <script>

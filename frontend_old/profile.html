@@ -78,6 +78,38 @@
             text-align: center;
             padding: 20px 0;
         }
+        .profile-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .profile-stat {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 14px;
+            text-align: center;
+            background: rgba(255,255,255,0.04);
+        }
+        .profile-stat strong {
+            display: block;
+            color: var(--saffron-gold);
+            font-size: 1.8rem;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+        .profile-stat span {
+            color: var(--ink-dim);
+            font-size: 0.86rem;
+        }
+        @media (max-width: 640px) {
+            .profile-stats-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .list-item {
+                align-items: flex-start;
+                gap: 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -96,7 +128,13 @@
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
-        <button type="button" id="btn-logout" class="small-btn hidden">Sign Out</button>
+        <div class="profile-menu hidden" id="profile-menu">
+          <button type="button" id="btn-profile" class="profile-avatar" aria-haspopup="true" aria-expanded="false" aria-label="Open profile menu">U</button>
+          <div class="profile-menu-panel hidden" id="profile-menu-panel" role="menu">
+            <button type="button" id="btn-profile-page" class="profile-menu-item" role="menuitem">Profile</button>
+            <button type="button" id="btn-logout" class="profile-menu-item" role="menuitem">Sign Out</button>
+          </div>
+        </div>
       </div>
     </nav>
     <script>
@@ -138,6 +176,13 @@
             <h2 class="section-title">Astro Community Application</h2>
             <div id="community-app-container">
                 <div class="empty-state">Loading application status...</div>
+            </div>
+        </div>
+
+        <div class="section-card">
+            <h2 class="section-title">Consultation Summary</h2>
+            <div id="consultation-summary-container" class="profile-stats-grid">
+                <div class="empty-state">Loading consultation summary...</div>
             </div>
         </div>
 
