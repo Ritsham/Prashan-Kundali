@@ -1,4 +1,4 @@
-import { initAuth } from './auth.js';
+import { initAuth } from './auth.js?v=oauth-prod-2';
 import { API } from './api.js';
 
 let session = null;

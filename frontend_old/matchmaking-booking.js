@@ -1,6 +1,6 @@
 import { AppState } from './state.js';
 import { API } from './api.js';
-import { initAuth } from './auth.js';
+import { initAuth } from './auth.js?v=oauth-prod-2';
 import { showFlash } from './flash.js';
 
 const BOOKING_CONTEXT_KEY = "matchmaking_booking_context";

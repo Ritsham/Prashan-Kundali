@@ -63,12 +63,7 @@ function bindAuthUI() {
     const profile = collectSignupProfile();
     if (!profile) return;
     localStorage.setItem(SIGNUP_PROFILE_KEY, JSON.stringify(profile));
-    const redirectTo = buildAuthRedirectUrl();
-    const { error } = await supabaseClient.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo },
-    });
-    if (error) showFlash(error.message, "error");
+    window.location.assign(buildGoogleOAuthUrl());
   });
 
   document.querySelector("#btn-logout")?.addEventListener("click", () => {
@@ -151,6 +146,13 @@ function getBrowserPublicOrigin() {
 function buildAuthRedirectUrl() {
   const origin = getBrowserPublicOrigin() || getConfiguredPublicOrigin() || window.location.origin;
   return new URL(window.location.pathname + window.location.search, origin).toString();
+}
+
+function buildGoogleOAuthUrl() {
+  const url = new URL("/auth/v1/authorize", authConfig.supabaseUrl);
+  url.searchParams.set("provider", "google");
+  url.searchParams.set("redirect_to", buildAuthRedirectUrl());
+  return url.toString();
 }
 
 function rememberAuthenticatedVisit() {

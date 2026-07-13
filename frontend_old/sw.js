@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kundali-studio-cache-v5';
+const CACHE_NAME = 'kundali-studio-cache-v6';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -35,11 +35,12 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  const requestPath = new URL(event.request.url).pathname;
   if (
-    event.request.url.endsWith('/app.js') ||
-    event.request.url.endsWith('/auth.js') ||
-    event.request.url.endsWith('/auth-shared.js') ||
-    event.request.url.endsWith('/consultation.js')
+    requestPath.endsWith('/app.js') ||
+    requestPath.endsWith('/auth.js') ||
+    requestPath.endsWith('/auth-shared.js') ||
+    requestPath.endsWith('/consultation.js')
   ) {
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;

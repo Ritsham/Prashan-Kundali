@@ -1,6 +1,6 @@
 import { AppState } from './state.js';
 import { API } from './api.js';
-import { initAuth, savePendingSubmission } from './auth.js';
+import { initAuth, savePendingSubmission } from './auth.js?v=oauth-prod-2';
 import { showFlash } from './flash.js';
 import { KundaliChart } from './chart-engine.js';
 import { DashaWidget } from './dasha-engine.js';
