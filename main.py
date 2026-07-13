@@ -25,6 +25,7 @@ from app.storage.consultation_db import init_consultation_db
 from app.storage.matchmaking_db import init_matchmaking_db
 
 settings = get_settings()
+CANONICAL_PUBLIC_SITE_URL = "https://www.shreelakshmiastro.com"
 
 app = FastAPI(title="Prashna Kundli MVP", version="0.1.0")
 
@@ -114,6 +115,8 @@ def get_public_site_url(request: Request) -> str:
     configured_url = (settings.public_site_url or "").rstrip("/")
     host = request.url.hostname or ""
     request_origin = f"{request.url.scheme}://{request.url.netloc}".rstrip("/")
+    if host in {"shreelakshmiastro.com", "www.shreelakshmiastro.com"}:
+        return CANONICAL_PUBLIC_SITE_URL
     if host not in {"localhost", "127.0.0.1", "0.0.0.0"}:
         return request_origin
     return configured_url or request_origin

@@ -84,6 +84,7 @@ open http://127.0.0.1:8000/index.html
 - Set `APP_ENV=production`.
 - Use deployed HTTPS site origins in `CORS_ORIGINS`.
 - Set `PUBLIC_SITE_URL` to the deployed customer-facing frontend URL.
+- In Supabase Dashboard > Authentication > URL Configuration, set Site URL to `https://www.shreelakshmiastro.com` and include `https://www.shreelakshmiastro.com/*` in Redirect URLs. If Supabase Site URL remains `http://localhost:3000`, Google OAuth can return users to localhost even when the app sends a production `redirect_to`.
 - Point `REDIS_URL`, `ASTROLOGY_ENGINE_URL`, and `LLM_ENGINE_URL` to production/private infrastructure.
 - Disable `ALLOW_MOCK_ADMIN_TOKEN`.
 - Disable `ENABLE_LEGACY_UNAUTHENTICATED_WS`.

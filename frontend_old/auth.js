@@ -4,6 +4,7 @@ import { showFlash } from './flash.js';
 
 let supabaseClient = null;
 let authConfig = {};
+const CANONICAL_PUBLIC_ORIGIN = "https://www.shreelakshmiastro.com";
 const SIGNUP_PROFILE_KEY = 'astro_pending_signup_profile';
 const AUTH_LAST_SEEN_KEY = 'astro_auth_last_seen_at';
 const AUTH_MAX_IDLE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -139,8 +140,16 @@ function getConfiguredPublicOrigin() {
   }
 }
 
+function getBrowserPublicOrigin() {
+  const hostname = window.location.hostname;
+  if (hostname === "shreelakshmiastro.com" || hostname === "www.shreelakshmiastro.com") {
+    return CANONICAL_PUBLIC_ORIGIN;
+  }
+  return "";
+}
+
 function buildAuthRedirectUrl() {
-  const origin = getConfiguredPublicOrigin() || window.location.origin;
+  const origin = getBrowserPublicOrigin() || getConfiguredPublicOrigin() || window.location.origin;
   return new URL(window.location.pathname + window.location.search, origin).toString();
 }
 
