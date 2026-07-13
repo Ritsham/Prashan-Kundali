@@ -85,6 +85,31 @@ def community_status_page():
     from fastapi.responses import FileResponse
     return FileResponse("frontend_old/community-status.html")
 
+@app.get("/return-policy", include_in_schema=False)
+def return_policy_page():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend_old/return-policy.html")
+
+@app.get("/refund-policy", include_in_schema=False)
+def refund_policy_page():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend_old/refund-policy.html")
+
+@app.get("/privacy-policy", include_in_schema=False)
+def privacy_policy_page():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend_old/privacy-policy.html")
+
+@app.get("/disclaimer", include_in_schema=False)
+def disclaimer_page():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend_old/disclaimer.html")
+
+@app.get("/about-contact", include_in_schema=False)
+def about_contact_page():
+    from fastapi.responses import FileResponse
+    return FileResponse("frontend_old/about-contact.html")
+
 @app.get("/admin/community-applications", include_in_schema=False)
 def admin_community_apps_list():
     from fastapi.responses import FileResponse
