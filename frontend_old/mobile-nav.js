@@ -27,7 +27,15 @@
 (function () {
   "use strict";
 
+  var MOBILE_QUERY = "(max-width: 768px)";
+  var isMounted = false;
+
+  function isMobileViewport() {
+    return window.matchMedia ? window.matchMedia(MOBILE_QUERY).matches : window.innerWidth <= 768;
+  }
+
   function injectMarkup() {
+    if (isMounted || document.getElementById("mobile-app-header")) return;
     var header = document.createElement("header");
     header.id = "mobile-app-header";
     header.className = "mobile-app-header";
@@ -83,6 +91,15 @@
     document.body.prepend(drawer);
     document.body.prepend(scrim);
     document.body.prepend(header);
+    isMounted = true;
+  }
+
+  function removeMarkup() {
+    document.getElementById("mobile-app-header")?.remove();
+    document.getElementById("mobile-drawer-scrim")?.remove();
+    document.getElementById("mobile-nav-drawer")?.remove();
+    document.body.classList.remove("mdw-open-lock");
+    isMounted = false;
   }
 
   function wireBehaviour() {
@@ -218,7 +235,25 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
-    injectMarkup();
-    wireBehaviour();
+    function syncMobileNav() {
+      if (isMobileViewport()) {
+        if (!isMounted) {
+          injectMarkup();
+          wireBehaviour();
+        }
+      } else if (isMounted) {
+        removeMarkup();
+      }
+    }
+
+    syncMobileNav();
+
+    if (window.matchMedia) {
+      var mediaQuery = window.matchMedia(MOBILE_QUERY);
+      if (mediaQuery.addEventListener) mediaQuery.addEventListener("change", syncMobileNav);
+      else if (mediaQuery.addListener) mediaQuery.addListener(syncMobileNav);
+    } else {
+      window.addEventListener("resize", syncMobileNav);
+    }
   });
 })();

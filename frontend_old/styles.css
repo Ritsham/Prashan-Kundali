@@ -1513,3 +1513,22 @@ body.has-result.result-lagna.result-focus-transits #transit-chart {
   }
 }
 
+/* Desktop guard: mobile navigation is a separate experience and must never
+   participate in the desktop layout, even if stale cached JS injected it. */
+@media (min-width: 769px) {
+  .mobile-app-header,
+  .mobile-drawer-scrim,
+  .mobile-nav-drawer,
+  .mobile-bottom-nav,
+  .mobile-subtabs,
+  .mobile-readmore-btn,
+  .mobile-accordion-toggle,
+  .m-tabstrip,
+  .m-positions-nav {
+    display: none !important;
+  }
+
+  body {
+    padding-bottom: 0 !important;
+  }
+}
