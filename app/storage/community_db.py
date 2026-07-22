@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 from app.storage.database import get_public_client, get_service_client
 
 
-LOCAL_DB_PATH = os.path.join(os.getcwd(), "data", "community_chat.sqlite3")
+def _default_local_db_path() -> str:
+    if os.getenv("VERCEL"):
+        return os.path.join("/tmp", "community_chat.sqlite3")
+    return os.path.join(os.getcwd(), "data", "community_chat.sqlite3")
+
+
+LOCAL_DB_PATH = os.getenv("COMMUNITY_LOCAL_DB_PATH") or _default_local_db_path()
 
 
 def _community_client():
