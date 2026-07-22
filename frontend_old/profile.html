@@ -78,6 +78,60 @@
             text-align: center;
             padding: 20px 0;
         }
+        .saved-chart-list {
+            display: grid;
+            gap: 12px;
+        }
+        .saved-chart-item {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.55);
+            color: var(--ink-light);
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 12px;
+            align-items: center;
+            text-align: left;
+            box-shadow: none;
+        }
+        .saved-chart-item:hover {
+            background: rgba(200,162,97,0.08);
+            transform: none;
+        }
+        .saved-chart-type {
+            display: inline-flex;
+            width: fit-content;
+            margin-bottom: 6px;
+            padding: 3px 9px;
+            border-radius: 999px;
+            background: rgba(158,51,36,0.08);
+            color: var(--saffron-gold);
+            font-size: 0.72rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .saved-chart-title {
+            margin: 0 0 4px;
+            color: var(--ink-light);
+            font-weight: 900;
+            font-size: 1rem;
+        }
+        .saved-chart-meta {
+            margin: 0;
+            color: var(--ink-dim);
+            font-size: 0.84rem;
+            line-height: 1.45;
+        }
+        .saved-chart-delete {
+            min-height: 38px;
+            padding: 0 12px;
+            border-radius: 8px;
+            color: var(--saffron-gold);
+            background: transparent;
+        }
         .profile-stats-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -125,6 +179,7 @@
         <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
         <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
         <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn nav-community-alert" style="text-decoration: none;">Astro Community <span>(Astrologers Only)</span></a>
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
@@ -173,6 +228,13 @@
         </div>
 
         <div class="section-card">
+            <h2 class="section-title">Saved Charts & Reports</h2>
+            <div id="saved-charts-container">
+                <div class="empty-state">Loading saved charts...</div>
+            </div>
+        </div>
+
+        <div class="section-card">
             <h2 class="section-title">Astro Community Application</h2>
             <div id="community-app-container">
                 <div class="empty-state">Loading application status...</div>
@@ -194,6 +256,9 @@
         </div>
     </main>
 
-    <script type="module" src="./profile.js" defer></script>
+    <script src="./saved-charts.js?v=1" defer></script>
+    <script type="module" src="./profile.js?v=2" defer></script>
+  <!-- ===== MOBILE NAV v3: shared mobile header + drawer, injected on every page ===== -->
+  <script src="mobile-nav.js" defer></script>
 </body>
 </html>

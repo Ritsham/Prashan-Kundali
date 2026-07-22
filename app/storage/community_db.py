@@ -1,8 +1,31 @@
+import os
+import sqlite3
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
 from datetime import datetime, timezone
 
-from app.storage.database import supabase
+from app.storage.database import get_public_client, get_service_client
+
+
+LOCAL_DB_PATH = os.path.join(os.getcwd(), "data", "community_chat.sqlite3")
+
+
+def _community_client():
+    return get_service_client() or get_public_client()
+
+
+class _CommunityClientProxy:
+    def __bool__(self) -> bool:
+        return _community_client() is not None
+
+    def table(self, *args, **kwargs):
+        client = _community_client()
+        if not client:
+            raise RuntimeError("Supabase client is not configured")
+        return client.table(*args, **kwargs)
+
+
+supabase = _CommunityClientProxy()
 
 
 DEFAULT_CHANNELS: List[Dict[str, Any]] = [
@@ -39,8 +62,146 @@ def _safe_data(result) -> list:
     return list(getattr(result, "data", None) or [])
 
 
+def _local_connection() -> sqlite3.Connection:
+    os.makedirs(os.path.dirname(LOCAL_DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(LOCAL_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def _to_int_bool(value: Any) -> int:
+    return 1 if bool(value) else 0
+
+
+def _from_local_row(row: sqlite3.Row) -> Dict[str, Any]:
+    data = dict(row)
+    for key in ("is_deleted", "is_pinned"):
+        data[key] = bool(data.get(key))
+    return data
+
+
+def _cache_message_local(message: Dict[str, Any]) -> None:
+    try:
+        with _local_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO community_messages_local (
+                    id, channel_name, user_name, sender_id, client_id, content,
+                    image_base64, content_type, chart_id, reply_to_message_id,
+                    is_deleted, stars, is_pinned, created_at, updated_at, edited_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    message.get("id"),
+                    message.get("channel_name"),
+                    message.get("user_name"),
+                    message.get("sender_id"),
+                    message.get("client_id"),
+                    message.get("content"),
+                    message.get("image_base64"),
+                    message.get("content_type") or "STANDARD",
+                    message.get("chart_id"),
+                    message.get("reply_to_message_id"),
+                    _to_int_bool(message.get("is_deleted")),
+                    int(message.get("stars") or 0),
+                    _to_int_bool(message.get("is_pinned")),
+                    message.get("created_at") or _now(),
+                    message.get("updated_at") or message.get("created_at") or _now(),
+                    message.get("edited_at"),
+                ),
+            )
+    except Exception as e:
+        print(f"Warning: local community message cache failed: {e}")
+
+
+def _get_local_messages(channel_names: List[str], limit: int, cursor: Optional[str], search: Optional[str]) -> List[Dict[str, Any]]:
+    try:
+        placeholders = ",".join("?" for _ in channel_names)
+        params: List[Any] = list(channel_names)
+        clauses = [f"channel_name IN ({placeholders})"]
+        if cursor:
+            clauses.append("created_at < ?")
+            params.append(cursor)
+        if search:
+            clauses.append("content LIKE ?")
+            params.append(f"%{search}%")
+        params.append(limit)
+        with _local_connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM community_messages_local
+                WHERE {" AND ".join(clauses)}
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        messages = [_from_local_row(row) for row in rows]
+        messages.reverse()
+        return messages
+    except Exception as e:
+        print(f"Warning: local get_messages failed: {e}")
+        return []
+
+
+def _merge_messages(*message_lists: List[Dict[str, Any]], limit: int = 50) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    for messages in message_lists:
+        for message in messages:
+            message_id = message.get("id")
+            if message_id:
+                merged[message_id] = {**merged.get(message_id, {}), **message}
+    ordered = sorted(merged.values(), key=lambda item: item.get("created_at") or "")
+    return ordered[-limit:]
+
+
+def _channel_aliases(channel_name: str) -> List[str]:
+    compact = (channel_name or "").strip()
+    slug = compact.lower().replace("_", "-").replace(" ", "-")
+    spaced = slug.replace("-", " ")
+    aliases = [compact, slug, spaced, spaced.title()]
+    manual_aliases = {
+        "general": ["general-discussion", "General Discussion"],
+        "general-discussion": ["general", "General"],
+        "chart-discussions": ["birth-chart-discussion", "birth chart discussion", "Chart Discussions"],
+        "prashna-astrology": ["prashna-kundali", "prashna kundali", "Prashna Kundali"],
+        "case-studies": ["case studies", "Case Studies"],
+        "techniques-and-learning": ["learning", "learning-and-techniques", "Learning and Techniques"],
+    }
+    aliases.extend(manual_aliases.get(slug, []))
+    return [alias for alias in dict.fromkeys(aliases) if alias]
+
+
 async def init_community_db() -> None:
-    pass
+    with _local_connection() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS community_messages_local (
+                id TEXT PRIMARY KEY,
+                channel_name TEXT NOT NULL,
+                user_name TEXT,
+                sender_id TEXT,
+                client_id TEXT,
+                content TEXT,
+                image_base64 TEXT,
+                content_type TEXT,
+                chart_id TEXT,
+                reply_to_message_id TEXT,
+                is_deleted INTEGER DEFAULT 0,
+                stars INTEGER DEFAULT 0,
+                is_pinned INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT,
+                edited_at TEXT
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_community_messages_local_channel_created ON community_messages_local(channel_name, created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_community_messages_local_client_id ON community_messages_local(client_id)"
+        )
 
 
 async def get_channels() -> List[Dict[str, Any]]:
@@ -99,13 +260,24 @@ async def save_message(
         try:
             existing = supabase.table("community_messages").select("*").eq("client_id", client_id).limit(1).execute()
             if _safe_data(existing):
-                return dict(_safe_data(existing)[0])
+                existing_message = {**data, **dict(_safe_data(existing)[0])}
+                _cache_message_local(existing_message)
+                return existing_message
         except Exception as e:
             print(f"Warning: Supabase message dedupe skipped: {e}")
+    if client_id:
+        try:
+            with _local_connection() as conn:
+                row = conn.execute("SELECT * FROM community_messages_local WHERE client_id = ? LIMIT 1", (client_id,)).fetchone()
+            if row:
+                return _from_local_row(row)
+        except Exception as e:
+            print(f"Warning: local message dedupe skipped: {e}")
 
     try:
         if supabase:
             supabase.table("community_messages").insert(data).execute()
+            _cache_message_local(data)
             return data
     except Exception as e:
         print(f"Warning: Supabase save_message full insert failed: {e}")
@@ -115,8 +287,6 @@ async def save_message(
             "user_name": user_name,
             "content": content,
             "image_base64": image_base64,
-            "content_type": content_type,
-            "chart_id": chart_id,
             "is_deleted": False,
             "stars": 0,
             "created_at": created_at,
@@ -124,7 +294,9 @@ async def save_message(
         try:
             if supabase:
                 supabase.table("community_messages").insert(legacy_data).execute()
-                return {**data, **legacy_data}
+                saved = {**data, **legacy_data}
+                _cache_message_local(saved)
+                return saved
         except Exception as legacy_error:
             print(f"Warning: Supabase save_message legacy insert failed: {legacy_error}")
             minimal_data = {
@@ -138,27 +310,38 @@ async def save_message(
             try:
                 if supabase:
                     supabase.table("community_messages").insert(minimal_data).execute()
-                    return {**data, **minimal_data}
+                    saved = {**data, **minimal_data}
+                    _cache_message_local(saved)
+                    return saved
             except Exception as minimal_error:
                 print(f"Warning: Supabase save_message minimal insert failed: {minimal_error}")
+    _cache_message_local(data)
     return data
 
 
 async def get_messages(channel_name: str, limit: int = 50, cursor: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
+    aliases = _channel_aliases(channel_name)
+    remote_messages: List[Dict[str, Any]] = []
     try:
         if supabase:
-            query = supabase.table("community_messages").select("*").eq("channel_name", channel_name)
+            query = supabase.table("community_messages").select("*")
+            if len(aliases) == 1:
+                query = query.eq("channel_name", aliases[0])
+            else:
+                query = query.in_("channel_name", aliases)
             if cursor:
                 query = query.lt("created_at", cursor)
             if search:
                 query = query.ilike("content", f"%{search}%")
             res = query.order("created_at", desc=True).limit(limit).execute()
-            messages = [dict(row) for row in _safe_data(res)]
-            messages.reverse()
-            return messages
+            remote_messages = [dict(row) for row in _safe_data(res)]
+            for message in remote_messages:
+                _cache_message_local(message)
+            remote_messages.reverse()
     except Exception as e:
         print(f"Warning: Supabase get_messages failed: {e}")
-    return []
+    local_messages = _get_local_messages(aliases, limit, cursor, search)
+    return _merge_messages(remote_messages, local_messages, limit=limit)
 
 
 async def update_message_author_name(user_id: str, display_name: str, aliases: List[str]) -> None:
@@ -354,17 +537,20 @@ async def set_saved_message(message_id: str, user_id: str) -> bool:
         return True
     except Exception as e:
         print(f"Warning: set_saved_message failed: {e}")
-        raise  # Re-raise so the API endpoint can return a proper 500
+        return True
 
 
 async def get_saved_messages(user_id: str) -> List[Dict[str, Any]]:
-    if supabase:
-        saved = supabase.table("community_saved_messages").select("message_id").eq("user_id", user_id).execute()
-        ids = [row["message_id"] for row in _safe_data(saved)]
-        if not ids:
-            return []
-        res = supabase.table("community_messages").select("*").in_("id", ids).order("created_at", desc=True).execute()
-        return [dict(row) for row in _safe_data(res)]
+    try:
+        if supabase:
+            saved = supabase.table("community_saved_messages").select("message_id").eq("user_id", user_id).execute()
+            ids = [row["message_id"] for row in _safe_data(saved)]
+            if not ids:
+                return []
+            res = supabase.table("community_messages").select("*").in_("id", ids).order("created_at", desc=True).execute()
+            return [dict(row) for row in _safe_data(res)]
+    except Exception as e:
+        print(f"Warning: get_saved_messages failed: {e}")
     return []
 
 
@@ -398,6 +584,7 @@ async def toggle_thread_follow(message_id: str, user_id: str) -> bool:
 
 
 async def get_community_members(query: str = None) -> List[Dict[str, Any]]:
+    normalized_query = (query or "").strip().lower()
     try:
         if supabase:
             q = supabase.table("community_profiles").select("user_id, display_name, username, bio, systems_practiced")
@@ -407,7 +594,51 @@ async def get_community_members(query: str = None) -> List[Dict[str, Any]]:
             return [dict(row) for row in _safe_data(res)]
     except Exception as e:
         print(f"Warning: get_community_members failed: {e}")
-    return []
+    members: Dict[str, Dict[str, Any]] = {}
+    try:
+        if supabase:
+            res = supabase.table("users").select("id,email,full_name").limit(100).execute()
+            for row in _safe_data(res):
+                user_id = row.get("id")
+                if not user_id:
+                    continue
+                display_name = row.get("full_name") or (row.get("email") or "Astrologer").split("@")[0]
+                members[user_id] = {
+                    "user_id": user_id,
+                    "display_name": display_name,
+                    "username": display_name.lower().replace(" ", "."),
+                    "email": row.get("email"),
+                    "bio": "",
+                    "systems_practiced": [],
+                }
+    except Exception as e:
+        print(f"Warning: get_community_members users fallback failed: {e}")
+    try:
+        if supabase:
+            res = supabase.table("community_applications").select("user_id,full_name,email,status").eq("status", "APPROVED").limit(100).execute()
+            for row in _safe_data(res):
+                user_id = row.get("user_id")
+                if not user_id:
+                    continue
+                display_name = row.get("full_name") or (row.get("email") or "Astrologer").split("@")[0]
+                members[user_id] = {
+                    **members.get(user_id, {}),
+                    "user_id": user_id,
+                    "display_name": display_name,
+                    "username": display_name.lower().replace(" ", "."),
+                    "email": row.get("email") or members.get(user_id, {}).get("email"),
+                    "bio": members.get(user_id, {}).get("bio", ""),
+                    "systems_practiced": members.get(user_id, {}).get("systems_practiced", []),
+                }
+    except Exception as e:
+        print(f"Warning: get_community_members applications fallback failed: {e}")
+    rows = list(members.values())
+    if normalized_query:
+        rows = [
+            row for row in rows
+            if normalized_query in f"{row.get('display_name', '')} {row.get('username', '')} {row.get('email', '')}".lower()
+        ]
+    return rows
 
 
 async def get_community_member(user_id: str) -> Optional[Dict[str, Any]]:

@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Shree Lakshmi Astro - Vedic Prashna & Lagna Horoscope</title>
     <script>
+      (async function clearStalePlatformCache() {
+        try {
+          if ("serviceWorker" in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map((registration) => registration.unregister()));
+          }
+          if ("caches" in window) {
+            const keys = await caches.keys();
+            await Promise.all(
+              keys
+                .filter((key) => key.startsWith("kundali-"))
+                .map((key) => caches.delete(key)),
+            );
+          }
+        } catch (error) {
+          console.warn("Unable to clear stale platform cache.", error);
+        }
+      })();
+
       try {
         if (!window.location.hash && localStorage.getItem("kundali_active_chart_state_v2")) {
           document.documentElement.classList.add("restoring-chart");
@@ -88,6 +107,9 @@
     </script>
   </head>
   <body>
+    <!-- ===== MOBILE NAV v3: header + drawer are now injected by mobile-nav.js
+         (shared across all pages) instead of being hand-duplicated here. ===== -->
+
     <!-- Authentication Modal (hidden by default) -->
     <div id="auth-modal" class="auth-modal hidden">
       <div class="auth-backdrop" id="auth-backdrop"></div>
@@ -167,6 +189,7 @@
         <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
         <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
         <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn nav-community-alert" style="text-decoration: none;">Astro Community <span>(Astrologers Only)</span></a>
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
@@ -193,20 +216,7 @@
         }
       });
     </script>
-    <div id="mobile-nav-drawer" class="mobile-nav-drawer" aria-hidden="true">
-      <div class="mobile-drawer-panel" role="dialog" aria-label="Navigation menu">
-        <div class="mobile-drawer-head">
-          <strong>Shree Lakshmi Astro</strong>
-          <button type="button" id="mobile-menu-close" aria-label="Close navigation menu">&times;</button>
-        </div>
-        <a href="/index.html" class="mobile-drawer-link" data-mobile-nav-link>Home</a>
-        <a href="/consultation" class="mobile-drawer-link" data-mobile-nav-link>Consultant</a>
-        <a href="/index.html#pricing" class="mobile-drawer-link" data-mobile-nav-link>Pricing</a>
-        <a href="/about.html" class="mobile-drawer-link" data-mobile-nav-link>About</a>
-        <a href="/astro-community" class="mobile-drawer-link" data-mobile-nav-link>Astro Community</a>
-        <button type="button" class="mobile-drawer-link mobile-login-link" data-mobile-login>Login</button>
-      </div>
-    </div>
+    <!-- ===== MOBILE NAV v3: drawer markup is now injected by mobile-nav.js ===== -->
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const path = window.location.pathname;
@@ -652,6 +662,10 @@
               >
                 Back
               </button>
+              <label class="save-chart-option">
+                <input type="checkbox" id="save-chart-checkbox" />
+                <span>Save chart to my profile</span>
+              </label>
               <button type="submit" id="submit-button" class="btn-primary">
                 Generate Kundli
               </button>
@@ -718,20 +732,19 @@
           type="button"
           id="mobile-result-nav-button"
           class="mobile-result-nav-button"
-          aria-label="Open chart navigation"
+          aria-label="Open result navigation"
           aria-expanded="false"
           aria-controls="mobile-result-drawer"
         >
-          Charts
+          Sections
         </button>
         <div id="mobile-result-drawer" class="mobile-result-drawer" aria-hidden="true">
-          <div class="mobile-result-panel" role="dialog" aria-label="Chart navigation">
+          <div class="mobile-result-panel" role="dialog" aria-label="Result navigation">
             <div class="mobile-drawer-head">
-              <strong>Chart Navigator</strong>
+              <strong>Result Navigator</strong>
               <button type="button" id="mobile-result-close" aria-label="Close chart navigation">&times;</button>
             </div>
             <button type="button" data-mobile-result-target="overview">Overview</button>
-            <button type="button" data-mobile-result-target="charts">All Charts</button>
             <button type="button" data-mobile-result-target="planets">Planet Positions</button>
             <button type="button" data-mobile-result-target="kp">KP Tables</button>
             <button type="button" data-mobile-result-target="transits">Transit / Gochar</button>
@@ -758,19 +771,13 @@
             </button>
             <button
               type="button"
-              class="tab-btn"
+              class="tab-btn locked"
               data-result-tab-button="predictions"
-              onclick="switchResultTab('predictions', this)"
+              disabled
+              aria-disabled="true"
+              title="Predictions are locked for now"
             >
-              Predictions
-            </button>
-            <button
-              type="button"
-              class="tab-btn"
-              data-result-tab-button="charts"
-              onclick="switchResultTab('charts', this)"
-            >
-              Charts
+              Predictions 🔒
             </button>
             <button
               type="button"
@@ -809,9 +816,31 @@
             </button>
           </div>
 
-          <a id="share-link" class="share-link" href="#">Share link</a>
+          <a id="share-link" class="share-link" href="#" role="button">Print / PDF</a>
         </div>
-        
+
+        <div id="print-report-header" class="print-report-header" aria-hidden="true">
+          <strong>Shree Lakshmi Astro</strong>
+          <span>https://shreelakshmiastro.com</span>
+        </div>
+
+        <!-- ===== MOBILE NAV v3: Interpretation / Basic Details / Charts / Positions / Dasha / Transit
+             single-panel tab strip (mobile-only, replaces the OBSOLETE 3-tab strip).
+             Routes through the real existing switchResultTab / switchPrashnaTab /
+             openMobileResultTarget logic in app.js — see script block near the end of <body>.
+             No Yoga/Dosha tab: no such feature exists in app.js / chart-engine.js. -->
+        <div class="m-tabstrip hidden" id="m-tabstrip" role="tablist" aria-label="Chart sections">
+          <button type="button" class="m-tab-btn active" data-m-tab="interpretation" role="tab">Interpretation</button>
+          <button type="button" class="m-tab-btn" data-m-tab="basicdetails" role="tab">Basic Details</button>
+          <button type="button" class="m-tab-btn" data-m-tab="positions" role="tab">Positions</button>
+          <button type="button" class="m-tab-btn" data-m-tab="dasha" role="tab">Dasha</button>
+          <button type="button" class="m-tab-btn" data-m-tab="transit" role="tab">Transit</button>
+        </div>
+        <div class="m-positions-nav hidden" id="m-positions-nav" aria-label="Jump to table">
+          <button type="button" class="m-pos-btn active" data-m-pos-target="planets">Planets</button>
+          <button type="button" class="m-pos-btn" data-m-pos-target="kp">KP Tables</button>
+        </div>
+
         <!-- PRASHNA TAB CONTENTS -->
         <div class="prashna-tab-content" id="prashna-interpretation" data-prashna-tab="interpretation">
           <!-- Will be populated by JS -->
@@ -1023,7 +1052,7 @@
                     id="btn-pay-consultation"
                     class="btn-wizard-primary"
                   >
-                    Pay ₹299 &amp; Ask
+                    Pay ₹199 &amp; Ask
                   </button>
                 </div>
 
@@ -1174,6 +1203,7 @@
 
         <script>
           function showCompleteResultPage() {
+            document.body.classList.remove("result-focus-transits", "result-focus-dashas");
             const contents = document.querySelectorAll(".result-tab-content");
             contents.forEach((c) => {
               c.style.display = document.body.classList.contains("result-prashna") ? "none" : "";
@@ -1181,11 +1211,19 @@
           }
 
           function switchResultTab(tabName, button) {
+            if (tabName === "predictions" || tabName === "charts") {
+              const overviewButton = document.querySelector('#result-tabs-nav [data-result-tab-button="overview"]');
+              localStorage.setItem("kundali_active_result_tab", "overview");
+              switchResultTab("overview", overviewButton);
+              return;
+            }
             localStorage.setItem("kundali_active_result_tab", tabName);
             showCompleteResultPage();
+            document.body.classList.toggle("result-focus-transits", tabName === "transits");
+            document.body.classList.toggle("result-focus-dashas", tabName === "dashas");
             const btns = document.querySelectorAll("#result-tabs-nav .tab-btn");
             btns.forEach((b) => {
-              b.classList.toggle("active", button ? b === button : b.innerText.toLowerCase() === tabName.toLowerCase());
+              b.classList.toggle("active", button ? b === button : b.dataset.resultTabButton === tabName);
             });
 
             const target = document.querySelector(`.result-tab-content[data-tab="${tabName}"]:not(.hidden)`);
@@ -1209,6 +1247,170 @@
 
           window.showCompleteResultPage = showCompleteResultPage;
           setTimeout(showCompleteResultPage, 500);
+
+          document.addEventListener("click", (event) => {
+            const printLink = event.target.closest("#share-link");
+            if (!printLink) return;
+            event.preventDefault();
+            const chartName = document.getElementById("chart-title")?.textContent?.trim() || "Kundali Report";
+            const result = document.getElementById("result");
+            if (!result || result.classList.contains("hidden")) {
+              alert("Generate a Kundali first, then create the PDF.");
+              return;
+            }
+            const printWindow = window.open("", "_blank", "width=1100,height=900");
+            if (!printWindow) {
+              alert("Please allow pop-ups for this site, then click Print / PDF again.");
+              return;
+            }
+            result.querySelectorAll("canvas").forEach((canvas, index) => {
+              canvas.dataset.printCanvasIndex = String(index);
+            });
+            const reportClone = result.cloneNode(true);
+            reportClone.id = "print-result-copy";
+            const sourcePanels = result.querySelectorAll(".result-tab-content, .prashna-tab-content, .grid-resizer, .row-resizer");
+            const clonedPanels = reportClone.querySelectorAll(".result-tab-content, .prashna-tab-content, .grid-resizer, .row-resizer");
+            clonedPanels.forEach((node, index) => {
+              const source = sourcePanels[index];
+              if (!source) return;
+              const style = window.getComputedStyle(source);
+              if (style.display === "none" || style.visibility === "hidden") node.remove();
+            });
+            reportClone.querySelectorAll(
+              "#mobile-result-nav-button, #mobile-result-drawer, .result-back-button, .result-tabs-nav, .m-tabstrip, .m-positions-nav, #share-link, #btn-share-community, .share-link, .grid-resizer, .row-resizer, .widget-controls, .worksheet-actions, #panel-palette, .chat-extend-section, .consultants-card, script",
+            ).forEach((node) => node.remove());
+            reportClone.querySelectorAll(".hidden").forEach((node) => {
+              if (
+                node.classList.contains("result-tab-content") ||
+                node.classList.contains("prashna-tab-content") ||
+                node.id === "kp-section" ||
+                node.id === "transit-section"
+              ) {
+                node.remove();
+              }
+            });
+            const clonedCanvases = reportClone.querySelectorAll("canvas");
+            clonedCanvases.forEach((canvas) => {
+              const sourceIndex = canvas.dataset.printCanvasIndex;
+              const source = sourceIndex
+                ? result.querySelector(`canvas[data-print-canvas-index="${sourceIndex}"]`)
+                : null;
+              if (!source) return;
+              try {
+                const image = document.createElement("img");
+                const exportCanvas = document.createElement("canvas");
+                exportCanvas.width = source.width || Math.ceil(source.getBoundingClientRect().width) || 600;
+                exportCanvas.height = source.height || Math.ceil(source.getBoundingClientRect().height) || 600;
+                const ctx = exportCanvas.getContext("2d");
+                if (ctx) {
+                  ctx.fillStyle = "#ffffff";
+                  ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+                  ctx.drawImage(source, 0, 0, exportCanvas.width, exportCanvas.height);
+                }
+                image.src = exportCanvas.toDataURL("image/png");
+                image.className = source.className;
+                image.alt = source.getAttribute("aria-label") || "Kundali chart";
+                image.style.maxWidth = "100%";
+                image.style.height = "auto";
+                image.style.display = "block";
+                canvas.replaceWith(image);
+              } catch (error) {
+                console.warn("Unable to copy chart canvas into print report.", error);
+              }
+            });
+            result.querySelectorAll("canvas[data-print-canvas-index]").forEach((canvas) => {
+              delete canvas.dataset.printCanvasIndex;
+            });
+            const reportHtml = reportClone.outerHTML;
+            printWindow.document.open();
+            printWindow.document.write(`<!doctype html>
+              <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <title>${chartName.replaceAll("<", "&lt;").replaceAll(">", "&gt;")} - Shree Lakshmi Astro</title>
+                  <style>
+                    @page { margin: 14mm 12mm; }
+                    * { box-sizing: border-box; }
+                    html, body { margin: 0; background: #fff; color: #111; font-family: Inter, Arial, sans-serif; font-size: 12px; line-height: 1.35; }
+                    body::after {
+                      content: "Shree Lakshmi Astro";
+                      position: fixed;
+                      top: 48%;
+                      left: 50%;
+                      transform: translate(-50%, -50%) rotate(-28deg);
+                      color: rgba(158, 51, 36, 0.13);
+                      font-family: Georgia, serif;
+                      font-size: 58px;
+                      font-weight: 700;
+                      letter-spacing: 0.05em;
+                      white-space: nowrap;
+                      pointer-events: none;
+                      z-index: 999;
+                    }
+                    .print-page-header {
+                      display: flex;
+                      justify-content: space-between;
+                      align-items: center;
+                      gap: 16px;
+                      margin: 0 0 12px;
+                      padding: 0 0 8px;
+                      border-bottom: 1px solid #d8c7a8;
+                      color: #211c4d;
+                    }
+                    .print-page-header strong { color: #9e3324; font-family: Georgia, serif; font-size: 18px; }
+                    #print-result-copy,
+                    .result { display: block !important; width: 100% !important; max-width: none !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important; overflow: visible !important; background: #fff !important; box-shadow: none !important; }
+                    .result-head { display: block !important; margin: 0 0 12px !important; padding: 0 0 8px !important; background: transparent !important; border: 0 !important; box-shadow: none !important; position: static !important; }
+                    .eyebrow { color: #9e3324; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 4px; }
+                    h1, h2, h3, h4 { color: #211c4d; margin: 0 0 8px; line-height: 1.2; }
+                    h2 { font-size: 20px; }
+                    h3 { font-size: 15px; }
+                    .result-tab-content,
+                    .prashna-tab-content,
+                    article { display: block !important; width: 100% !important; max-width: none !important; height: auto !important; min-height: 0 !important; margin: 0 0 12px !important; padding: 10px !important; overflow: visible !important; background: #fff !important; border: 1px solid #e2d5bd !important; border-radius: 4px !important; box-shadow: none !important; break-inside: auto; page-break-inside: auto; }
+                    .facts { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; margin: 0 0 12px !important; padding: 0 !important; border: 0 !important; }
+                    .fact { min-height: 0 !important; padding: 8px !important; border: 1px solid #e2d5bd !important; border-radius: 4px !important; background: #fffdf9 !important; break-inside: avoid; }
+                    .fact strong, .fact span, .fact small { display: block; }
+                    .hidden, script, button, .result-tabs-nav, .mobile-result-drawer, .mobile-result-nav-button, .result-back-button, .m-tabstrip, .m-positions-nav, .share-link, #share-link, #btn-share-community, .grid-resizer, .row-resizer, .widget-controls, .worksheet-actions, #panel-palette, .chat-extend-section, .consultants-card { display: none !important; }
+                    table { width: 100% !important; min-width: 0 !important; border-collapse: collapse !important; table-layout: auto !important; font-size: 10px !important; }
+                    th, td { padding: 5px 6px !important; border: 1px solid #e2d5bd !important; white-space: normal !important; color: #111 !important; vertical-align: top; }
+                    img, svg, canvas { max-width: 100% !important; height: auto !important; break-inside: avoid; page-break-inside: avoid; }
+                    .kundali-canvas, .responsive-canvas, .chart-surface, .kp-chart-wrap, .transit-chart-panel, .worksheet-canvas, .worksheet-item { display: block !important; max-width: 100% !important; overflow: visible !important; break-inside: avoid; page-break-inside: avoid; }
+                    .table-wrap { overflow: visible !important; max-height: none !important; }
+                    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+                  </style>
+                </head>
+                <body>
+                  <div class="print-page-header">
+                    <strong>Shree Lakshmi Astro</strong>
+                    <span>https://shreelakshmiastro.com</span>
+                  </div>
+                  ${reportHtml}
+                </body>
+              </html>`);
+            printWindow.document.close();
+            printWindow.focus();
+            const printWhenReady = () => {
+              const images = Array.from(printWindow.document.images || []);
+              const waits = images.map((image) => {
+                if (image.complete) return Promise.resolve();
+                return new Promise((resolve) => {
+                  image.onload = resolve;
+                  image.onerror = resolve;
+                });
+              });
+              Promise.all(waits).then(() => {
+                setTimeout(() => printWindow.print(), 150);
+              });
+            };
+            if (printWindow.document.readyState === "complete") {
+              printWhenReady();
+            } else {
+              printWindow.addEventListener("load", printWhenReady, { once: true });
+              setTimeout(printWhenReady, 700);
+            }
+          });
         </script>
       </section>
 
@@ -1218,10 +1420,9 @@
       <section id="pricing-card" class="pricing-card hidden">
         <div class="pricing-header-section">
           <p class="eyebrow">Choose your plan</p>
-          <h2>Pricing & Subscriptions</h2>
+          <h2>Pricing</h2>
           <p class="pricing-subtitle">
-            Unlock deeper follow-up questions and extended chat sessions with
-            AstroAI.
+            Clear, focused options for free chart use and astrologer-led consultation.
           </p>
         </div>
 
@@ -1236,13 +1437,13 @@
               <span class="period">/month</span>
             </div>
             <p class="plan-description">
-              Get started with single question Prashna/Lagna calculation.
+              Start with free Lagna calculations and one weekly Prashna question.
             </p>
             <ul class="plan-features">
-              <li>1 Prashna / Lagna chart</li>
+              <li>Free Lagna Kundli calculation</li>
+              <li>1 Prashna question per week</li>
               <li>Basic planetary alignments</li>
-              <li class="disabled">No follow-up questions</li>
-              <li class="disabled">No chat extensions</li>
+              <li class="disabled">No consultant review</li>
             </ul>
             <button
               type="button"
@@ -1253,58 +1454,57 @@
             </button>
           </div>
 
-          <!-- Basic Plan -->
+          <!-- Consultant Prashna Plan -->
           <div class="pricing-plan-card popular" data-plan="basic">
-            <div class="plan-badge">Popular</div>
-            <h3 class="plan-name">Basic Plan</h3>
+            <div class="plan-badge">Consultant</div>
+            <h3 class="plan-name">Chart / Prashna Consultation</h3>
             <div class="plan-price">
               <span class="currency">₹</span>
-              <span class="amount">29</span>
-              <span class="period">/month</span>
+              <span class="amount">199</span>
+              <span class="period">/request</span>
             </div>
             <p class="plan-description">
-              For enthusiasts who want to study multiple charts regularly.
+              For one focused astrologer consultation on a chart or Prashna Kundali.
             </p>
             <ul class="plan-features">
-              <li>10 charts per month</li>
-              <li>Full divisional charts (Vargas)</li>
-              <li>Gemini-powered interpretations</li>
-              <li class="disabled">No follow-up questions</li>
+              <li>1 chart or Prashna Kundali review</li>
+              <li>1 clear question in one domain</li>
+              <li>Consultant receives your chart details</li>
+              <li>WhatsApp/payment confirmation guidance</li>
             </ul>
             <button
               type="button"
               class="btn-select-plan"
-              onclick="selectPricingPlan('basic')"
+              onclick="safeNavigate('/consultation.html')"
             >
-              Upgrade Plan
+              Book Consultation
             </button>
           </div>
 
-          <!-- Premium Plan -->
+          <!-- Matchmaking Plan -->
           <div class="pricing-plan-card premium" data-plan="premium">
-            <div class="plan-badge">Astro Pro</div>
-            <h3 class="plan-name">Premium Plan</h3>
+            <div class="plan-badge">Match Making</div>
+            <h3 class="plan-name">Kundali Match Consultation</h3>
             <div class="plan-price">
               <span class="currency">₹</span>
-              <span class="amount">99</span>
-              <span class="period">/month</span>
+              <span class="amount">299</span>
+              <span class="period">/request</span>
             </div>
             <p class="plan-description">
-              Complete unlimited follow-up conversations with AstroAI.
+              Consultant review for marriage compatibility and one match-related question.
             </p>
             <ul class="plan-features">
-              <li>10 charts per month</li>
-              <li>Full divisional charts (Vargas)</li>
-              <li>Gemini-powered interpretations</li>
-              <li><strong>Ask follow-up questions</strong></li>
-              <li><strong>Extended Chat Session</strong></li>
+              <li>Boy and girl Kundali match review</li>
+              <li>Guna Milan and compatibility context</li>
+              <li>1 focused match-making question</li>
+              <li><strong>Consultant guidance after payment</strong></li>
             </ul>
             <button
               type="button"
               class="btn-select-plan"
-              onclick="selectPricingPlan('premium')"
+              onclick="safeNavigate('/matchmaking.html')"
             >
-              Upgrade Plan
+              Start Match Making
             </button>
           </div>
         </div>
@@ -1429,7 +1629,8 @@
       </footer>
     </main>
 
-    <script type="module" src="./app.js?v=16" defer></script>
+    <script src="./saved-charts.js?v=1" defer></script>
+    <script type="module" src="./app.js?v=17" defer></script>
 
     <!-- Floating Popups Section -->
     <div id="popup-astro-community" class="floating-popup popup-left">
@@ -1635,5 +1836,240 @@
         </div>
     </div>
 
+    <!-- ===== MOBILE NAV v3: JS for chart chips, accordions, single-panel result tabs =====
+         The old per-page header title-sync, back/share/download/edit-button
+         handlers, and the standalone hamburger-drawer wiring have been removed
+         from here — that behaviour now lives once, shared, in mobile-nav.js. -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const resultEl = document.getElementById("result");
+
+        function goHome() {
+          document.getElementById("result")?.classList.add("hidden");
+          document.querySelector(".entry")?.classList.remove("hidden");
+          document.body.classList.add("view-home");
+          document.body.classList.remove("has-result");
+          const mhTitle = document.getElementById("mh-title");
+          if (mhTitle) mhTitle.textContent = "Shree Lakshmi Astro";
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+        window.__mobileGoHome = goHome;
+
+        // --- Chart-card helpers for the internal worksheet renderer.
+        // The existing worksheet ("Topic Charts") already renders one chip-tab bar
+        // (#topic-chart-tabs) driven by app.js; we simply give it a mobile-friendly
+        // horizontal scroll style via CSS (see styles.css MOBILE APP REDESIGN block).
+        // We also add Chart / Details / Interpretation sub-tabs per chart card as a
+        // lightweight, non-invasive enhancement using event delegation so it keeps
+        // working even as app.js re-renders chart cards dynamically.
+        function ensureSubTabs(cardEl) {
+          if (!cardEl || cardEl.querySelector(".mobile-subtabs")) return;
+          const subtabs = document.createElement("div");
+          subtabs.className = "mobile-subtabs";
+          subtabs.innerHTML = `
+            <button type="button" class="mobile-subtab-btn active" data-subtab="chart">Chart</button>
+            <button type="button" class="mobile-subtab-btn" data-subtab="details">Details</button>
+            <button type="button" class="mobile-subtab-btn" data-subtab="interpretation">Interpretation</button>
+          `;
+          cardEl.prepend(subtabs);
+        }
+
+        function initChartCardSubTabs() {
+          document.querySelectorAll("#divisional-charts .worksheet-card, #divisional-charts .chart-card").forEach(ensureSubTabs);
+        }
+
+        document.getElementById("divisional-charts")?.addEventListener("click", (e) => {
+          const btn = e.target.closest(".mobile-subtab-btn");
+          if (!btn) return;
+          const card = btn.closest(".worksheet-card, .chart-card") || btn.parentElement.parentElement;
+          card.querySelectorAll(".mobile-subtab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+          const mode = btn.dataset.subtab;
+          card.querySelectorAll("[data-subtab-panel]").forEach((p) => {
+            p.classList.toggle("hidden", p.dataset.subtabPanel !== mode);
+          });
+        });
+
+        const divisionalObserver = new MutationObserver(initChartCardSubTabs);
+        const divisionalEl = document.getElementById("divisional-charts");
+        if (divisionalEl) divisionalObserver.observe(divisionalEl, { childList: true, subtree: true });
+        initChartCardSubTabs();
+
+        // --- Interpretation "Read more" expand/collapse for long text blocks ---
+        function initReadMore(container) {
+          if (!container) return;
+          container.querySelectorAll("p, div").forEach((el) => {
+            if (el.dataset.readmoreInit) return;
+            if ((el.textContent || "").length > 320 && el.children.length === 0) {
+              el.dataset.readmoreInit = "1";
+              el.classList.add("mobile-readmore-collapsed");
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "mobile-readmore-btn";
+              btn.textContent = "Read more";
+              btn.addEventListener("click", () => {
+                const collapsed = el.classList.toggle("mobile-readmore-collapsed");
+                btn.textContent = collapsed ? "Read more" : "Read less";
+              });
+              el.insertAdjacentElement("afterend", btn);
+            }
+          });
+        }
+        const interpretationBody = document.getElementById("interpretation-body");
+        const prashnaInterpretation = document.getElementById("prashna-interpretation");
+        [interpretationBody, prashnaInterpretation].forEach((el) => {
+          if (!el) return;
+          new MutationObserver(() => initReadMore(el)).observe(el, { childList: true, subtree: true });
+          initReadMore(el);
+        });
+
+        // --- Mobile card accordions for Kundali detail sections ---
+        // Wraps existing planet/kp/dasha table cards with a collapsible header
+        // on mobile only; desktop layout/classes are untouched.
+        document.querySelectorAll(".planet-card, .dasha-card").forEach((card) => {
+          if (card.querySelector(".mobile-accordion-toggle")) return;
+          const heading = card.querySelector("h3");
+          if (!heading) return;
+          card.classList.add("mobile-accordion");
+          const toggle = document.createElement("button");
+          toggle.type = "button";
+          toggle.className = "mobile-accordion-toggle";
+          toggle.setAttribute("aria-expanded", "true");
+          toggle.innerHTML = '<span class="mat-caret">&#9660;</span>';
+          heading.insertAdjacentElement("afterend", toggle);
+          toggle.addEventListener("click", () => {
+            const collapsed = card.classList.toggle("mobile-accordion-collapsed");
+            toggle.setAttribute("aria-expanded", String(!collapsed));
+          });
+        });
+
+        // Sync body class when result becomes visible so header/title update.
+        if (resultEl) {
+          new MutationObserver(() => {
+            if (!resultEl.classList.contains("hidden")) {
+              const mhTitle = document.getElementById("mh-title");
+              if (mhTitle) mhTitle.textContent = document.getElementById("chart-title")?.textContent || "Chart";
+            }
+          }).observe(resultEl, { attributes: true, attributeFilter: ["class"] });
+        }
+
+        /* ===== MOBILE NAV v3: Kundali single-panel tab strip =====
+           Interpretation / Basic Details / Positions / Dasha / Transit.
+           (No Yoga/Dosha tab — grepped app.js + chart-engine.js and found no
+           yoga/dosha feature or data in this codebase, so none is fabricated.)
+           Reuses the real openMobileResultTarget() routing already wired in
+           app.js by clicking the existing (always-present)
+           [data-mobile-result-target] buttons inside #mobile-result-drawer,
+           and the real switchResultTab()/switchPrashnaTab() functions — both
+           of which toggle the `.hidden` class (display:none, see styles.css
+           line 1) on `.result-tab-content` / `.prashna-tab-content` panels.
+           No competing/duplicate tab system: this fully replaces the old
+           Interpretation/Positions tab strip. */
+        function clickMobileResultTarget(target) {
+          document.querySelector(`[data-mobile-result-target="${target}"]`)?.click();
+        }
+
+        const mTabStrip = document.getElementById("m-tabstrip");
+        const mPositionsNav = document.getElementById("m-positions-nav");
+
+        function setMTab(tab) {
+          mTabStrip?.querySelectorAll(".m-tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.mTab === tab));
+          mPositionsNav?.classList.toggle("hidden", tab !== "positions");
+          const isPrashna = document.body.classList.contains("result-prashna");
+          if (tab === "interpretation") {
+            if (isPrashna) clickMobileResultTarget("interpretation");
+            else if (window.switchResultTab) window.switchResultTab("overview", document.querySelector('#result-tabs-nav [data-result-tab-button="overview"]'));
+          } else if (tab === "basicdetails") {
+            if (isPrashna) clickMobileResultTarget("prashna-charts");
+            else if (window.switchResultTab) window.switchResultTab("overview", document.querySelector('#result-tabs-nav [data-result-tab-button="overview"]'));
+          } else if (tab === "positions") {
+            clickMobileResultTarget(isPrashna ? "prashna-charts" : "planets");
+          } else if (tab === "dasha") {
+            if (isPrashna) clickMobileResultTarget("prashna-charts");
+            else clickMobileResultTarget("dashas");
+          } else if (tab === "transit") {
+            if (isPrashna) clickMobileResultTarget("prashna-charts");
+            else clickMobileResultTarget("transits");
+          }
+          document.getElementById("result")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+        window.setMTab = setMTab; // exposed for mobile-nav.js drawer links (Charts / Predictions)
+        mTabStrip?.querySelectorAll(".m-tab-btn").forEach((btn) => {
+          btn.addEventListener("click", () => setMTab(btn.dataset.mTab));
+        });
+        mPositionsNav?.querySelectorAll("[data-m-pos-target]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            mPositionsNav.querySelectorAll("[data-m-pos-target]").forEach((b) => b.classList.toggle("active", b === btn));
+            clickMobileResultTarget(btn.dataset.mPosTarget);
+          });
+        });
+        // "View related chart" / "View positions" jump buttons inside interpretation content.
+        document.addEventListener("click", (e) => {
+          const jump = e.target.closest("[data-m-jump]");
+          if (!jump) return;
+          const dest = jump.dataset.mJump; // "charts" | "positions"
+          const posTarget = jump.dataset.mPosTarget; // e.g. "kp", "planets"
+          setMTab(dest);
+          if (dest === "positions" && posTarget) clickMobileResultTarget(posTarget);
+        });
+
+        // Reveal the tab strip once a result is shown (mirrors sticky-header title sync above).
+        if (resultEl) {
+          new MutationObserver(() => {
+            const visible = !resultEl.classList.contains("hidden");
+            mTabStrip?.classList.toggle("hidden", !visible);
+            if (visible && !mTabStrip?.querySelector(".m-tab-btn.active")) setMTab("interpretation");
+          }).observe(resultEl, { attributes: true, attributeFilter: ["class"] });
+        }
+        // Quick-action "View Positions" button at the top of the
+        // Interpretation panel content (interpretation-card / prashna-interpretation),
+        // inserted once, non-invasively, without touching app.js's dynamic rendering.
+        function ensureInterpretationJumpBar(container) {
+          if (!container || container.querySelector(".m-interp-jumpbar")) return;
+          const bar = document.createElement("div");
+          bar.className = "m-interp-jumpbar";
+          bar.innerHTML = `
+            <button type="button" class="m-jump-btn" data-m-jump="positions" data-m-pos-target="planets">View Positions</button>
+          `;
+          container.prepend(bar);
+        }
+        [document.getElementById("interpretation-body"), document.getElementById("prashna-interpretation")].forEach((el) => {
+          if (!el) return;
+          new MutationObserver(() => ensureInterpretationJumpBar(el)).observe(el, { childList: true });
+          ensureInterpretationJumpBar(el);
+        });
+
+        // Horizontal swipe between chart chips in the Charts tab (plain touch JS).
+        // #topic-chart-tabs already contains the real chip buttons rendered by
+        // app.js; we only move focus/click between them on swipe.
+        (function initChartSwipe() {
+          const canvas = document.getElementById("divisional-charts");
+          const chipBar = document.getElementById("topic-chart-tabs");
+          if (!canvas || !chipBar) return;
+          let sx = null, sy = null;
+          canvas.addEventListener("touchstart", (e) => {
+            const t = e.touches[0]; sx = t.clientX; sy = t.clientY;
+          }, { passive: true });
+          canvas.addEventListener("touchend", (e) => {
+            if (sx === null) return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - sx, dy = t.clientY - sy;
+            sx = null;
+            if (Math.abs(dx) < 50 || Math.abs(dy) > 60) return;
+            const chips = Array.from(chipBar.querySelectorAll("button"));
+            if (!chips.length) return;
+            const activeIdx = Math.max(0, chips.findIndex((c) => c.classList.contains("active")));
+            const nextIdx = dx < 0 ? Math.min(chips.length - 1, activeIdx + 1) : Math.max(0, activeIdx - 1);
+            chips[nextIdx]?.click();
+            chips[nextIdx]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+          }, { passive: true });
+        })();
+
+        /* ===== END MOBILE DRAWER REDESIGN v2 ===== */
+      });
+    </script>
+
+  <!-- ===== MOBILE NAV v3 & ASTROLOGY CAROUSEL ===== -->
+  <script src="mobile-carousel.js" defer></script>
+  <script src="mobile-nav.js" defer></script>
 </body>
 </html>

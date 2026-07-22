@@ -1,7 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from typing import Any, Dict, List, Optional
+import asyncio
 import json
 import logging
+import re
 import time
 from supabase import create_client, ClientOptions
 
@@ -68,6 +70,26 @@ def websocket_has_verified_access(token: str) -> bool:
     return get_websocket_auth_context(token) is not None
 
 
+async def authenticate_websocket(websocket: WebSocket) -> Optional[Dict[str, Any]]:
+    await websocket.accept()
+    try:
+        raw_message = await asyncio.wait_for(websocket.receive_text(), timeout=10)
+        payload = json.loads(raw_message)
+    except (asyncio.TimeoutError, WebSocketDisconnect, json.JSONDecodeError):
+        await websocket.close(code=1008, reason="Authentication required")
+        return None
+
+    if payload.get("action") != "authenticate":
+        await websocket.close(code=1008, reason="Authentication required")
+        return None
+
+    auth_context = get_websocket_auth_context(str(payload.get("token") or ""))
+    if not auth_context:
+        await websocket.close(code=1008, reason="Authentication required")
+        return None
+    return auth_context
+
+
 def resolve_display_name(auth: AuthState) -> str:
     try:
         res = auth.client.table("users").select("full_name,email").eq("id", auth.user_id).limit(1).execute()
@@ -102,24 +124,30 @@ class ConnectionManager:
     def __init__(self):
         # Maps channel names to a list of active websocket connections
         self.active_connections: Dict[str, List[WebSocket]] = {}
+        self.user_connections: Dict[str, List[WebSocket]] = {}
         self.total_connections: int = 0
 
-    async def connect(self, websocket: WebSocket, channel_name: str):
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, channel_name: str, user_id: Optional[str] = None):
         if channel_name not in self.active_connections:
             self.active_connections[channel_name] = []
         self.active_connections[channel_name].append(websocket)
+        if user_id:
+            self.user_connections.setdefault(user_id, []).append(websocket)
         self.total_connections += 1
         # Send the count directly to this socket first (guaranteed delivery)
         await websocket.send_text(json.dumps({"type": "online_count", "count": self.total_connections}))
         # Also broadcast to all others
         await self.broadcast_all(json.dumps({"type": "online_count", "count": self.total_connections}))
 
-    async def disconnect(self, websocket: WebSocket, channel_name: str):
+    async def disconnect(self, websocket: WebSocket, channel_name: str, user_id: Optional[str] = None):
         if channel_name in self.active_connections and websocket in self.active_connections[channel_name]:
             self.active_connections[channel_name].remove(websocket)
             self.total_connections = max(0, self.total_connections - 1)
             await self.broadcast_all(json.dumps({"type": "online_count", "count": self.total_connections}))
+        if user_id and user_id in self.user_connections and websocket in self.user_connections[user_id]:
+            self.user_connections[user_id].remove(websocket)
+            if not self.user_connections[user_id]:
+                self.user_connections.pop(user_id, None)
 
     async def broadcast(self, message: str, channel_name: str):
         if channel_name in self.active_connections:
@@ -137,7 +165,73 @@ class ConnectionManager:
                 except Exception as e:
                     logger.error(f"Error sending message to websocket: {e}")
 
+    async def send_to_user(self, user_id: str, message: str):
+        for connection in list(self.user_connections.get(user_id, [])):
+            try:
+                await connection.send_text(message)
+            except Exception as e:
+                logger.error(f"Error sending direct user websocket message: {e}")
+
 manager = ConnectionManager()
+
+
+def _normalize_mention(value: str) -> str:
+    return re.sub(r"[^a-z0-9_.-]+", "", (value or "").lstrip("@").lower())
+
+
+def _member_mention_aliases(member: Dict[str, Any]) -> set[str]:
+    display_name = member.get("display_name") or member.get("full_name") or member.get("name") or ""
+    username = member.get("username") or ""
+    email = member.get("email") or ""
+    aliases = {
+        username,
+        display_name,
+        display_name.replace(" ", "."),
+        display_name.replace(" ", ""),
+        email.split("@")[0],
+    }
+    return {_normalize_mention(alias) for alias in aliases if alias}
+
+
+async def _resolve_mentions(content: str, explicit_mentions: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    tokens = {_normalize_mention(token) for token in re.findall(r"@[\w.-]+", content or "")}
+    explicit_ids = {str(item.get("user_id")) for item in (explicit_mentions or []) if item.get("user_id")}
+    if not tokens and not explicit_ids:
+        return []
+    members = await get_community_members()
+    resolved: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for member in members:
+        user_id = str(member.get("user_id") or "")
+        if not user_id or user_id in seen:
+            continue
+        if user_id in explicit_ids or tokens.intersection(_member_mention_aliases(member)):
+            resolved.append({
+                "user_id": user_id,
+                "display_name": member.get("display_name") or member.get("full_name") or member.get("name") or member.get("email") or "Astrologer",
+                "username": member.get("username") or _normalize_mention(member.get("display_name") or member.get("email") or ""),
+            })
+            seen.add(user_id)
+    return resolved
+
+
+async def _notify_mentions(channel_name: str, message: Dict[str, Any], sender_id: str, explicit_mentions: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    mentions = await _resolve_mentions(message.get("content") or "", explicit_mentions)
+    for mention in mentions:
+        mentioned_user_id = mention.get("user_id")
+        if not mentioned_user_id or mentioned_user_id == sender_id:
+            continue
+        await manager.send_to_user(
+            mentioned_user_id,
+            json.dumps({
+                "type": "message_mentioned",
+                "channel_name": channel_name,
+                "mention": mention,
+                "data": {**message, "mentions": mentions},
+                "message": {**message, "mentions": mentions},
+            }),
+        )
+    return mentions
 
 
 @router.get("/channels")
@@ -157,7 +251,7 @@ async def api_get_messages(
 
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, UploadFile, File
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 import uuid
 import mimetypes
 
@@ -299,15 +393,16 @@ async def submit_more_info(payload: MoreInfoPayload, auth: AuthState = Depends(g
 
 @router.websocket("/ws/{channel_name}")
 async def websocket_endpoint(websocket: WebSocket, channel_name: str):
+    if not re.fullmatch(r"^[A-Za-z0-9_-]{1,80}$", channel_name):
+        await websocket.close(code=1008, reason="Invalid channel")
+        return
     if _websocket_rate_limited(websocket, "community"):
         await websocket.close(code=1008)
         return
-    token = websocket.query_params.get("token", "")
-    auth_context = get_websocket_auth_context(token)
+    auth_context = await authenticate_websocket(websocket)
     if not auth_context:
-        await websocket.close(code=1008)
         return
-    await manager.connect(websocket, channel_name)
+    await manager.connect(websocket, channel_name, auth_context["user_id"])
     await websocket.send_text(json.dumps({"type": "connection_ready", "channel_name": channel_name}))
     await websocket.send_text(json.dumps({"type": "channel_subscribed", "channel_name": channel_name}))
     try:
@@ -321,18 +416,38 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                     if channel_name == "announcements" and not auth_context.get("is_admin"):
                         await websocket.send_text(json.dumps({"type": "error", "message": "Only admins can post in announcements."}))
                         continue
+                    try:
+                        message_payload = SendMessagePayload.model_validate({
+                            "content": payload.get("content", ""),
+                            "content_type": payload.get("content_type", "STANDARD"),
+                            "image_base64": payload.get("image_base64"),
+                            "chart_id": payload.get("chart_id"),
+                            "reply_to_message_id": payload.get("reply_to_message_id"),
+                            "client_id": payload.get("client_id"),
+                            "mentions": payload.get("mentions") or [],
+                        })
+                    except ValidationError as exc:
+                        await websocket.send_text(json.dumps({"type": "error", "message": _validation_error_message(exc)}))
+                        continue
                     
                     saved_msg = await save_message(
                         channel_name=channel_name,
                         user_name=auth_context["display_name"],
-                        content=payload.get("content", ""),
-                        image_base64=payload.get("image_base64"),
-                        content_type=payload.get("content_type", "STANDARD"),
-                        chart_id=payload.get("chart_id"),
+                        content=message_payload.content,
+                        image_base64=message_payload.image_base64,
+                        content_type=message_payload.content_type,
+                        chart_id=message_payload.chart_id,
                         sender_id=auth_context["user_id"],
-                        reply_to_message_id=payload.get("reply_to_message_id"),
-                        client_id=payload.get("client_id"),
+                        reply_to_message_id=message_payload.reply_to_message_id,
+                        client_id=message_payload.client_id,
                     )
+                    mentions = await _notify_mentions(
+                        channel_name,
+                        saved_msg,
+                        auth_context["user_id"],
+                        [mention.model_dump() for mention in message_payload.mentions],
+                    )
+                    saved_msg = {**saved_msg, "mentions": mentions}
                     await manager.broadcast(
                         json.dumps({"type": "message_created", "data": saved_msg}), 
                         channel_name
@@ -340,18 +455,28 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                 
                 
                 elif action == "toggle_reaction":
-                    msg_id = payload.get("message_id")
-                    reaction_type = payload.get("reaction_type")
-                    previous_reaction = payload.get("previous_reaction")
+                    try:
+                        msg_id = IdPayload.model_validate({"id": payload.get("message_id")}).id
+                        reaction_payload = ReactionPayload.model_validate({
+                            "reaction_type": payload.get("reaction_type"),
+                            "previous_reaction": payload.get("previous_reaction"),
+                        })
+                    except ValidationError as exc:
+                        await websocket.send_text(json.dumps({"type": "error", "message": _validation_error_message(exc)}))
+                        continue
                     user_id = auth_context["user_id"]
-                    reaction_status = await toggle_reaction(msg_id, user_id, reaction_type, previous_reaction)
+                    reaction_status = await toggle_reaction(msg_id, user_id, reaction_payload.reaction_type, reaction_payload.previous_reaction)
                     await manager.broadcast(
-                        json.dumps({"type": f"reaction_{reaction_status}", "message_id": msg_id, "reaction_type": reaction_type, "previous_reaction": previous_reaction, "user_id": user_id}),
+                        json.dumps({"type": f"reaction_{reaction_status}", "message_id": msg_id, "reaction_type": reaction_payload.reaction_type, "previous_reaction": reaction_payload.previous_reaction, "user_id": user_id}),
                         channel_name
                     )
 
                 elif action == "delete_message":
-                    msg_id = payload.get("message_id")
+                    try:
+                        msg_id = IdPayload.model_validate({"id": payload.get("message_id")}).id
+                    except ValidationError as exc:
+                        await websocket.send_text(json.dumps({"type": "error", "message": _validation_error_message(exc)}))
+                        continue
                     deleted = await delete_message(msg_id, auth_context["user_id"])
                     if deleted:
                         await manager.broadcast(
@@ -362,7 +487,11 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                         await websocket.send_text(json.dumps({"type": "error", "message": "Message not found or not deletable."}))
                     
                 elif action == "star_message":
-                    msg_id = payload.get("message_id")
+                    try:
+                        msg_id = IdPayload.model_validate({"id": payload.get("message_id")}).id
+                    except ValidationError as exc:
+                        await websocket.send_text(json.dumps({"type": "error", "message": _validation_error_message(exc)}))
+                        continue
                     await star_message(msg_id)
                     await manager.broadcast(
                         json.dumps({"type": "reaction_added", "message_id": msg_id, "reaction_type": "star"}),
@@ -370,15 +499,24 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                     )
                     
                 elif action == "send_thread_reply":
+                    try:
+                        parent_message_id = IdPayload.model_validate({"id": payload.get("parent_message_id")}).id
+                        reply_payload = ThreadReplyPayload.model_validate({
+                            "content": payload.get("content", ""),
+                            "image_base64": payload.get("image_base64"),
+                        })
+                    except ValidationError as exc:
+                        await websocket.send_text(json.dumps({"type": "error", "message": _validation_error_message(exc)}))
+                        continue
                     saved_reply = await save_thread_reply(
-                        parent_message_id=payload.get("parent_message_id"),
+                        parent_message_id=parent_message_id,
                         user_name=auth_context["display_name"],
-                        content=payload.get("content", ""),
-                        image_base64=payload.get("image_base64"),
+                        content=reply_payload.content,
+                        image_base64=reply_payload.image_base64,
                         sender_id=auth_context["user_id"],
                     )
                     await manager.broadcast(
-                        json.dumps({"type": "thread_reply_created", "data": saved_reply, "parent_message_id": payload.get("parent_message_id")}),
+                        json.dumps({"type": "thread_reply_created", "data": saved_reply, "parent_message_id": parent_message_id}),
                         channel_name
                     )
                 elif action == "typing_started":
@@ -391,7 +529,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
                 logger.error(f"Error processing websocket message: {e}")
                 
     except WebSocketDisconnect:
-        await manager.disconnect(websocket, channel_name)
+        await manager.disconnect(websocket, channel_name, auth_context["user_id"])
 
 @router.get("/admin/applications")
 async def admin_list_applications(auth: AuthState = Depends(RequireAdmin())):
@@ -629,25 +767,28 @@ async def api_get_profile(auth: AuthState = Depends(RequireVerifiedAstrologer())
     """Return a minimal profile object so the frontend knows the user has access.
     We derive the profile from the users table since community_profiles may not exist yet."""
     try:
-        settings = get_settings()
-        service_role_key = settings.supabase_service_role_key
-        import httpx
-        custom_client = httpx.Client(timeout=httpx.Timeout(60.0))
-        options = ClientOptions(
-            headers={"Authorization": f"Bearer {service_role_key}"},
-            httpx_client=custom_client,
-        )
-        admin_client = create_client(settings.supabase_url, service_role_key, options=options)
-
-        res = admin_client.table("users").select(
-            "id, email, full_name, role, verification_status, community_access, community_verification_status"
-        ).eq("id", auth.user_id).execute()
-        if not res.data:
-            return None
-        u = res.data[0]
         if not auth.is_admin and not auth.is_verified_astrologer:
             return None
-        email_name = u.get("email", "").split("@")[0]
+
+        u = dict(auth.profile or {})
+        if not u:
+            settings = get_settings()
+            service_role_key = settings.supabase_service_role_key
+            if service_role_key:
+                import httpx
+                custom_client = httpx.Client(timeout=httpx.Timeout(60.0))
+                options = ClientOptions(
+                    headers={"Authorization": f"Bearer {service_role_key}"},
+                    httpx_client=custom_client,
+                )
+                admin_client = create_client(settings.supabase_url, service_role_key, options=options)
+
+                res = admin_client.table("users").select(
+                    "id, email, full_name, role, verification_status, community_access, community_verification_status"
+                ).eq("id", auth.user_id).limit(1).execute()
+                u = dict(res.data[0]) if res.data else {}
+
+        email_name = (u.get("email") or auth.email or "").split("@")[0]
         metadata_name = auth.user_metadata.get("full_name") or auth.user_metadata.get("name")
         display_name = u.get("full_name") or metadata_name or email_name
         await update_message_author_name(
@@ -657,12 +798,12 @@ async def api_get_profile(auth: AuthState = Depends(RequireVerifiedAstrologer())
         )
         # Return a profile-shaped object so the frontend proceeds to workspace
         return {
-            "user_id": u["id"],
+            "user_id": u.get("id") or auth.user_id,
             "display_name": display_name,
             "username": email_name,
             "bio": "",
             "community_access": True,
-            "role": u.get("role") or "verified_astrologer",
+            "role": auth.role,
             "verification_status": u.get("verification_status") or u.get("community_verification_status"),
         }
     except Exception as e:
@@ -741,13 +882,36 @@ from app.storage.community_db import get_thread_replies
 
 from app.storage.community_db import save_message
 
+class MentionPayload(StrictRequestModel):
+    user_id: Optional[str] = Field(default=None, max_length=128)
+    display_name: Optional[str] = Field(default=None, max_length=160)
+    username: Optional[str] = Field(default=None, max_length=120)
+
+
+class IdPayload(StrictRequestModel):
+    id: str = Field(min_length=1, max_length=128, pattern=ID_RE)
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    first_error = exc.errors()[0] if exc.errors() else {}
+    message = first_error.get("msg") or "Invalid websocket payload"
+    return str(message).replace("Value error, ", "")
+
+
 class SendMessagePayload(StrictRequestModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(default="", max_length=4000)
     content_type: str = Field(default="STANDARD", max_length=40, pattern=r"^[A-Z_]+$")
     chart_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
     image_base64: Optional[str] = Field(default=None, max_length=2_000_000)
     reply_to_message_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
     client_id: Optional[str] = Field(default=None, max_length=128, pattern=ID_RE)
+    mentions: List[MentionPayload] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def require_content_or_attachment(self):
+        if not self.content and not self.image_base64:
+            raise ValueError("Message content or attachment is required")
+        return self
 
 
 class UpdateMessagePayload(StrictRequestModel):
@@ -755,8 +919,14 @@ class UpdateMessagePayload(StrictRequestModel):
 
 
 class ThreadReplyPayload(StrictRequestModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(default="", max_length=4000)
     image_base64: Optional[str] = Field(default=None, max_length=2_000_000)
+
+    @model_validator(mode="after")
+    def require_content_or_attachment(self):
+        if not self.content and not self.image_base64:
+            raise ValueError("Reply content or attachment is required")
+        return self
 
 
 class ReadStatePayload(StrictRequestModel):
@@ -987,6 +1157,13 @@ async def api_send_message(channel_name: str, payload: SendMessagePayload, auth:
             reply_to_message_id=payload.reply_to_message_id,
             client_id=payload.client_id,
         )
+        mentions = await _notify_mentions(
+            channel_name,
+            saved_msg,
+            auth.user_id,
+            [mention.model_dump() for mention in payload.mentions],
+        )
+        saved_msg = {**saved_msg, "mentions": mentions}
         
         # Broadcast the new message via WS
         await manager.broadcast(

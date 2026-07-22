@@ -134,6 +134,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./frontend:/app/frontend
+      - ./frontend_old:/app/frontend_old
       - ./main.py:/app/main.py
       - ./ephemeris:/app/ephemeris:ro
     networks:

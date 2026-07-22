@@ -2,6 +2,7 @@ __pycache__/
 .pycache/
 *.pyc
 kundali.db
+data/*.sqlite3
 .venv/
 ephemeris/
 .env

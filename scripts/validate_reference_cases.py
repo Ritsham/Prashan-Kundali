@@ -1,4 +1,5 @@
 import csv
+import asyncio
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -22,8 +23,8 @@ def equals_if_present(actual: object, expected: str) -> bool:
     return True if not expected else str(actual) == expected
 
 
-def validate_case(row: dict) -> list[str]:
-    chart = calculate_prashna_chart(
+async def validate_case(row: dict) -> list[str]:
+    chart = await calculate_prashna_chart(
         question=row["question"],
         name=row["name"],
         asked_at_utc=datetime.fromisoformat(row["asked_at_utc"]),
@@ -60,7 +61,7 @@ def expected_field_count(row: dict) -> int:
     )
 
 
-def main() -> int:
+async def main() -> int:
     if not CASE_FILE.exists():
         print(f"Missing {CASE_FILE}")
         return 1
@@ -76,7 +77,7 @@ def main() -> int:
             populated_fields += field_count
             if field_count:
                 populated_cases += 1
-            failed = validate_case(row)
+            failed = await validate_case(row)
             if failed:
                 failures.append((row["case_id"], failed))
 
@@ -93,4 +94,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(main()))

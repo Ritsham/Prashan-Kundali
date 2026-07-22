@@ -256,7 +256,7 @@ def _build_settings() -> Settings:
         razorpay_key_id=_env("RAZORPAY_KEY_ID"),
         razorpay_key_secret=_env("RAZORPAY_KEY_SECRET"),
         razorpay_webhook_secret=_env("RAZORPAY_WEBHOOK_SECRET"),
-        consultation_price_inr=_env("CONSULTATION_PRICE_INR", "299.00"),
+        consultation_price_inr=_env("CONSULTATION_PRICE_INR", "199.00"),
         require_llm_in_production=_bool_env("REQUIRE_LLM_IN_PRODUCTION", True),
     )
 

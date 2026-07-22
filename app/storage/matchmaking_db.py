@@ -103,7 +103,7 @@ async def create_matchmaking_consultation(
     match_id: str,
     report: dict[str, Any],
     question: str,
-    payment_ref: str = "match_free_review",
+    payment_ref: str = "match_consultation_299",
     scheduled_at: str | None = None,
     db_client: Any | None = None,
 ) -> dict[str, Any]:
@@ -132,7 +132,7 @@ async def create_matchmaking_consultation(
         "birth_place": f"{boy['birth_place']} / {girl['birth_place']}",
         "status": "QUEUED",
         "payment_ref": payment_ref,
-        "amount": 0.0,
+        "amount": 299.0,
         "created_at": now.isoformat(),
         "sla_deadline": (now + timedelta(hours=24)).isoformat(),
         "scheduled_at": scheduled_at,

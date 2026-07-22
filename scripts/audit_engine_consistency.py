@@ -1,4 +1,5 @@
 import csv
+import asyncio
 import json
 import sys
 from datetime import datetime
@@ -13,7 +14,7 @@ from app.services.chart_calculator import calculate_prashna_chart
 CASE_FILE = Path("validation/reference_cases/prashna_cases.csv")
 
 
-def main() -> int:
+async def main() -> int:
     rows = list(csv.DictReader(CASE_FILE.open()))
     issues = []
     summary = {
@@ -29,7 +30,7 @@ def main() -> int:
 
     for row in rows:
         case_id = row["case_id"]
-        chart = calculate_prashna_chart(
+        chart = await calculate_prashna_chart(
             question=row["question"],
             name=row["name"],
             asked_at_utc=datetime.fromisoformat(row["asked_at_utc"]),
@@ -86,4 +87,4 @@ def check(case_id: str, message: str, passed: bool, issues: list, summary: dict,
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(main()))

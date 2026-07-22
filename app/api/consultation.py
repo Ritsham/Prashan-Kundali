@@ -288,6 +288,11 @@ class PublicConsultationRequest(StrictRequestModel):
     currency: str = Field(default="INR", max_length=3, pattern=r"^[A-Z]{3}$")
     chart_snapshot: Optional[dict] = None
 
+
+class CancelConsultationRequest(StrictRequestModel):
+    requester_email: Optional[str] = Field(default=None, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 class AdminConsultationUpdate(StrictRequestModel):
     status: Optional[str] = Field(default=None, pattern="^(requested|pending_payment|confirmed|active|completed|cancelled|refunded|pending|reviewed|accepted|scheduled|in_progress|rejected|waiting_queue)$")
     meeting_link: Optional[str] = Field(default=None, max_length=500)
@@ -303,6 +308,8 @@ async def create_case(
     try:
         payload = await _enrich_case_snapshot(payload)
         db = auth.client if auth else get_service_client()
+        if not db:
+            raise HTTPException(status_code=500, detail="Consultation storage is not configured")
         result = await create_consultation_case(payload, user_id=auth.user_id if auth else None, db_client=db)
         if result.get("case"):
             result["case"] = _public_case(result["case"])
@@ -315,7 +322,7 @@ async def create_case(
 
 @router.get("/consultation-cases/{case_id}")
 async def read_case(case_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)):
-    case = await get_consultation_case(case_id, auth.client)
+    case = await get_consultation_case(case_id, get_service_client())
     if not case:
         raise HTTPException(status_code=404, detail="Consultation case not found")
     if not _can_read_own_case(auth, case):
@@ -398,6 +405,10 @@ async def request_consultation(
     auth: Optional[AuthState] = Depends(get_optional_current_user),
 ):
     try:
+        db = get_service_client()
+        if not db:
+            raise HTTPException(status_code=500, detail="Supabase service role client is not configured")
+
         data = payload.model_dump()
 
         # If frontend provided a snapshot directly, prefer that
@@ -411,7 +422,7 @@ async def request_consultation(
         result = await create_consultation_request(
             data,
             user_id=auth.user_id if auth else None,
-            db_client=auth.client if auth else get_service_client(),
+            db_client=db,
         )
         request_id = (result.get("request") or {}).get("id")
         should_enrich_snapshot = (
@@ -439,12 +450,48 @@ async def request_consultation(
 
 @router.get("/consultation/request/{request_id}")
 async def read_consultation_request(request_id: Annotated[str, Path(pattern=ID_RE)], auth: AuthState = Depends(get_current_user)):
-    request = await get_consultation_request(request_id, auth.client)
+    request = await get_consultation_request(request_id, get_service_client())
     if not request:
         raise HTTPException(status_code=404, detail="Consultation request not found")
     if not _can_read_own_case(auth, request):
         raise HTTPException(status_code=403, detail="Not allowed to read this consultation request")
     return {"request": request}
+
+
+@router.post("/consultation/request/{request_id}/cancel", dependencies=[Depends(booking_limiter)])
+async def cancel_consultation_request(
+    request_id: Annotated[str, Path(pattern=ID_RE)],
+    payload: CancelConsultationRequest,
+    auth: Optional[AuthState] = Depends(get_optional_current_user),
+):
+    db = get_service_client()
+    if not db:
+        raise HTTPException(status_code=500, detail="Supabase service role client is not configured")
+
+    request = await get_consultation_request(request_id, db)
+    if not request:
+        raise HTTPException(status_code=404, detail="Consultation request not found")
+
+    request_email = str(request.get("email") or request.get("user", {}).get("email") or "").strip().lower()
+    requester_email = str(payload.requester_email or "").strip().lower()
+    owns_request = bool(
+        (auth and _can_read_own_case(auth, request))
+        or (request_email and requester_email and request_email == requester_email)
+    )
+    if not owns_request:
+        raise HTTPException(status_code=403, detail="Not allowed to cancel this consultation request")
+
+    status = normalize_consultation_status(request.get("status"))
+    payment_status = str(request.get("payment_status") or request.get("consultation", {}).get("payment_status") or "").lower()
+    if payment_status == "paid" or status in {"confirmed", "active", "completed", "refunded"}:
+        raise HTTPException(status_code=400, detail="Paid or active consultation requests cannot be cancelled from this page")
+
+    result = await update_consultation_request(
+        request_id,
+        {"status": "cancelled", "payment_status": "cancelled"},
+        db,
+    )
+    return result
 
 
 @router.get("/admin/consultations/requests")

@@ -1,21 +1,21 @@
-case_id,category,asked_at_utc,place_name,latitude,longitude,lagna_sign,lagna_degree,lagna_nakshatra,lagna_pada,moon_sign,moon_degree,moon_nakshatra,moon_pada,mahadasha,antardasha,pratyantardasha,sookshma,ayanamsa_degrees,ephemeris_core_files_present
-india_delhi_business,india_metro,2026-06-26T10:00:00+00:00,"New Delhi, India",28.6139,77.2090,Libra,20.789937,Vishakha,1,Scorpio,1.462915,Vishakha,4,Jupiter,Rahu,Rahu,Saturn,24.227052,True
-india_mumbai_career,india_metro,2026-06-26T01:15:00+00:00,"Mumbai, India",19.0760,72.8777,Gemini,18.818798,Ardra,4,Libra,27.112739,Vishakha,3,Jupiter,Venus,Moon,Jupiter,24.227038,True
-india_kolkata_property,india_metro,2026-01-14T12:05:00+00:00,"Kolkata, India",22.5726,88.3639,Cancer,5.935535,Pushya,1,Scorpio,11.966696,Anuradha,3,Saturn,Moon,Venus,Jupiter,24.22082,True
-india_chennai_marriage,india_metro,2026-03-20T00:45:00+00:00,"Chennai, India",13.0827,80.2707,Pisces,4.679164,Uttara Bhadrapada,1,Pisces,17.949021,Revati,1,Mercury,Mercury,Rahu,Venus,24.223289,True
-india_bengaluru_health,india_metro,2026-09-22T13:20:00+00:00,"Bengaluru, India",12.9716,77.5946,Pisces,16.660074,Uttara Bhadrapada,4,Capricorn,15.963843,Shravana,2,Moon,Saturn,Saturn,Jupiter,24.230423,True
-global_london_visa,non_india,2026-06-26T06:30:00+00:00,"London, United Kingdom",51.5074,-0.1278,Cancer,10.849646,Pushya,3,Libra,29.723981,Vishakha,3,Jupiter,Moon,Rahu,Venus,24.227046,True
-global_newyork_lawsuit,non_india,2026-02-01T18:10:00+00:00,"New York, USA",40.7128,-74.0060,Taurus,28.566043,Mrigashira,2,Cancer,16.487659,Pushya,4,Saturn,Jupiter,Rahu,Saturn,24.221519,True
-global_dubai_money,non_india,2026-04-10T08:40:00+00:00,"Dubai, UAE",25.2048,55.2708,Cancer,7.187762,Pushya,2,Sagittarius,28.027742,Uttara Ashadha,1,Sun,Moon,Mercury,Venus,24.224104,True
-global_sydney_move,non_india,2026-10-05T21:25:00+00:00,"Sydney, Australia",-33.8688,151.2093,Libra,28.063007,Vishakha,3,Cancer,18.841154,Ashlesha,1,Mercury,Ketu,Mars,Rahu,24.230933,True
-global_singapore_startup,non_india,2026-12-12T04:55:00+00:00,Singapore,1.3521,103.8198,Aquarius,23.11767,Purva Bhadrapada,1,Capricorn,0.272303,Uttara Ashadha,2,Sun,Rahu,Mercury,Rahu,24.233508,True
-sunrise_varanasi_spiritual,sunrise_sunset,2026-06-21T00:45:00+00:00,"Varanasi, India",25.3176,82.9739,Gemini,19.48742,Ardra,4,Leo,24.87826,Purva Phalguni,4,Venus,Mercury,Moon,Saturn,24.226846,True
-sunrise_jaipur_relationship,sunrise_sunset,2026-07-15T00:20:00+00:00,"Jaipur, India",26.9124,75.7873,Gemini,29.081343,Punarvasu,3,Cancer,6.852381,Pushya,2,Saturn,Mercury,Jupiter,Saturn,24.227763,True
-sunset_goa_travel,sunrise_sunset,2026-08-18T13:10:00+00:00,"Goa, India",15.2993,74.1240,Capricorn,28.012717,Dhanishta,2,Libra,13.777914,Swati,3,Rahu,Mercury,Rahu,Ketu,24.229084,True
-sunset_losangeles_contract,sunrise_sunset,2026-05-03T02:40:00+00:00,"Los Angeles, USA",34.0522,-118.2437,Libra,19.801231,Swati,4,Scorpio,3.831785,Anuradha,1,Saturn,Saturn,Mercury,Mars,24.224975,True
-sunrise_tokyo_exam,sunrise_sunset,2026-11-01T20:55:00+00:00,"Tokyo, Japan",35.6762,139.6503,Libra,12.527165,Swati,2,Cancer,15.452234,Pushya,4,Saturn,Jupiter,Mercury,Ketu,24.231965,True
-boundary_delhi_lagna_1,boundary,2026-06-26T05:56:37+00:00,"New Delhi, India",28.6139,77.2090,Leo,27.618658,Uttara Phalguni,1,Libra,29.447412,Vishakha,3,Jupiter,Moon,Moon,Moon,24.227045,True
-boundary_delhi_lagna_2,boundary,2026-06-26T07:04:31+00:00,"New Delhi, India",28.6139,77.2090,Virgo,12.615269,Hasta,1,Scorpio,0.0099,Vishakha,4,Jupiter,Moon,Saturn,Sun,24.227047,True
-boundary_london_house,boundary,2026-06-26T12:00:00+00:00,"London, United Kingdom",51.5074,-0.1278,Virgo,8.948246,Uttara Phalguni,4,Scorpio,2.455976,Vishakha,4,Jupiter,Rahu,Mercury,Saturn,24.227055,True
-nakshatra_moon_vishakha,nakshatra_boundary,2026-06-26T07:04:31+00:00,"New Delhi, India",28.6139,77.2090,Virgo,12.615269,Hasta,1,Scorpio,0.0099,Vishakha,4,Jupiter,Moon,Saturn,Sun,24.227047,True
-nakshatra_moon_rohini,nakshatra_boundary,2026-01-01T00:00:00+00:00,"Mumbai, India",19.0760,72.8777,Scorpio,22.158564,Jyeshtha,2,Taurus,12.49379,Rohini,1,Moon,Rahu,Saturn,Saturn,24.220304,True
+case_id,category,asked_at_utc,place_name,latitude,longitude,lagna_sign,lagna_degree,lagna_nakshatra,lagna_pada,moon_sign,moon_degree,moon_nakshatra,moon_pada,mahadasha,antardasha,pratyantardasha,sookshma,prana,ayanamsa_degrees,ephemeris_core_files_present
+india_delhi_business,india_metro,2026-06-26T10:00:00+00:00,"New Delhi, India",28.6139,77.2090,Libra,20.789937,Vishakha,1,Scorpio,1.462915,Vishakha,4,Jupiter,Rahu,Rahu,Saturn,Jupiter,24.227052,True
+india_mumbai_career,india_metro,2026-06-26T01:15:00+00:00,"Mumbai, India",19.0760,72.8777,Gemini,18.818798,Ardra,4,Libra,27.112739,Vishakha,3,Jupiter,Venus,Moon,Jupiter,Rahu,24.227038,True
+india_kolkata_property,india_metro,2026-01-14T12:05:00+00:00,"Kolkata, India",22.5726,88.3639,Cancer,5.935535,Pushya,1,Scorpio,11.966696,Anuradha,3,Saturn,Moon,Venus,Jupiter,Jupiter,24.22082,True
+india_chennai_marriage,india_metro,2026-03-20T00:45:00+00:00,"Chennai, India",13.0827,80.2707,Pisces,4.679164,Uttara Bhadrapada,1,Pisces,17.949021,Revati,1,Mercury,Mercury,Rahu,Venus,Ketu,24.223289,True
+india_bengaluru_health,india_metro,2026-09-22T13:20:00+00:00,"Bengaluru, India",12.9716,77.5946,Pisces,16.660074,Uttara Bhadrapada,4,Capricorn,15.963843,Shravana,2,Moon,Saturn,Saturn,Jupiter,Saturn,24.230423,True
+global_london_visa,non_india,2026-06-26T06:30:00+00:00,"London, United Kingdom",51.5074,-0.1278,Cancer,10.849646,Pushya,3,Libra,29.723981,Vishakha,3,Jupiter,Moon,Rahu,Venus,Jupiter,24.227046,True
+global_newyork_lawsuit,non_india,2026-02-01T18:10:00+00:00,"New York, USA",40.7128,-74.0060,Taurus,28.566043,Mrigashira,2,Cancer,16.487659,Pushya,4,Saturn,Jupiter,Rahu,Saturn,Mercury,24.221519,True
+global_dubai_money,non_india,2026-04-10T08:40:00+00:00,"Dubai, UAE",25.2048,55.2708,Cancer,7.187762,Pushya,2,Sagittarius,28.027742,Uttara Ashadha,1,Sun,Moon,Mercury,Venus,Jupiter,24.224104,True
+global_sydney_move,non_india,2026-10-05T21:25:00+00:00,"Sydney, Australia",-33.8688,151.2093,Libra,28.063007,Vishakha,3,Cancer,18.841154,Ashlesha,1,Mercury,Ketu,Mars,Rahu,Ketu,24.230933,True
+global_singapore_startup,non_india,2026-12-12T04:55:00+00:00,Singapore,1.3521,103.8198,Aquarius,23.11767,Purva Bhadrapada,1,Capricorn,0.272303,Uttara Ashadha,2,Sun,Rahu,Mercury,Rahu,Jupiter,24.233508,True
+sunrise_varanasi_spiritual,sunrise_sunset,2026-06-21T00:45:00+00:00,"Varanasi, India",25.3176,82.9739,Gemini,19.48742,Ardra,4,Leo,24.87826,Purva Phalguni,4,Venus,Mercury,Moon,Saturn,Jupiter,24.226846,True
+sunrise_jaipur_relationship,sunrise_sunset,2026-07-15T00:20:00+00:00,"Jaipur, India",26.9124,75.7873,Gemini,29.081343,Punarvasu,3,Cancer,6.852381,Pushya,2,Saturn,Mercury,Jupiter,Saturn,Jupiter,24.227763,True
+sunset_goa_travel,sunrise_sunset,2026-08-18T13:10:00+00:00,"Goa, India",15.2993,74.1240,Capricorn,28.012717,Dhanishta,2,Libra,13.777914,Swati,3,Rahu,Mercury,Rahu,Ketu,Venus,24.229084,True
+sunset_losangeles_contract,sunrise_sunset,2026-05-03T02:40:00+00:00,"Los Angeles, USA",34.0522,-118.2437,Libra,19.801231,Swati,4,Scorpio,3.831785,Anuradha,1,Saturn,Saturn,Mercury,Mars,Venus,24.224975,True
+sunrise_tokyo_exam,sunrise_sunset,2026-11-01T20:55:00+00:00,"Tokyo, Japan",35.6762,139.6503,Libra,12.527165,Swati,2,Cancer,15.452234,Pushya,4,Saturn,Jupiter,Mercury,Ketu,Jupiter,24.231965,True
+boundary_delhi_lagna_1,boundary,2026-06-26T05:56:37+00:00,"New Delhi, India",28.6139,77.2090,Leo,27.618658,Uttara Phalguni,1,Libra,29.447412,Vishakha,3,Jupiter,Moon,Moon,Moon,Jupiter,24.227045,True
+boundary_delhi_lagna_2,boundary,2026-06-26T07:04:31+00:00,"New Delhi, India",28.6139,77.2090,Virgo,12.615269,Hasta,1,Scorpio,0.0099,Vishakha,4,Jupiter,Moon,Saturn,Sun,Moon,24.227047,True
+boundary_london_house,boundary,2026-06-26T12:00:00+00:00,"London, United Kingdom",51.5074,-0.1278,Virgo,8.948246,Uttara Phalguni,4,Scorpio,2.455976,Vishakha,4,Jupiter,Rahu,Mercury,Saturn,Saturn,24.227055,True
+nakshatra_moon_vishakha,nakshatra_boundary,2026-06-26T07:04:31+00:00,"New Delhi, India",28.6139,77.2090,Virgo,12.615269,Hasta,1,Scorpio,0.0099,Vishakha,4,Jupiter,Moon,Saturn,Sun,Moon,24.227047,True
+nakshatra_moon_rohini,nakshatra_boundary,2026-01-01T00:00:00+00:00,"Mumbai, India",19.0760,72.8777,Scorpio,22.158564,Jyeshtha,2,Taurus,12.49379,Rohini,1,Moon,Rahu,Saturn,Saturn,Rahu,24.220304,True

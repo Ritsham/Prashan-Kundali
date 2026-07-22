@@ -238,6 +238,29 @@
       color: #1f6f35;
       font-weight: 800;
     }
+    .paid-community-notice {
+      display: grid;
+      gap: 7px;
+      margin-top: 4px;
+      padding: 12px;
+      border: 1px solid #d8e6dd;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #34513d;
+    }
+    .paid-community-notice a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-height: 40px;
+      padding: 0 14px;
+      border-radius: 8px;
+      background: #1f6f35;
+      color: #ffffff;
+      text-decoration: none;
+      box-shadow: 0 8px 18px rgba(31, 111, 53, 0.18);
+    }
     .status-actions {
       display: flex;
       gap: 10px;
@@ -254,6 +277,19 @@
       padding: 0 14px;
       cursor: pointer;
     }
+    .status-action-primary {
+      width: auto;
+      min-height: 42px;
+      padding: 0 18px;
+      box-shadow: 0 8px 18px rgba(140, 61, 37, 0.18);
+    }
+    .status-action-danger {
+      border-color: #f0c8bd;
+      color: #9b2f1f;
+    }
+    .status-action-danger:hover {
+      background: #fff2ee;
+    }
     .small-note {
       color: #7b6e61;
       font-size: 13px;
@@ -268,6 +304,7 @@
     }
   </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
   </head>
 <body    <!-- Global Navbar -->
     <!-- Global Navbar -->
@@ -284,6 +321,7 @@
         <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
         <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
         <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn nav-community-alert" style="text-decoration: none;">Astro Community <span>(Astrologers Only)</span></a>
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
@@ -459,6 +497,9 @@
     initAuth();
     recordVisit();
   </script>
-  <script src="/consultation.js" defer></script>
+  <script src="/consultation.js?v=consultation-status-fix-20260723-2" defer></script>
+  <script src="/consultation-payment-contact.js?v=consultation-status-fix-20260723-2" defer></script>
+  <!-- ===== MOBILE NAV v3: shared mobile header + drawer, injected on every page ===== -->
+  <script src="mobile-nav.js" defer></script>
 </body>
 </html>

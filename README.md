@@ -15,11 +15,11 @@ The platform is designed with a **Modern Indian Luxury** aesthetic—drawing vis
 - **Vimshottari Dasha**: Computes full 120-year three-tier Dasha structures (Maha Dasha, Antar Dasha, Pratyantar Dasha) based on moon coordinates.
 - **Timezone Resolver**: Uses `timezonefinder` and geographical coordinates to automatically determine exact UTC offsets for any location.
 
-### 2. Static Frontend Served by FastAPI
-- **Localhost and Production Match**: The app uses the same `frontend_old/` HTML, CSS, and JavaScript files locally and on Vercel.
+### 2. Frontends Served by FastAPI
+- **Canonical Public Website**: The public landing, Prashna/Lagna flow, consultation intake, matchmaking, policy pages, and supporting static pages are served from `frontend_old/`.
+- **React Workspaces**: Payment, Astro Community, and Admin workspace screens are built from `frontend/` and served from `frontend/dist/` on their explicit routes.
 - **Luxury Spiritual Aesthetic**: Styled with curated gold-and-cream palettes, traditional brand elements, and an integrated Lord Ganesha icon in the navigation header.
-- **Production Routes**: FastAPI serves the main website, consultation flow, community pages, policy pages, dashboard, profile, matchmaking, and validation pages from one frontend directory.
-- **No Duplicate Frontend App**: The React/Vite duplicate has been removed so routing cannot drift between localhost and the live website.
+- **Production Routes**: FastAPI serves the legacy public platform at `/` and `/index.html`; `/payment`, `/astro-community`, and `/admin` require the React build output.
 
 ### 3. Consultation Workspaces & Queues
 - **Consultant Directory & Profiles**: Interactive search and detailed practitioner dashboards.
@@ -34,11 +34,11 @@ The platform is designed with a **Modern Indian Luxury** aesthetic—drawing vis
 | :--- | :--- |
 | **Backend Framework** | FastAPI (Python 3.11+, ASGI), Uvicorn |
 | **Astro Calculations** | PySwissEph (Swiss Ephemeris), TimezoneFinder |
-| **Database & Cache** | SQLite (via `aiosqlite` async drivers), Supabase Postgres |
+| **Database & Cache** | Supabase Postgres, Supabase Storage, optional Redis |
 | **Authentication & AuthZ** | Supabase Auth, Row-Level Security (RLS) policies |
 | **Real-Time Layer** | Native WebSockets |
 | **AI Interpretation** | Multi-key rotated LLM providers (Gemini / OpenAI) |
-| **Frontend** | Static HTML, CSS, and JavaScript served from `frontend_old/` |
+| **Frontend** | Static HTML/CSS/JS in `frontend_old/`, plus React/Vite workspaces in `frontend/` |
 
 ---
 
@@ -65,6 +65,15 @@ Backend secrets such as `SUPABASE_SERVICE_ROLE_KEY`, LLM provider keys, Redis cr
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for development, staging, and production requirements.
 
 ### Launching the Application
+Build the React workspace bundle when you need `/payment`, `/astro-community`, or `/admin`:
+
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
 Launch the ASGI development server:
 
 ```bash
@@ -74,6 +83,7 @@ python3 main.py
 The server will run locally at `http://127.0.0.1:8000`.
 
 - **Main Application & Pages**: `http://127.0.0.1:8000/` and `http://127.0.0.1:8000/index.html` served from `frontend_old/`
+- **React Workspace Pages**: `http://127.0.0.1:8000/payment`, `/astro-community`, and `/admin` served from `frontend/dist/`
 
 ---
 
@@ -100,12 +110,14 @@ The server will run locally at `http://127.0.0.1:8000`.
 │   │   ├── geocoding_service.py# Nominatim geographic queries
 │   │   └── realtime.py        # WebSocket connection manager
 │   └── storage/               # SQLite & Supabase access helpers
-├── frontend_old/              # Single frontend used locally and in production
+├── frontend_old/              # Canonical public website and legacy app flows
 │   ├── index.html             # Landing page
 │   ├── consultation.html      # Consultant/payment flow page
-│   ├── community.html         # Astro community page
 │   ├── styles.css             # Shared site styling
 │   └── *.js                   # Browser-side page scripts
+├── frontend/                  # React/Vite payment, community, and admin workspaces
+│   ├── src/                   # React application source
+│   └── dist/                  # Built assets served by FastAPI after npm run build
 ├── main.py                    # Application Entrypoint & WS Mounts
 └── requirements.txt           # Python Dependency Manifest
 ```
@@ -155,7 +167,8 @@ sequenceDiagram
     database DB as Supabase DB
 
     Note over Astrologer, Server: WebSocket Handshake & Connection
-    Astrologer->>Server: Connect to /ws/community/{channel} with Supabase Token
+    Astrologer->>Server: Connect to /ws/community/{channel}
+    Astrologer->>Server: { "action": "authenticate", "token": "<Supabase JWT>" }
     activate Server
     Server->>Server: Validate Supabase JWT and Role
     Server-->>Astrologer: Connection Established (ACK)

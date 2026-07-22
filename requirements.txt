@@ -11,3 +11,4 @@ redis
 celery>=5.3.0
 httpx
 python-multipart
+razorpay==2.0.1

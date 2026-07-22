@@ -1,4 +1,5 @@
 import csv
+import asyncio
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -37,8 +38,8 @@ OUTPUT_FIELDS = [
 ]
 
 
-def output_row(row: dict) -> dict:
-    chart = calculate_prashna_chart(
+async def output_row(row: dict) -> dict:
+    chart = await calculate_prashna_chart(
         question=row["question"],
         name=row["name"],
         asked_at_utc=datetime.fromisoformat(row["asked_at_utc"]),
@@ -72,7 +73,7 @@ def output_row(row: dict) -> dict:
     }
 
 
-def main() -> int:
+async def main() -> int:
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with CASE_FILE.open(newline="") as input_handle:
         rows = list(csv.DictReader(input_handle))
@@ -81,11 +82,11 @@ def main() -> int:
         writer = csv.DictWriter(output_handle, fieldnames=OUTPUT_FIELDS)
         writer.writeheader()
         for row in rows:
-            writer.writerow(output_row(row))
+            writer.writerow(await output_row(row))
 
     print(f"Wrote {len(rows)} generated chart summaries to {OUTPUT_FILE}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(asyncio.run(main()))

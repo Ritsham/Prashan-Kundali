@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
 from datetime import datetime, timezone, timedelta
@@ -18,6 +19,8 @@ from app.storage.database import supabase
 from app.schemas.consultation_case import ConsultationCasePayload
 
 MAX_ACTIVE_CONSULTATION_REQUESTS = 20
+MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT = 5
+MISSING_SCHEMA_COLUMN_RE = re.compile(r"Could not find the '([^']+)' column")
 
 FOUNDER_CONSULTANT = {
     "id": "founder-rupesh-kumar",
@@ -70,6 +73,28 @@ def _encode_json(value: Any) -> Any:
     return value
 
 
+def _missing_schema_column(exc: Exception) -> Optional[str]:
+    match = MISSING_SCHEMA_COLUMN_RE.search(str(exc))
+    return match.group(1) if match else None
+
+
+def _insert_with_schema_fallback(db: Any, table: str, row: Dict[str, Any]) -> Dict[str, Any]:
+    insert_row = dict(row)
+    removed_columns: list[str] = []
+    while True:
+        try:
+            db.table(table).insert(insert_row).execute()
+            if removed_columns:
+                print(f"Warning: {table} insert omitted unsupported columns: {', '.join(removed_columns)}")
+            return insert_row
+        except Exception as exc:
+            missing_column = _missing_schema_column(exc)
+            if not missing_column or missing_column not in insert_row:
+                raise
+            removed_columns.append(missing_column)
+            insert_row.pop(missing_column, None)
+
+
 def _normalize_case_row(row: Dict[str, Any]) -> Dict[str, Any]:
     case = dict(row)
     snapshot = _json_value(case.get("astrology_snapshot") or case.get("astrological_snapshot"))
@@ -120,7 +145,8 @@ def _normalize_case_row(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _status_filter_values() -> list[str]:
-    return sorted(ACTIVE_CONSULTATION_STATUSES | {"pending", "accepted", "scheduled", "in_progress", "waiting_queue", "QUEUED"})
+    statuses = ACTIVE_CONSULTATION_STATUSES - {CONSULTATION_STATUS_PENDING_PAYMENT}
+    return sorted(statuses | {"pending", "accepted", "scheduled", "in_progress", "waiting_queue", "QUEUED"})
 
 
 async def _has_active_booking_conflict(
@@ -134,22 +160,31 @@ async def _has_active_booking_conflict(
 ) -> bool:
     if not db:
         return False
+    active_ids: set[str] = set()
     try:
-        query = db.table("consultation_requests").select("id, status")
-        query = query.eq("consultant_id", consultant_id)
-        query = query.in_("status", _status_filter_values())
-        if preferred_date:
-            query = query.eq("preferred_date", preferred_date)
-        if preferred_time:
-            query = query.eq("preferred_time", preferred_time)
         if user_id:
-            query = query.eq("user_id", user_id)
-        elif email:
-            query = query.eq("email", email)
-        else:
-            return False
-        res = query.limit(1).execute()
-        return bool(res.data)
+            user_res = (
+                db.table("consultation_requests")
+                .select("id")
+                .eq("consultant_id", consultant_id)
+                .in_("status", _status_filter_values())
+                .eq("user_id", user_id)
+                .limit(MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT)
+                .execute()
+            )
+            active_ids.update(str(row.get("id")) for row in (user_res.data or []) if row.get("id"))
+        if email and len(active_ids) < MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT:
+            email_res = (
+                db.table("consultation_requests")
+                .select("id")
+                .eq("consultant_id", consultant_id)
+                .in_("status", _status_filter_values())
+                .eq("email", email)
+                .limit(MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT)
+                .execute()
+            )
+            active_ids.update(str(row.get("id")) for row in (email_res.data or []) if row.get("id"))
+        return len(active_ids) >= MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT
     except Exception as exc:
         print(f"Warning: consultation conflict lookup failed: {exc}")
         return False
@@ -197,7 +232,7 @@ async def create_consultation_case(
         preferred_date=consultation.preferred_date,
         preferred_time=consultation.preferred_time,
     ):
-        raise ValueError("You already have an active consultation request for this astrologer and time.")
+        raise ValueError(f"You can have up to {MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT} active consultation requests at a time.")
 
     row = {
         "id": case_id,
@@ -227,7 +262,6 @@ async def create_consultation_case(
         "consultation_mode": consultation.consultation_mode,
         "payment_status": consultation.payment_status or "not_paid",
         "quoted_price": consultation.quoted_price,
-        "currency": consultation.currency or "INR",
         "status": status,
         "queue_number": queue_number,
         "astrology_snapshot": _encode_json(snapshot),
@@ -242,14 +276,14 @@ async def create_consultation_case(
     }
 
     try:
-        db.table("consultation_requests").insert(row).execute()
+        row = _insert_with_schema_fallback(db, "consultation_requests", row)
     except Exception as exc:
         if "PGRST204" not in str(exc):
             print(f"Error: consultation case insert failed: {exc}")
             raise ValueError(f"Supabase Security Error: {exc}")
         legacy_row = _legacy_consultation_case_row(row, payload, snapshot)
         try:
-            db.table("consultation_requests").insert(legacy_row).execute()
+            legacy_row = _insert_with_schema_fallback(db, "consultation_requests", legacy_row)
             row = _normalize_case_row(legacy_row)
         except Exception as legacy_exc:
             print(f"Error: consultation case legacy insert failed: {legacy_exc}")
@@ -457,7 +491,7 @@ async def create_consultation_request(
         preferred_date=payload.get("preferred_date"),
         preferred_time=payload.get("preferred_time"),
     ):
-        raise ValueError("You already have an active consultation request for this astrologer and time.")
+        raise ValueError(f"You can have up to {MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT} active consultation requests at a time.")
 
     row = {
         "id": request_id,
@@ -474,7 +508,6 @@ async def create_consultation_request(
         "preferred_time": payload.get("preferred_time", ""),
         "payment_status": payment_status,
         "quoted_price": payload.get("quoted_price"),
-        "currency": payload.get("currency", "INR"),
         "status": status,
         "queue_number": queue_number,
         "astrological_snapshot": payload.get("astrological_snapshot"),
@@ -485,7 +518,7 @@ async def create_consultation_request(
         "updated_at": now,
     }
     try:
-        db.table("consultation_requests").insert(row).execute()
+        row = _insert_with_schema_fallback(db, "consultation_requests", row)
     except Exception as exc:
         print(f"Error: consultation_requests insert failed: {exc}")
         raise ValueError(f"Supabase Security Error: {exc}")

@@ -47,7 +47,11 @@ def normalize_role(profile: Optional[dict[str, Any]]) -> str:
     if raw_role in {ROLE_ASTROLOGER_VERIFIED, "verified_astrologer"}:
         return ROLE_ASTROLOGER_VERIFIED
     if raw_role in {ROLE_ASTROLOGER_PENDING, "pending_astrologer"}:
+        if verification_status in {"verified", "approved"} or community_status in {"verified", "approved"} or community_access:
+            return ROLE_ASTROLOGER_VERIFIED
         return ROLE_ASTROLOGER_PENDING
+    if verification_status in {"verified", "approved"} or community_status in {"verified", "approved"} or community_access:
+        return ROLE_ASTROLOGER_VERIFIED
     if raw_role == "astrologer":
         if verification_status in {"verified", "approved"} or community_status in {"verified", "approved"} or community_access:
             return ROLE_ASTROLOGER_VERIFIED
@@ -87,6 +91,7 @@ def _load_user_profile(user_id: str, fallback_client: Optional[Client] = None) -
     db = get_service_client() or fallback_client
     if not db:
         return {}
+    profile: dict[str, Any] = {}
     try:
         res = (
             db.table("users")
@@ -95,9 +100,36 @@ def _load_user_profile(user_id: str, fallback_client: Optional[Client] = None) -
             .limit(1)
             .execute()
         )
-        return dict(res.data[0]) if res.data else {}
+        profile = dict(res.data[0]) if res.data else {}
     except Exception:
-        return {}
+        profile = {}
+
+    if normalize_role(profile) in {ROLE_ADMIN, ROLE_ASTROLOGER_VERIFIED}:
+        return profile
+
+    try:
+        app_res = (
+            db.table("community_applications")
+            .select("status")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        latest_status = str((app_res.data[0] if app_res.data else {}).get("status") or "").lower()
+        if latest_status in {"approved", "verified"}:
+            return {
+                **profile,
+                "id": profile.get("id") or user_id,
+                "role": ROLE_ASTROLOGER_VERIFIED,
+                "verification_status": "verified",
+                "community_access": True,
+                "community_verification_status": "APPROVED",
+            }
+    except Exception:
+        pass
+
+    return profile
 
 
 def _auth_state_from_user(client: Optional[Client], user: Any) -> AuthState:

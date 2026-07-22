@@ -228,7 +228,8 @@ def build_matchmaking_booking_payload(
         "topic": "Marriage",
         "question": full_question,
         "preferred_time": preferred_slot,
-        "payment_status": "not_paid",
+        "payment_status": "paid",
+        "quoted_price": 299.0,
     }
 
 
@@ -272,7 +273,8 @@ def build_matchmaking_case_payload(
             "additional_message": question,
             "preferred_time": preferred_slot,
             "consultation_mode": "matchmaking_consultation",
-            "payment_status": "not_paid",
+            "payment_status": "paid",
+            "quoted_price": 299.0,
         },
         "astrology_snapshot": {
             "chart_type": "matchmaking",

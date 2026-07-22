@@ -33,6 +33,7 @@
         <a href="/consultation" id="nav-consultant" class="nav-btn" style="text-decoration: none;">Consultant</a>
         <a href="/index.html#pricing" id="nav-pricing" class="nav-btn" style="text-decoration: none;">Pricing</a>
         <a href="/about.html" id="nav-about" class="nav-btn" style="text-decoration: none;">About</a>
+        <a href="/astro-community" id="nav-community" class="nav-btn nav-community-alert" style="text-decoration: none;">Astro Community <span>(Astrologers Only)</span></a>
       </div>
       <div class="nav-auth">
         <button type="button" id="btn-login-header" class="nav-btn">Sign In</button>
@@ -181,6 +182,10 @@
           </div>
 
           <div class="match-actions">
+            <label class="save-chart-option match-save-option">
+              <input type="checkbox" id="save-match-checkbox" />
+              <span>Save match report to my profile</span>
+            </label>
             <button type="submit" id="btn-generate-match" class="btn-submit">Generate Match Report</button>
             <p id="match-status" role="status"></p>
           </div>
@@ -202,6 +207,10 @@
       <section id="match-result" class="match-result hidden" aria-live="polite"></section>
     </main>
 
-    <script type="module" src="./matchmaking.js?v=4" defer></script>
+    <script src="./saved-charts.js?v=1" defer></script>
+    <script type="module" src="./matchmaking.js?v=5" defer></script>
+    <!-- ===== MOBILE NAV v3 & ASTROLOGY CAROUSEL ===== -->
+    <script src="mobile-carousel.js" defer></script>
+    <script src="mobile-nav.js" defer></script>
   </body>
 </html>

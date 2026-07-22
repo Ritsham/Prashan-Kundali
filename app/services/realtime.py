@@ -12,8 +12,9 @@ class ConnectionManager:
         self.pubsub_tasks: Dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
 
-    async def connect(self, websocket: WebSocket, channel: str):
-        await websocket.accept()
+    async def connect(self, websocket: WebSocket, channel: str, accepted: bool = False):
+        if not accepted:
+            await websocket.accept()
         async with self._lock:
             if channel not in self.active_connections:
                 self.active_connections[channel] = []

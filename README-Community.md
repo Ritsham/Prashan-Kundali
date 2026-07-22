@@ -41,8 +41,8 @@ Users can seamlessly share charts directly from the Lagna/Prashna generation flo
 ## WebSocket Implementation
 Real-time communication is managed by a FastAPI `ConnectionManager` inside `app/api/community.py`.
 
-* **Connection:** Clients connect to `ws://.../api/community/ws/{channel_name}?token={jwt}`.
-* **Authentication:** The token is validated using Supabase Auth.
+* **Connection:** Clients connect to `ws://.../api/community/ws/{channel_name}` and send `{"action":"authenticate","token":"<jwt>"}` as the first WebSocket message.
+* **Authentication:** The token is validated using Supabase Auth and is never placed in the WebSocket URL.
 * **Broadcasting:** When a user sends a message, adds a reaction, or replies to a thread, the backend persists the change to Supabase and immediately broadcasts the event (e.g., `new_message`, `reaction_updated`, `new_thread_reply`) to all connected clients in that channel.
 * **State Updates:** `community.js` parses incoming WebSocket events and dynamically updates the DOM to reflect new messages, reply counts, or reactions without requiring a full page refresh.
 
