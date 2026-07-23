@@ -22,6 +22,7 @@ from app.dependencies import (
     normalize_role,
 )
 from app.api import astrologer, community
+from app.api.payments import _payment_owner_matches
 
 
 def auth(role: str) -> AuthState:
@@ -69,6 +70,15 @@ def main() -> None:
     assert "Admins cannot approve or reject their own application" in community_status_source
     assert "record_admin_audit" in community_status_source
     assert "except HTTPException" in community_status_source
+
+    owned_payment = {"user_id": "user-id"}
+    other_payment = {"user_id": "other-user-id"}
+    guest_payment = {"user_id": None}
+    assert _payment_owner_matches(owned_payment, auth(ROLE_USER))
+    assert not _payment_owner_matches(other_payment, auth(ROLE_USER))
+    assert not _payment_owner_matches(owned_payment, None)
+    assert _payment_owner_matches(other_payment, auth(ROLE_ADMIN))
+    assert _payment_owner_matches(guest_payment, None)
 
     print("access_control_ok")
 

@@ -170,6 +170,19 @@ const Layout: React.FC = () => {
 
       {!isCommunityWorkspace && mobileNavOpen && (
         <div className="mobile-nav-panel" id="mobile-navigation">
+          {isSignedIn && (
+            <button
+              type="button"
+              className="mobile-nav-account"
+              onClick={() => {
+                setMobileNavOpen(false);
+                setIsProfileOpen(true);
+              }}
+            >
+              <span className="mobile-nav-account-avatar">{profileInitial}</span>
+              <span className="mobile-nav-account-text">{session?.user?.email || 'Signed in'}</span>
+            </button>
+          )}
           {navItems.map((item) => (
             item.external ? (
               <a

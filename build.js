@@ -11,6 +11,8 @@ const fs = require('fs');
 const path = require('path');
 
 const FRONTEND_DIR = path.join(__dirname, 'frontend_old');
+const REACT_FRONTEND_DIR = path.join(__dirname, 'frontend');
+const PUBLIC_REACT_DIR = path.join(__dirname, 'public', 'frontend');
 const TERSER = 'npx terser';
 const CLEANCSS = 'npx cleancss';
 
@@ -53,6 +55,22 @@ function fmtKB(bytes) {
 }
 
 console.log('\n🚀 Starting minification build...\n');
+
+if (fs.existsSync(path.join(REACT_FRONTEND_DIR, 'package.json'))) {
+  try {
+    console.log('  Building React frontend for routed workspaces...');
+    if (!fs.existsSync(path.join(REACT_FRONTEND_DIR, 'node_modules'))) {
+      execSync('npm install', { cwd: REACT_FRONTEND_DIR, stdio: 'inherit' });
+    }
+    execSync('npm run build', { cwd: REACT_FRONTEND_DIR, stdio: 'inherit' });
+    fs.rmSync(PUBLIC_REACT_DIR, { recursive: true, force: true });
+    fs.cpSync(path.join(REACT_FRONTEND_DIR, 'dist'), PUBLIC_REACT_DIR, { recursive: true });
+    console.log('  ✅ React frontend copied to public/frontend\n');
+  } catch (err) {
+    console.error(`  ❌ React frontend build failed: ${err.message}`);
+    process.exitCode = 1;
+  }
+}
 
 // ── Minify JS ─────────────────────────────────────────────────────────────────
 for (const file of JS_FILES) {

@@ -323,6 +323,7 @@ def _about_contact() -> str:
         <section class="legal-document-layout">
           {_policy_nav("/about-contact")}
           <div class="legal-document">
+            {_contact_panel()}
             <section class="legal-section">
               <h2>What we provide</h2>
               <p>We help customers submit birth details, consultation questions, Prashna details, and matchmaking information so the astrologer can review the case with better context and maintain service history.</p>
@@ -338,7 +339,6 @@ def _about_contact() -> str:
               </div>
               {_contact_form()}
             </section>
-            {_contact_panel()}
           </div>
         </section>
       </main>

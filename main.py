@@ -47,6 +47,36 @@ app.add_middleware(
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), payment=(), usb=(), geolocation=(self)",
+    )
+    response.headers.setdefault(
+        "Content-Security-Policy-Report-Only",
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'none'; "
+        "object-src 'none'; "
+        "img-src 'self' data: https:; "
+        "style-src 'self' 'unsafe-inline' https:; "
+        "script-src 'self' 'unsafe-inline' https:; "
+        "connect-src 'self' https: wss:;",
+    )
+    if settings.is_production and request.url.scheme == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+    return response
+
+
 @app.middleware("http")
 async def add_cache_control_headers(request: Request, call_next):
     response = await call_next(request)
@@ -76,6 +106,8 @@ async def startup() -> None:
     try:
         validate_startup_settings()
     except SettingsError as exc:
+        if settings.is_production:
+            raise RuntimeError("Invalid production environment configuration") from exc
         print(f"Warning: startup settings validation failed: {exc}")
     init_db()
     await init_community_db()
@@ -157,27 +189,27 @@ def consultation_page():
     return FileResponse("frontend_old/consultation.html")
 
 
+def _react_frontend_entry() -> FileResponse:
+    for react_entry in ("frontend/dist/index.html", "public/frontend/index.html"):
+        if os.path.isfile(react_entry):
+            return FileResponse(
+                react_entry,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
+    raise HTTPException(status_code=503, detail="React frontend is not built. Run `npm run build` in frontend/.")
+
+
 @app.get("/astro-community", include_in_schema=False)
 def astro_community_page():
-    from fastapi.responses import FileResponse
-    react_entry = "frontend/dist/index.html"
-    if os.path.isfile(react_entry):
-        return FileResponse(
-            react_entry,
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-        )
-    raise HTTPException(status_code=503, detail="Astro Community frontend is not built. Run `npm run build` in frontend/.")
+    return _react_frontend_entry()
 
 @app.get("/payment", include_in_schema=False)
 def payment_page():
-    from fastapi.responses import FileResponse
-    react_entry = "frontend/dist/index.html"
-    if os.path.isfile(react_entry):
-        return FileResponse(
-            react_entry,
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-        )
-    raise HTTPException(status_code=503, detail="Payment frontend is not built. Run `npm run build` in frontend/.")
+    return _react_frontend_entry()
+
+@app.get("/admin", include_in_schema=False)
+def admin_page():
+    return _react_frontend_entry()
 
 @app.get("/matchmaking", include_in_schema=False)
 def matchmaking_page():
@@ -429,6 +461,8 @@ if os.path.isdir("frontend_old"):
     app.mount("/frontend_old", StaticFiles(directory="frontend_old"), name="frontend_old")
 if os.path.isdir("frontend/dist/assets"):
     app.mount("/assets", StaticFiles(directory="frontend/dist/assets"), name="react_assets")
+elif os.path.isdir("public/frontend/assets"):
+    app.mount("/assets", StaticFiles(directory="public/frontend/assets"), name="react_assets")
 
 # Catch-all route for SPA routing
 @app.get("/", include_in_schema=False)

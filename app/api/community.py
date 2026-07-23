@@ -125,29 +125,42 @@ class ConnectionManager:
         # Maps channel names to a list of active websocket connections
         self.active_connections: Dict[str, List[WebSocket]] = {}
         self.user_connections: Dict[str, List[WebSocket]] = {}
+        self.user_profiles: Dict[str, Dict[str, str]] = {}
         self.total_connections: int = 0
 
-    async def connect(self, websocket: WebSocket, channel_name: str, user_id: Optional[str] = None):
+    def _online_payload(self) -> str:
+        return json.dumps({
+            "type": "online_count",
+            "count": len(self.user_profiles),
+            "users": list(self.user_profiles.values()),
+        })
+
+    async def connect(self, websocket: WebSocket, channel_name: str, user_id: Optional[str] = None, display_name: str = ""):
         if channel_name not in self.active_connections:
             self.active_connections[channel_name] = []
         self.active_connections[channel_name].append(websocket)
         if user_id:
             self.user_connections.setdefault(user_id, []).append(websocket)
+            self.user_profiles[user_id] = {
+                "user_id": user_id,
+                "display_name": display_name or "Astrologer",
+            }
         self.total_connections += 1
         # Send the count directly to this socket first (guaranteed delivery)
-        await websocket.send_text(json.dumps({"type": "online_count", "count": self.total_connections}))
+        await websocket.send_text(self._online_payload())
         # Also broadcast to all others
-        await self.broadcast_all(json.dumps({"type": "online_count", "count": self.total_connections}))
+        await self.broadcast_all(self._online_payload())
 
     async def disconnect(self, websocket: WebSocket, channel_name: str, user_id: Optional[str] = None):
         if channel_name in self.active_connections and websocket in self.active_connections[channel_name]:
             self.active_connections[channel_name].remove(websocket)
             self.total_connections = max(0, self.total_connections - 1)
-            await self.broadcast_all(json.dumps({"type": "online_count", "count": self.total_connections}))
         if user_id and user_id in self.user_connections and websocket in self.user_connections[user_id]:
             self.user_connections[user_id].remove(websocket)
             if not self.user_connections[user_id]:
                 self.user_connections.pop(user_id, None)
+                self.user_profiles.pop(user_id, None)
+        await self.broadcast_all(self._online_payload())
 
     async def broadcast(self, message: str, channel_name: str):
         if channel_name in self.active_connections:
@@ -402,7 +415,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_name: str):
     auth_context = await authenticate_websocket(websocket)
     if not auth_context:
         return
-    await manager.connect(websocket, channel_name, auth_context["user_id"])
+    await manager.connect(websocket, channel_name, auth_context["user_id"], auth_context["display_name"])
     await websocket.send_text(json.dumps({"type": "connection_ready", "channel_name": channel_name}))
     await websocket.send_text(json.dumps({"type": "channel_subscribed", "channel_name": channel_name}))
     try:

@@ -1,10 +1,16 @@
 import os
 import sqlite3
+import time
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
 from datetime import datetime, timezone
 
+from app.config import get_settings
 from app.storage.database import get_public_client, get_service_client
+
+
+def _local_fallback_enabled() -> bool:
+    return not get_settings().is_production
 
 
 def _default_local_db_path() -> str:
@@ -14,6 +20,8 @@ def _default_local_db_path() -> str:
 
 
 LOCAL_DB_PATH = os.getenv("COMMUNITY_LOCAL_DB_PATH") or _default_local_db_path()
+_MESSAGES_MEMORY_CACHE: Dict[str, Dict[str, Any]] = {}
+_MESSAGES_MEMORY_TTL = 30
 
 
 def _community_client():
@@ -69,6 +77,8 @@ def _safe_data(result) -> list:
 
 
 def _local_connection() -> sqlite3.Connection:
+    if not _local_fallback_enabled():
+        raise RuntimeError("Local community SQLite fallback is disabled in production")
     os.makedirs(os.path.dirname(LOCAL_DB_PATH), exist_ok=True)
     conn = sqlite3.connect(LOCAL_DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -87,6 +97,8 @@ def _from_local_row(row: sqlite3.Row) -> Dict[str, Any]:
 
 
 def _cache_message_local(message: Dict[str, Any]) -> None:
+    if not _local_fallback_enabled():
+        return
     try:
         with _local_connection() as conn:
             conn.execute(
@@ -121,6 +133,8 @@ def _cache_message_local(message: Dict[str, Any]) -> None:
 
 
 def _get_local_messages(channel_names: List[str], limit: int, cursor: Optional[str], search: Optional[str]) -> List[Dict[str, Any]]:
+    if not _local_fallback_enabled():
+        return []
     try:
         placeholders = ",".join("?" for _ in channel_names)
         params: List[Any] = list(channel_names)
@@ -178,7 +192,38 @@ def _channel_aliases(channel_name: str) -> List[str]:
     return [alias for alias in dict.fromkeys(aliases) if alias]
 
 
+def _messages_cache_key(channel_names: List[str], limit: int, cursor: Optional[str], search: Optional[str]) -> str:
+    return json_like_key([channel_names, limit, cursor or "", search or ""])
+
+
+def json_like_key(value: Any) -> str:
+    return repr(value)
+
+
+def _get_memory_messages(cache_key: str) -> Optional[List[Dict[str, Any]]]:
+    cached = _MESSAGES_MEMORY_CACHE.get(cache_key)
+    if not cached:
+        return None
+    if time.time() - float(cached.get("saved_at") or 0) > _MESSAGES_MEMORY_TTL:
+        _MESSAGES_MEMORY_CACHE.pop(cache_key, None)
+        return None
+    return [dict(message) for message in cached.get("messages") or []]
+
+
+def _set_memory_messages(cache_key: str, messages: List[Dict[str, Any]]) -> None:
+    _MESSAGES_MEMORY_CACHE[cache_key] = {
+        "saved_at": time.time(),
+        "messages": [dict(message) for message in messages],
+    }
+
+
+def _clear_messages_memory_cache() -> None:
+    _MESSAGES_MEMORY_CACHE.clear()
+
+
 async def init_community_db() -> None:
+    if not _local_fallback_enabled():
+        return
     with _local_connection() as conn:
         conn.execute(
             """
@@ -243,6 +288,7 @@ async def save_message(
     reply_to_message_id: Optional[str] = None,
     client_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    _clear_messages_memory_cache()
     created_at = _now()
     data = {
         "id": _id("msg"),
@@ -272,13 +318,14 @@ async def save_message(
         except Exception as e:
             print(f"Warning: Supabase message dedupe skipped: {e}")
     if client_id:
-        try:
-            with _local_connection() as conn:
-                row = conn.execute("SELECT * FROM community_messages_local WHERE client_id = ? LIMIT 1", (client_id,)).fetchone()
-            if row:
-                return _from_local_row(row)
-        except Exception as e:
-            print(f"Warning: local message dedupe skipped: {e}")
+        if _local_fallback_enabled():
+            try:
+                with _local_connection() as conn:
+                    row = conn.execute("SELECT * FROM community_messages_local WHERE client_id = ? LIMIT 1", (client_id,)).fetchone()
+                if row:
+                    return _from_local_row(row)
+            except Exception as e:
+                print(f"Warning: local message dedupe skipped: {e}")
 
     try:
         if supabase:
@@ -321,12 +368,24 @@ async def save_message(
                     return saved
             except Exception as minimal_error:
                 print(f"Warning: Supabase save_message minimal insert failed: {minimal_error}")
+    if not _local_fallback_enabled():
+        raise RuntimeError("Community message persistence failed")
     _cache_message_local(data)
     return data
 
 
 async def get_messages(channel_name: str, limit: int = 50, cursor: Optional[str] = None, search: Optional[str] = None) -> List[Dict[str, Any]]:
     aliases = _channel_aliases(channel_name)
+    cache_key = _messages_cache_key(aliases, limit, cursor, search)
+    cached_messages = _get_memory_messages(cache_key)
+    if cached_messages is not None:
+        return cached_messages
+
+    local_messages = _get_local_messages(aliases, limit, cursor, search)
+    if local_messages and not cursor and not search:
+        _set_memory_messages(cache_key, local_messages)
+        return local_messages
+
     remote_messages: List[Dict[str, Any]] = []
     try:
         if supabase:
@@ -346,8 +405,9 @@ async def get_messages(channel_name: str, limit: int = 50, cursor: Optional[str]
             remote_messages.reverse()
     except Exception as e:
         print(f"Warning: Supabase get_messages failed: {e}")
-    local_messages = _get_local_messages(aliases, limit, cursor, search)
-    return _merge_messages(remote_messages, local_messages, limit=limit)
+    messages = _merge_messages(remote_messages, local_messages, limit=limit)
+    _set_memory_messages(cache_key, messages)
+    return messages
 
 
 async def update_message_author_name(user_id: str, display_name: str, aliases: List[str]) -> None:
@@ -366,6 +426,7 @@ async def update_message_author_name(user_id: str, display_name: str, aliases: L
 
 
 async def update_message(message_id: str, user_id: str, content: str) -> Optional[Dict[str, Any]]:
+    _clear_messages_memory_cache()
     try:
         if supabase:
             existing = supabase.table("community_messages").select("*").eq("id", message_id).limit(1).execute()
@@ -389,6 +450,7 @@ async def update_message(message_id: str, user_id: str, content: str) -> Optiona
 
 
 async def delete_message(message_id: str, user_id: Optional[str] = None, moderator: bool = False) -> Optional[Dict[str, Any]]:
+    _clear_messages_memory_cache()
     try:
         if supabase:
             existing = supabase.table("community_messages").select("*").eq("id", message_id).limit(1).execute()
@@ -412,6 +474,7 @@ async def delete_message(message_id: str, user_id: Optional[str] = None, moderat
 
 
 async def star_message(message_id: str) -> Optional[Dict[str, Any]]:
+    _clear_messages_memory_cache()
     try:
         if supabase:
             res = supabase.table("community_messages").select("stars").eq("id", message_id).limit(1).execute()
@@ -426,6 +489,7 @@ async def star_message(message_id: str) -> Optional[Dict[str, Any]]:
 
 
 async def save_thread_reply(parent_message_id: str, user_name: str, content: str, image_base64: Optional[str] = None, sender_id: Optional[str] = None) -> Dict[str, Any]:
+    _clear_messages_memory_cache()
     created_at = _now()
     channel_name = None
     try:
@@ -467,6 +531,7 @@ async def get_thread_replies(parent_message_id: str) -> List[Dict[str, Any]]:
 
 
 async def toggle_reaction(message_id: str, user_id: str, reaction_type: str, previous_reaction: Optional[str] = None) -> str:
+    _clear_messages_memory_cache()
     try:
         if supabase:
             if previous_reaction and previous_reaction != reaction_type:
@@ -538,12 +603,14 @@ async def set_saved_message(message_id: str, user_id: str) -> bool:
                 return False
             supabase.table("community_saved_messages").insert({"message_id": message_id, "user_id": user_id}).execute()
             return True
+        if not _local_fallback_enabled():
+            return False
         # Supabase not configured — respond with success so UI still works locally
         print("Warning: set_saved_message called but supabase is not configured")
         return True
     except Exception as e:
         print(f"Warning: set_saved_message failed: {e}")
-        return True
+        return _local_fallback_enabled()
 
 
 async def get_saved_messages(user_id: str) -> List[Dict[str, Any]]:

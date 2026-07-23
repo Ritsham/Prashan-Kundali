@@ -769,6 +769,10 @@ p {
   background: rgba(255, 255, 255, 0.12);
 }
 
+.mobile-nav-account {
+  display: none;
+}
+
 @media (prefers-color-scheme: dark) {
   .app-card,
   .state-panel {
@@ -1269,6 +1273,41 @@ code {
   .mobile-nav-link.active {
     border-color: rgba(200, 162, 97, 0.45);
     background: #fff5e4;
+  }
+
+  .mobile-nav-account {
+    min-height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    border: 1px solid rgba(200, 162, 97, 0.45);
+    border-radius: 8px;
+    background: #fff9ee;
+    color: var(--ink-light);
+    padding: 8px 10px;
+    text-align: left;
+  }
+
+  .mobile-nav-account-avatar {
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #f5b942, #8b4513);
+    color: #120a04;
+    font-weight: 900;
+  }
+
+  .mobile-nav-account-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 850;
   }
 
   .panchang-strip {

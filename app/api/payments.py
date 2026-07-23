@@ -71,6 +71,15 @@ def _case_owner_matches(case: dict[str, Any], auth: Optional[AuthState], request
     return bool(requester_email and case_email and requester_email.strip().lower() == case_email)
 
 
+def _payment_owner_matches(payment: dict[str, Any], auth: Optional[AuthState]) -> bool:
+    payment_user_id = payment.get("user_id")
+    if auth and auth.is_admin:
+        return True
+    if payment_user_id:
+        return bool(auth and payment_user_id == auth.user_id)
+    return True
+
+
 def _service_db_or_500() -> Any:
     db = get_service_client()
     if not db:
@@ -235,6 +244,8 @@ async def verify_razorpay_payment(
     )
     if not existing_payment:
         raise HTTPException(status_code=404, detail="Payment order not found")
+    if not _payment_owner_matches(existing_payment, auth):
+        raise HTTPException(status_code=403, detail="Not allowed to verify this payment order")
 
     body = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}".encode("utf-8")
     if not _verify_signature(key_secret, body, payload.razorpay_signature):
@@ -296,6 +307,8 @@ async def verify_standard_checkout_payment(
     existing_payment = get_payment_by_provider_ref(provider="razorpay", provider_ref=order_id, db=db)
     if not existing_payment:
         raise HTTPException(status_code=404, detail="Payment order not found")
+    if not _payment_owner_matches(existing_payment, auth):
+        raise HTTPException(status_code=403, detail="Not allowed to verify this payment order")
 
     paid_case = None
     payment = update_payment_status(provider="razorpay", provider_ref=order_id, status="paid", db=db)

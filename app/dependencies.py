@@ -133,15 +133,25 @@ def _load_user_profile(user_id: str, fallback_client: Optional[Client] = None) -
 
 
 def _auth_state_from_user(client: Optional[Client], user: Any) -> AuthState:
+    user_metadata = getattr(user, "user_metadata", None) or {}
+    app_metadata = getattr(user, "app_metadata", None) or {}
     profile = _load_user_profile(user.id, client)
-    role = normalize_role(profile)
+    profile_role = normalize_role(profile)
+    metadata_role = normalize_role({**app_metadata, **user_metadata})
+    role = profile_role
+    if ROLE_ADMIN in {profile_role, metadata_role}:
+        role = ROLE_ADMIN
+    elif ROLE_ASTROLOGER_VERIFIED in {profile_role, metadata_role}:
+        role = ROLE_ASTROLOGER_VERIFIED
+    elif profile_role == ROLE_USER and metadata_role == ROLE_ASTROLOGER_PENDING:
+        role = ROLE_ASTROLOGER_PENDING
     return AuthState(
         client=client,
         user_id=user.id,
         email=user.email,
-        user_metadata=getattr(user, "user_metadata", None) or {},
+        user_metadata=user_metadata,
         role=role,
-        profile=profile,
+        profile={**user_metadata, **app_metadata, **profile},
     )
 
 def get_current_user(authorization: str = Header(None)) -> AuthState:

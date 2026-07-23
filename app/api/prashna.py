@@ -94,13 +94,20 @@ async def create_prashna(
                 generate_prashna_chart_task.delay(job["job_id"], auth.user_id, payload.model_dump(mode="json"))
             except Exception as exc:
                 from app.services.job_status import update_job
-                update_job(job["job_id"], status="failed", progress=100, message="Queue unavailable", error=str(exc))
-                raise HTTPException(status_code=503, detail="Generation queue is unavailable. Please try again shortly.") from exc
-            return {
-                "status": "queued",
-                "job_id": job["job_id"],
-                "message": "Your Prashna reading is being generated.",
-            }
+                update_job(
+                    job["job_id"],
+                    status="running_inline",
+                    progress=10,
+                    message="Queue unavailable; generating directly",
+                    error=str(exc),
+                )
+                sync = True
+            else:
+                return {
+                    "status": "queued",
+                    "job_id": job["job_id"],
+                    "message": "Your Prashna reading is being generated.",
+                }
 
         asked_at_utc = datetime.now(timezone.utc)
         if payload.asked_at_utc:

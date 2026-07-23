@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ArrowLeft,
   AtSign,
   Bell,
   Bookmark,
@@ -39,6 +40,7 @@ type ApiMessage = {
   id: string;
   channel_name?: string;
   sender_id?: string;
+  client_id?: string;
   user_name?: string;
   content?: string;
   mentions?: MentionTarget[];
@@ -54,6 +56,7 @@ type Message = {
   id: string;
   channelId: string;
   senderId?: string;
+  clientId?: string;
   author: string;
   time: string;
   body: string;
@@ -69,6 +72,8 @@ type Message = {
   replyCount?: number;
   isDeleted: boolean;
   edited: boolean;
+  pending?: boolean;
+  failed?: boolean;
 };
 
 type ThreadReply = Message;
@@ -87,6 +92,11 @@ type CommunityMember = {
   email?: string;
   bio?: string;
   systems_practiced?: string[];
+};
+
+type OnlineUser = {
+  user_id?: string;
+  display_name?: string;
 };
 
 type MentionTarget = {
@@ -116,6 +126,16 @@ const channelMetadata: Record<string, Pick<Channel, 'group' | 'description' | 'l
   'research-and-books': { group: 'Learning and Research', description: 'Texts, references, translations, and research papers.' },
 };
 
+const defaultCommunityChannels: Channel[] = Object.entries(channelMetadata)
+  .filter(([id]) => id !== 'community-guidelines')
+  .map(([id, metadata]) => ({
+    id,
+    name: id,
+    group: metadata.group,
+    description: metadata.description,
+    locked: metadata.locked,
+  }));
+
 const quickNav = [
   { label: 'Saved Messages', icon: Bookmark, count: 0 },
   { label: 'Search', icon: Search, count: 0 },
@@ -133,6 +153,15 @@ const reactionEmojiByType = reactionOptions.reduce<Record<string, string>>((acc,
   acc[reaction.type] = reaction.emoji;
   return acc;
 }, {});
+
+const COMMUNITY_PROFILE_CACHE_KEY = 'community_profile_cache_v1';
+const COMMUNITY_CHANNELS_CACHE_KEY = 'community_channels_cache_v1';
+const COMMUNITY_ACTIVE_CHANNEL_KEY = 'community_active_channel_v1';
+const COMMUNITY_MESSAGE_CACHE_PREFIX = 'community_messages_cache_v1:';
+const MESSAGE_CACHE_LIMIT = 80;
+const MESSAGE_IMAGE_CACHE_LIMIT = 700_000;
+const PREFETCH_CACHE_TTL = 60_000;
+const PREFETCH_CHANNEL_LIMIT = 3;
 
 function StatusDot({ status }: { status: MemberStatus }) {
   return <span className={`astro-status-dot astro-status-${status}`} aria-label={`${status} status`} />;
@@ -203,6 +232,7 @@ function mapMessage(row: ApiMessage, channelId: string): Message {
     id: row.id,
     channelId: row.channel_name || channelId,
     senderId: row.sender_id,
+    clientId: row.client_id,
     author: row.user_name || 'Astrologer',
     time: created && !Number.isNaN(created.getTime()) ? created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
     body,
@@ -212,6 +242,91 @@ function mapMessage(row: ApiMessage, channelId: string): Message {
     stars: row.stars || 0,
     isDeleted: Boolean(row.is_deleted),
     edited: Boolean(row.edited_at),
+  };
+}
+
+function readJsonCache<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJsonCache(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Cached chat snapshots are an acceleration layer. If storage is full, live API data still works.
+  }
+}
+
+function messageCacheKey(channelId: string) {
+  return `${COMMUNITY_MESSAGE_CACHE_PREFIX}${channelId}`;
+}
+
+function readCachedChannels() {
+  const cachedChannels = readJsonCache<Channel[]>(COMMUNITY_CHANNELS_CACHE_KEY, []);
+  return cachedChannels.length ? cachedChannels : defaultCommunityChannels;
+}
+
+function readCachedProfile() {
+  return readJsonCache<Profile | null>(COMMUNITY_PROFILE_CACHE_KEY, null);
+}
+
+function readCachedMessagesPayload(channelId: string) {
+  return readJsonCache<{ savedAt?: number; messages?: Message[] }>(messageCacheKey(channelId), { savedAt: 0, messages: [] });
+}
+
+function readCachedMessages(channelId: string) {
+  return readCachedMessagesPayload(channelId).messages || [];
+}
+
+function getInitialActiveChannelId(channels: Channel[]) {
+  try {
+    const cached = localStorage.getItem(COMMUNITY_ACTIVE_CHANNEL_KEY);
+    if (cached) return cached;
+  } catch {
+    // Ignore storage access errors.
+  }
+  return channels.find((channel) => channel.id === 'general')?.id || channels[0]?.id || '';
+}
+
+function cacheMessages(channelId: string, rows: Message[]) {
+  const compactRows = rows
+    .filter((message) => !message.pending && !message.failed)
+    .slice(-MESSAGE_CACHE_LIMIT)
+    .map((message) => ({
+      ...message,
+      imageBase64: message.imageBase64 && message.imageBase64.length <= MESSAGE_IMAGE_CACHE_LIMIT ? message.imageBase64 : null,
+    }));
+  writeJsonCache(messageCacheKey(channelId), { savedAt: Date.now(), messages: compactRows });
+}
+
+function makeOptimisticMessage(params: {
+  channelId: string;
+  senderId?: string;
+  author: string;
+  body: string;
+  contentType: string;
+  imageBase64?: string | null;
+  clientId: string;
+}): Message {
+  return {
+    id: `optimistic-${params.clientId}`,
+    channelId: params.channelId,
+    senderId: params.senderId,
+    clientId: params.clientId,
+    author: params.author,
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    body: params.body,
+    contentType: params.contentType,
+    imageBase64: params.imageBase64 || null,
+    stars: 0,
+    isDeleted: false,
+    edited: false,
+    pending: true,
   };
 }
 
@@ -261,10 +376,13 @@ function renderMessageText(text: string) {
 }
 
 function AstroCommunityPage() {
-  const [channels, setChannels] = React.useState<Channel[]>([]);
-  const [activeChannelId, setActiveChannelId] = React.useState('');
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const [profile, setProfile] = React.useState<Profile | null>(null);
+  const [channels, setChannels] = React.useState<Channel[]>(() => readCachedChannels());
+  const [activeChannelId, setActiveChannelId] = React.useState(() => getInitialActiveChannelId(readCachedChannels()));
+  const [messages, setMessages] = React.useState<Message[]>(() => {
+    const initialChannelId = getInitialActiveChannelId(readCachedChannels());
+    return initialChannelId ? readCachedMessages(initialChannelId) : [];
+  });
+  const [profile, setProfile] = React.useState<Profile | null>(() => readCachedProfile());
   const [draft, setDraft] = React.useState('');
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [channelQuery, setChannelQuery] = React.useState('');
@@ -284,13 +402,15 @@ function AstroCommunityPage() {
   const [threadViewActive, setThreadViewActive] = React.useState(false);
   const [myReactions, setMyReactions] = React.useState<Set<string>>(() => new Set(JSON.parse(localStorage.getItem('community_my_reactions') || '[]')));
   const threadRepliesRef = React.useRef<HTMLDivElement>(null);
-  const [loadingChannels, setLoadingChannels] = React.useState(true);
+  const [loadingChannels, setLoadingChannels] = React.useState(() => readCachedChannels().length === 0);
   const [loadingMessages, setLoadingMessages] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState('');
   const [infoNotice, setInfoNotice] = React.useState('');
   const [connectionState, setConnectionState] = React.useState<'idle' | 'connecting' | 'connected' | 'offline'>('idle');
   const [onlineCount, setOnlineCount] = React.useState(0);
+  const [onlineUsers, setOnlineUsers] = React.useState<OnlineUser[]>([]);
+  const [typingUsers, setTypingUsers] = React.useState<Record<string, string>>({});
   const [theme, setTheme] = React.useState('dark');
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [communityMembers, setCommunityMembers] = React.useState<CommunityMember[]>([]);
@@ -308,6 +428,7 @@ function AstroCommunityPage() {
   const composerInputRef = React.useRef<HTMLInputElement>(null);
   const threadComposerInputRef = React.useRef<HTMLInputElement>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
+  const typingTimeoutRef = React.useRef<number | null>(null);
   const messageListRef = React.useRef<HTMLDivElement>(null);
   const userIdRef = React.useRef<string | null>(null);
   const messagesRef = React.useRef<Message[]>([]);
@@ -416,29 +537,42 @@ function AstroCommunityPage() {
           fetch('/api/community/channels', { headers: authHeaders(token) }),
         ]);
 
-        if (!profileResponse.ok || !channelResponse.ok) {
-          throw new Error('Unable to load community. Please check your access and sign in again.');
-        }
-
-        const profileData = await profileResponse.json();
-        const channelData = await channelResponse.json();
+        const profileData = profileResponse.ok ? await profileResponse.json() : readCachedProfile();
+        const channelData = channelResponse.ok ? await channelResponse.json() : readCachedChannels();
         const normalizedChannels = Array.isArray(channelData)
           ? channelData.map(normalizeChannel).filter((channel) => channel.id !== 'community-guidelines')
-          : [];
+          : readCachedChannels();
+
+        if (!profileResponse.ok || !channelResponse.ok) {
+          const accessRejected = profileResponse.status === 401 || profileResponse.status === 403 || channelResponse.status === 401 || channelResponse.status === 403;
+          if (!normalizedChannels.length) {
+            throw new Error(accessRejected ? 'Community access is still syncing. Please refresh once after sign in.' : 'Unable to load community.');
+          }
+          setInfoNotice(accessRejected ? 'Community access is syncing. Showing cached channels while reconnecting.' : 'Showing cached community channels while reconnecting.');
+          window.setTimeout(() => setInfoNotice(''), 4000);
+        }
 
         if (cancelled) return;
-        setProfile(profileData);
-        setChannels(normalizedChannels);
+        if (profileData) {
+          setProfile(profileData);
+          writeJsonCache(COMMUNITY_PROFILE_CACHE_KEY, profileData);
+        }
+        setChannels(normalizedChannels.length ? normalizedChannels : defaultCommunityChannels);
+        writeJsonCache(COMMUNITY_CHANNELS_CACHE_KEY, normalizedChannels.length ? normalizedChannels : defaultCommunityChannels);
         setActiveChannelId((current) => {
           const preferred = normalizedChannels.find((channel) => channel.id === 'general')
             || normalizedChannels.find((channel) => channel.id !== 'announcements' && !channel.locked)
-            || normalizedChannels[0];
-          return current || preferred?.id || '';
+            || normalizedChannels[0]
+            || defaultCommunityChannels.find((channel) => channel.id === 'general')
+            || defaultCommunityChannels[0];
+          const nextChannelId = current || preferred?.id || '';
+          if (nextChannelId) writeJsonCache(COMMUNITY_ACTIVE_CHANNEL_KEY, nextChannelId);
+          return nextChannelId;
         });
       } catch (exc) {
         if (!cancelled) {
           setError(exc instanceof Error ? exc.message : 'Unable to load community.');
-          setChannels([]);
+          setChannels((current) => current.length ? current : defaultCommunityChannels);
         }
       } finally {
         if (!cancelled) setLoadingChannels(false);
@@ -452,6 +586,10 @@ function AstroCommunityPage() {
   }, [token]);
 
   React.useEffect(() => {
+    if (activeChannelId) writeJsonCache(COMMUNITY_ACTIVE_CHANNEL_KEY, activeChannelId);
+  }, [activeChannelId]);
+
+  React.useEffect(() => {
     let cancelled = false;
 
     async function loadMessages() {
@@ -460,8 +598,15 @@ function AstroCommunityPage() {
         return;
       }
 
-      try {
+      const cachedMessages = readCachedMessages(activeChannelId);
+      if (cachedMessages.length > 0) {
+        setMessages(cachedMessages);
+        setLoadingMessages(false);
+      } else {
         setLoadingMessages(true);
+      }
+
+      try {
         setError('');
         const response = await fetch(`/api/community/messages/${encodeURIComponent(activeChannelId)}`, {
           headers: authHeaders(token),
@@ -471,11 +616,13 @@ function AstroCommunityPage() {
 
         const data = await response.json();
         if (!cancelled) {
-          setMessages(Array.isArray(data) ? data.map((row) => mapMessage(row, activeChannelId)) : []);
+          const nextMessages = Array.isArray(data) ? data.map((row) => mapMessage(row, activeChannelId)) : [];
+          setMessages(nextMessages);
+          cacheMessages(activeChannelId, nextMessages);
         }
       } catch (exc) {
         if (!cancelled) {
-          setMessages([]);
+          if (!cachedMessages.length) setMessages([]);
           setError(exc instanceof Error ? exc.message : 'Unable to load messages.');
         }
       } finally {
@@ -488,6 +635,53 @@ function AstroCommunityPage() {
       cancelled = true;
     };
   }, [activeChannelId, token]);
+
+  React.useEffect(() => {
+    if (activeChannelId && messages.length > 0) cacheMessages(activeChannelId, messages);
+  }, [activeChannelId, messages]);
+
+  React.useEffect(() => {
+    if (!token || !channels.length) return;
+    let cancelled = false;
+    let timeoutId = 0;
+    const controller = new AbortController();
+
+    async function prefetchChannelMessages() {
+      const candidates = channels
+        .filter((channel) => channel.id && channel.id !== activeChannelId && channel.id !== 'announcements')
+        .slice(0, PREFETCH_CHANNEL_LIMIT);
+      for (const channel of candidates) {
+        if (cancelled) return;
+        const cached = readCachedMessagesPayload(channel.id);
+        if ((cached.messages?.length || 0) > 0 && Date.now() - (cached.savedAt || 0) < PREFETCH_CACHE_TTL) continue;
+
+        try {
+          const latestToken = getToken();
+          if (!latestToken) return;
+          const response = await fetch(`/api/community/messages/${encodeURIComponent(channel.id)}`, {
+            headers: authHeaders(latestToken),
+            signal: controller.signal,
+          });
+          if (response.status === 401 || response.status === 403) return;
+          if (!response.ok) continue;
+          const data = await response.json();
+          if (cancelled) return;
+          const nextMessages = Array.isArray(data) ? data.map((row) => mapMessage(row, channel.id)) : [];
+          cacheMessages(channel.id, nextMessages);
+        } catch (exc) {
+          if ((exc as Error).name === 'AbortError') return;
+          // Prefetch is best-effort. The active channel loader remains the source of truth.
+        }
+      }
+    }
+
+    timeoutId = window.setTimeout(prefetchChannelMessages, 350);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeChannelId, channels, token]);
 
   React.useEffect(() => {
     wsRef.current?.close();
@@ -517,6 +711,9 @@ function AstroCommunityPage() {
           const next = mapMessage(row, activeChannelId);
           setMessages((current) => {
             if (current.some((message) => message.id === next.id)) return current;
+            if (next.clientId && current.some((message) => message.clientId === next.clientId)) {
+              return current.map((message) => (message.clientId === next.clientId ? next : message));
+            }
             if (localStorage.getItem('community_notify_sounds') !== 'false' && next.senderId !== userIdRef.current) {
               try {
                 const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -604,6 +801,17 @@ function AstroCommunityPage() {
         }
         if (payload.type === 'online_count') {
           setOnlineCount(payload.count || 0);
+          setOnlineUsers(Array.isArray(payload.users) ? payload.users : []);
+        }
+        if (payload.type === 'typing_started' && payload.user_id && payload.user_id !== userIdRef.current) {
+          setTypingUsers((current) => ({ ...current, [payload.user_id]: payload.display_name || 'Someone' }));
+        }
+        if (payload.type === 'typing_stopped' && payload.user_id) {
+          setTypingUsers((current) => {
+            const next = { ...current };
+            delete next[payload.user_id];
+            return next;
+          });
         }
       } catch (err) {
         console.error('Error parsing WS message:', err);
@@ -633,8 +841,23 @@ function AstroCommunityPage() {
   }, [messages.length, activeChannelId]);
 
   React.useEffect(() => {
+    const socket = wsRef.current;
+    if (!activeChannelId || !token || !draft.trim() || !socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ action: 'typing_started' }));
+    if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = window.setTimeout(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ action: 'typing_stopped' }));
+      }
+    }, 1100);
+    return () => {
+      if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
+    };
+  }, [draft, activeChannelId, token]);
+
+  React.useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-    if (!lastMessage || !activeChannelId || !token) return;
+    if (!lastMessage || lastMessage.pending || !activeChannelId || !token) return;
     fetch(`/api/community/channels/${encodeURIComponent(activeChannelId)}/read`, {
       method: 'POST',
       headers: authHeaders(token),
@@ -647,7 +870,25 @@ function AstroCommunityPage() {
     const content = draft.trim();
     // Block sending in announcements channel — only admins can post there
     if (activeChannelId === 'announcements') return;
-    if ((!content && !pendingAttachment) || !activeChannelId || !token || sending) return;
+    if ((!content && !pendingAttachment) || !activeChannelId || !token) return;
+
+    const attachment = pendingAttachment;
+    const contentType = attachment ? (attachment.kind === 'image' ? 'IMAGE' : 'ATTACHMENT') : 'STANDARD';
+    const clientId = crypto.randomUUID?.() || `${Date.now()}`;
+    const optimisticMessage = makeOptimisticMessage({
+      channelId: activeChannelId,
+      senderId: userId,
+      author: userName,
+      body: content,
+      contentType,
+      imageBase64: attachment?.dataUrl || null,
+      clientId,
+    });
+
+    setMessages((current) => [...current, optimisticMessage]);
+    setDraft('');
+    setPendingAttachment(null);
+    setMentionPickerOpen(false);
 
     try {
       setSending(true);
@@ -656,16 +897,14 @@ function AstroCommunityPage() {
       const payload = {
         action: 'send_message',
         content,
-        content_type: pendingAttachment ? (pendingAttachment.kind === 'image' ? 'IMAGE' : 'ATTACHMENT') : 'STANDARD',
-        image_base64: pendingAttachment?.dataUrl || null,
+        content_type: contentType,
+        image_base64: attachment?.dataUrl || null,
         mentions: selectedMentions,
-        client_id: crypto.randomUUID?.() || `${Date.now()}`,
+        client_id: clientId,
       };
 
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify(payload));
-        setDraft('');
-        setPendingAttachment(null);
         setSending(false);
         return;
       }
@@ -675,10 +914,10 @@ function AstroCommunityPage() {
         headers: authHeaders(token),
         body: JSON.stringify({
           content,
-          content_type: pendingAttachment ? (pendingAttachment.kind === 'image' ? 'IMAGE' : 'ATTACHMENT') : 'STANDARD',
-          image_base64: pendingAttachment?.dataUrl || null,
+          content_type: contentType,
+          image_base64: attachment?.dataUrl || null,
           mentions: selectedMentions,
-          client_id: crypto.randomUUID?.() || `${Date.now()}`,
+          client_id: clientId,
         }),
       });
 
@@ -687,12 +926,10 @@ function AstroCommunityPage() {
       const result = await response.json();
       if (result?.message?.id) {
         const sent = mapMessage(result.message, activeChannelId);
-        setMessages((current) => (current.some((message) => message.id === sent.id) ? current : [...current, sent]));
+        setMessages((current) => current.map((message) => (message.clientId === clientId ? sent : message)));
       }
-
-      setDraft('');
-      setPendingAttachment(null);
     } catch (exc) {
+      setMessages((current) => current.map((message) => (message.clientId === clientId ? { ...message, pending: false, failed: true } : message)));
       setError(exc instanceof Error ? exc.message : 'Message could not be sent.');
     } finally {
       setSending(false);
@@ -974,13 +1211,26 @@ function AstroCommunityPage() {
   };
 
   const selectChannel = (channelId: string) => {
+    const cachedMessages = readCachedMessages(channelId);
+    setMessages(cachedMessages);
+    setLoadingMessages(cachedMessages.length === 0);
     setActiveChannelId(channelId);
+    writeJsonCache(COMMUNITY_ACTIVE_CHANNEL_KEY, channelId);
     setSidebarOpen(false);
     setChannelQuery('');
     setActiveMessageMenuId(null);
   };
 
+  const returnToMainApplication = () => {
+    window.location.href = '/index.html';
+  };
+
   const handleQuickNav = (label: string) => {
+    if (label === 'Saved Messages') {
+      setContextPanelOpen(true);
+      setSidebarOpen(false);
+      return;
+    }
     if (label === 'Search') {
       setIsChannelSearchOpen((value) => !value);
       setSidebarOpen(true);
@@ -1057,6 +1307,14 @@ function AstroCommunityPage() {
       }))
       .filter((member, index, list) => Boolean(member.user_id) && list.findIndex((item) => item.user_id === member.user_id) === index);
   }, [communityMembers, draft]);
+
+  const visibleOnlineUsers = React.useMemo(() => {
+    const rows = onlineUsers.length ? onlineUsers : (connectionState === 'connected' ? [{ user_id: userId, display_name: userName }] : []);
+    return rows
+      .filter((member, index, list) => Boolean(member.display_name || member.user_id) && list.findIndex((item) => item.user_id === member.user_id) === index)
+      .slice(0, 8);
+  }, [connectionState, onlineUsers, userId, userName]);
+  const typingNames = React.useMemo(() => Object.values(typingUsers).slice(0, 3), [typingUsers]);
 
   const insertMention = () => {
     setDraft((current) => `${current}${current.endsWith(' ') || !current ? '' : ' '}@`);
@@ -1230,6 +1488,25 @@ function AstroCommunityPage() {
           ))}
         </nav>
 
+        <section className="astro-online-panel" aria-label="Online members">
+          <div className="astro-online-title">
+            <span>Online now</span>
+            <strong>{onlineCount}</strong>
+          </div>
+          <div className="astro-online-list">
+            {visibleOnlineUsers.map((member) => {
+              const name = member.display_name || 'Astrologer';
+              return (
+                <div className="astro-online-member" key={member.user_id || name}>
+                  <span className="astro-online-avatar">{initials(name)}</span>
+                  <span>{name}</span>
+                </div>
+              );
+            })}
+            {!visibleOnlineUsers.length && <p>No one else is online.</p>}
+          </div>
+        </section>
+
         <div className="astro-channel-scroll">
           {isChannelSearchOpen && (
             <label className="astro-channel-search">
@@ -1275,6 +1552,9 @@ function AstroCommunityPage() {
 
       <main className="astro-community-main">
         <header className="astro-user-strip">
+          <button className="astro-mobile-back-btn" type="button" onClick={returnToMainApplication} aria-label="Back to main application">
+            <ArrowLeft size={22} />
+          </button>
           <button className="astro-mobile-menu-btn" type="button" onClick={() => setSidebarOpen((prev) => !prev)} aria-label="Open channels menu">
             <Menu size={22} />
           </button>
@@ -1429,8 +1709,6 @@ function AstroCommunityPage() {
               {infoNotice && <div className="astro-info-banner">{infoNotice}</div>}
 
               <div className="astro-message-list" ref={messageListRef}>
-                {loadingMessages && <div className="astro-empty-channel"><h3>Loading messages...</h3></div>}
-
                 {!loadingMessages && activeChannel && !messages.length && (
                   <div className="astro-empty-channel">
                     <h3>No messages yet</h3>
@@ -1457,7 +1735,7 @@ function AstroCommunityPage() {
                   const isImageAttachment = Boolean(message.imageBase64?.startsWith('data:image'));
                   const hasOpenMenu = activeMessageMenuId === message.id;
                   return (
-                  <article className={`astro-message ${isOwnMessage ? 'is-own' : ''} ${hasOpenMenu ? 'has-open-menu' : ''}`} key={message.id}>
+                  <article className={`astro-message ${isOwnMessage ? 'is-own' : ''} ${hasOpenMenu ? 'has-open-menu' : ''} ${message.pending ? 'is-pending' : ''} ${message.failed ? 'failed' : ''}`} key={message.id}>
                     {!isOwnMessage && (
                       <button className="astro-avatar" aria-label={`${authorName} profile`}>
                         {initials(authorName)}
@@ -1494,6 +1772,8 @@ function AstroCommunityPage() {
                       <div className="astro-message-footer">
                         {showTimestamps && <time>{message.time}</time>}
                         {message.edited && !message.isDeleted && <span>edited</span>}
+                        {message.pending && <span>sending</span>}
+                        {message.failed && <span>failed</span>}
                       </div>
                       {(() => {
                         const badge = reactionBadges[message.id] || (message.stars > 0 ? { emoji: '😊', count: message.stars } : null);
@@ -1571,6 +1851,12 @@ function AstroCommunityPage() {
                 );
                 })}
               </div>
+              {typingNames.length > 0 && (
+                <div className="astro-typing-line">
+                  <span>{typingNames.join(', ')} {typingNames.length === 1 ? 'is' : 'are'} typing</span>
+                  <span className="astro-typing-dots"><i /><i /><i /></span>
+                </div>
+              )}
             </section>
 
             {/* Composer / Read-only notice — always at bottom */}

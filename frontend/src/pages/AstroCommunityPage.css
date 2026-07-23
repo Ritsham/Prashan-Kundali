@@ -975,6 +975,85 @@ button.astro-outline-button {
   display: none;
 }
 
+.astro-online-panel {
+  display: grid;
+  gap: 9px;
+  margin: 10px 12px 4px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.astro-online-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: rgba(248, 242, 232, 0.72);
+  font-size: 0.74rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.astro-online-title strong {
+  color: #30b36a;
+}
+
+.astro-online-list {
+  display: grid;
+  gap: 7px;
+}
+
+.astro-online-list p {
+  margin: 0;
+  color: rgba(248, 242, 232, 0.56);
+  font-size: 0.8rem;
+}
+
+.astro-online-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: rgba(248, 242, 232, 0.86);
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.astro-online-member span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.astro-online-avatar {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: #2f3b68;
+  color: #f8f2e8;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.astro-online-avatar::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #211c4d;
+  border-radius: 999px;
+  background: #30b36a;
+}
+
 @media (max-width: 920px) {
   .astro-community-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -3216,6 +3295,8 @@ button.astro-saved-item:hover {
 
 /* ── WhatsApp Style Chat UI ── */
 .astro-mobile-menu-btn,
+.astro-mobile-back-btn,
+button.astro-mobile-back-btn,
 button.astro-mobile-menu-btn {
   display: none;
   align-items: center;
@@ -3231,6 +3312,7 @@ button.astro-mobile-menu-btn {
   box-shadow: none !important;
 }
 
+.astro-mobile-back-btn:hover,
 .astro-mobile-menu-btn:hover {
   background: rgba(255, 255, 255, 0.16) !important;
   color: #ffffff !important;
@@ -3347,7 +3429,8 @@ button.astro-mobile-menu-btn {
     background: #0b141a;
   }
 
-  .astro-mobile-menu-btn {
+  .astro-mobile-menu-btn,
+  .astro-mobile-back-btn {
     display: flex;
   }
 
@@ -3356,7 +3439,7 @@ button.astro-mobile-menu-btn {
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 1000;
+    z-index: 1201;
     width: 290px;
     transform: translateX(-100%);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -3365,6 +3448,10 @@ button.astro-mobile-menu-btn {
 
   .astro-community-sidebar.is-open {
     transform: translateX(0);
+  }
+
+  .astro-mobile-scrim {
+    z-index: 1200;
   }
 
   .astro-user-strip {
@@ -3457,5 +3544,299 @@ button.astro-mobile-menu-btn {
     border-radius: 50%;
     background: #00a884 !important;
     color: #ffffff !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .astro-message-list {
+    padding: 18px 12px 88px !important;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .astro-message,
+  .astro-message:not(.is-own),
+  .astro-message.is-own {
+    display: flex !important;
+    align-items: flex-end !important;
+    flex: 0 0 auto !important;
+    width: 100%;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 5px 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .astro-message:not(.is-own) {
+    justify-content: flex-start !important;
+    flex-direction: row !important;
+  }
+
+  .astro-message.is-own {
+    justify-content: flex-end !important;
+    flex-direction: row !important;
+  }
+
+  .astro-message .astro-avatar {
+    width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .astro-message.is-own .astro-avatar {
+    display: none !important;
+  }
+
+  .astro-message-body,
+  .astro-message:not(.is-own) .astro-message-body,
+  .astro-message.is-own .astro-message-body {
+    display: flex !important;
+    flex: 0 1 auto !important;
+    flex-direction: column !important;
+    width: fit-content;
+    min-width: 0;
+    max-width: min(78vw, 430px) !important;
+    margin: 0 !important;
+    padding: 9px 11px 6px !important;
+    border: 0 !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18) !important;
+    transform: none !important;
+    overflow: visible !important;
+    overflow-wrap: anywhere;
+  }
+
+  .astro-message:not(.is-own) .astro-message-body {
+    border-radius: 14px 14px 14px 4px !important;
+    background: #202c33 !important;
+    color: #e9edef !important;
+  }
+
+  .astro-message.is-own .astro-message-body {
+    border-radius: 14px 14px 4px 14px !important;
+    background: linear-gradient(135deg, #466dff 0%, #6545ef 100%) !important;
+    color: #ffffff !important;
+  }
+
+  .astro-message-body p {
+    font-size: 0.96rem !important;
+    line-height: 1.36 !important;
+  }
+
+  .astro-message-footer {
+    display: flex !important;
+    flex: 0 0 auto !important;
+    justify-content: flex-end !important;
+    min-height: 15px;
+    margin-top: 3px !important;
+    opacity: 0.74;
+  }
+
+  .astro-message.failed .astro-message-body {
+    outline: 1px solid rgba(248, 113, 113, 0.7);
+  }
+
+  .astro-message-image {
+    display: block !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-width: min(68vw, 360px) !important;
+    max-height: 230px !important;
+    margin-top: 6px !important;
+    border-radius: 10px !important;
+    object-fit: contain !important;
+  }
+
+  .astro-message.is-own .astro-message-image {
+    margin-left: auto;
+  }
+
+  .astro-date-divider {
+    flex: 0 0 auto !important;
+    margin: 14px 0 18px !important;
+  }
+
+  .astro-conversation {
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .astro-composer {
+    will-change: transform;
+  }
+
+  .astro-message.has-open-menu {
+    padding-bottom: 3px !important;
+    z-index: 120 !important;
+  }
+
+  .astro-message-menu-host {
+    position: absolute !important;
+    top: 3px !important;
+    right: 3px !important;
+    z-index: 30;
+    width: 28px;
+    height: 28px;
+    margin: 0 !important;
+    overflow: visible;
+  }
+
+  .astro-message.is-own .astro-message-menu-host {
+    right: auto !important;
+    left: 3px !important;
+  }
+
+  .astro-message-menu-trigger {
+    display: inline-grid !important;
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+    opacity: 0;
+    pointer-events: none;
+    background: rgba(17, 27, 33, 0.34) !important;
+  }
+
+  .astro-message.has-open-menu .astro-message-menu-trigger,
+  .astro-message-body:active .astro-message-menu-trigger {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .astro-message-menu {
+    position: fixed !important;
+    top: auto !important;
+    right: 12px !important;
+    left: auto !important;
+    bottom: max(72px, calc(env(safe-area-inset-bottom) + 72px)) !important;
+    z-index: 2400 !important;
+    width: min(238px, calc(100vw - 24px)) !important;
+    max-height: min(42vh, 300px);
+    overflow: auto;
+    border-radius: 14px !important;
+    background: #111b21 !important;
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42) !important;
+  }
+
+  .astro-message.is-own .astro-message-menu {
+    right: 12px !important;
+    left: auto !important;
+  }
+
+  .astro-message-menu-list button {
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+
+  .astro-message-menu-list button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .astro-reaction-badge {
+    position: static !important;
+    z-index: 1;
+    display: inline-flex;
+    align-self: flex-end;
+    flex: 0 0 auto;
+    width: fit-content;
+    min-height: 24px;
+    margin-top: 4px;
+    margin-left: auto;
+    padding: 2px 8px;
+    border: 1px solid rgba(17, 27, 33, 0.75);
+    border-radius: 999px;
+    background: #f7f8fa;
+    color: #111b21;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+    transform: none !important;
+  }
+
+  .astro-message:not(.is-own) .astro-reaction-badge {
+    align-self: flex-start;
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  .astro-reaction-badge em {
+    color: #667781;
+  }
+
+  .astro-announcements-notice {
+    margin: 8px 10px max(12px, env(safe-area-inset-bottom)) !important;
+    padding: 10px 12px !important;
+    border-radius: 14px !important;
+    font-size: 0.82rem !important;
+    line-height: 1.35;
+    pointer-events: none;
+  }
+
+  .astro-announcements-notice svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .astro-community-shell {
+    position: fixed !important;
+    inset: 0 !important;
+    height: 100svh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+
+  .astro-community-main {
+    display: flex !important;
+    flex-direction: column !important;
+    height: 100svh !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .astro-workspace {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .astro-channel-wrap {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .astro-channel-wrap .astro-conversation {
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: hidden !important;
+  }
+
+  .astro-message-list {
+    flex: 1 1 auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
+  .astro-composer {
+    position: relative !important;
+    inset: auto !important;
+    flex: 0 0 auto !important;
+    width: 100% !important;
   }
 }

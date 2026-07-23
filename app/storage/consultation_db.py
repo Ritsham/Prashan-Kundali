@@ -91,6 +91,8 @@ def _insert_with_schema_fallback(db: Any, table: str, row: Dict[str, Any]) -> Di
             missing_column = _missing_schema_column(exc)
             if not missing_column or missing_column not in insert_row:
                 raise
+            if get_settings().is_production:
+                raise RuntimeError(f"Production schema is missing required column: {missing_column}") from exc
             removed_columns.append(missing_column)
             insert_row.pop(missing_column, None)
 

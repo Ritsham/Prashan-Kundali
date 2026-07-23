@@ -15,7 +15,7 @@
        Astro Community -> /astro-community
        About           -> /about.html
        Contact Us      -> /about-contact.html
-       Profile         -> /profile.html
+     The signed-in account block opens Profile directly on mobile.
      Footer (bottom of drawer): Privacy Policy, Refund Policy, Disclaimer,
      Return Policy, Login/Logout.
      NOTE: no "Prashna" page exists as a standalone route (grep found no
@@ -61,21 +61,21 @@
           '<strong>Shree Lakshmi Astro</strong>' +
           '<button type="button" id="mobile-menu-close" aria-label="Close navigation menu">&times;</button>' +
         '</div>' +
-        '<div class="mdw-profile" id="mdw-profile">' +
+        '<button type="button" class="mdw-profile" id="mdw-profile">' +
           '<div class="mdw-avatar" id="mdw-avatar">U</div>' +
           '<div class="mdw-profile-info">' +
             '<div class="mdw-profile-name" id="mdw-profile-name">Guest</div>' +
             '<div class="mdw-profile-sub" id="mdw-profile-sub">Sign in to save your charts</div>' +
             '<span class="mdw-plan-badge hidden" id="mdw-plan-badge"></span>' +
           '</div>' +
-        '</div>' +
+        '</button>' +
         '<nav class="mdw-links" aria-label="Primary">' +
           '<a href="/index.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="home">Home</a>' +
+          '<a href="/consultation" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="consultant">Consultant</a>' +
           '<a href="/matchmaking.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="matchmaking">Match Making</a>' +
           '<a href="/astro-community" class="mobile-drawer-link mdw-community-alert" data-mobile-nav-link data-mdw-section="community">Astro Community <span>(Astrologers Only)</span></a>' +
           '<a href="/about.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="about">About</a>' +
           '<a href="/about-contact.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="contact">Contact Us</a>' +
-          '<a href="/profile.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="profile">Profile</a>' +
         '</nav>' +
         '<div class="mdw-spacer"></div>' +
         '<div class="mdw-footer">' +
@@ -182,6 +182,16 @@
       closeDrawer();
       var logoutBtn = document.getElementById("btn-logout");
       logoutBtn && logoutBtn.click();
+    });
+    document.getElementById("mdw-profile") && document.getElementById("mdw-profile").addEventListener("click", function () {
+      closeDrawer();
+      var logoutBtn = document.getElementById("mdw-logout-btn");
+      if (logoutBtn && !logoutBtn.classList.contains("hidden")) {
+        window.location.href = "/profile.html";
+        return;
+      }
+      var loginBtn = document.getElementById("btn-login-header");
+      loginBtn && loginBtn.click();
     });
 
     // Profile panel: populated from the real session via the "astro:authChanged"

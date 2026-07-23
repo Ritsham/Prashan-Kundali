@@ -1,6 +1,9 @@
 __pycache__/
 .pycache/
+.pycache-build/
 *.pyc
+.DS_Store
+.fuse_hidden*
 kundali.db
 data/*.sqlite3
 .venv/
@@ -9,7 +12,5 @@ ephemeris/
 .env.*
 !.env.example
 .vercel
-.env*
 node_modules/
-package-lock.json
-package.json
+public/frontend/
