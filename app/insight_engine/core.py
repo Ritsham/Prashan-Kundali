@@ -54,7 +54,7 @@ from app.insight_engine.rules.common import (
     ASPECT_ORB, BARREN_SIGNS, BENEFICS, DEBILITATION_SIGNS,
     EXALTATION_SIGNS, FAVORABLE_ASPECTS, FRUITFUL_SIGNS,
     HIDDEN_HOUSES, MALEFICS, SIGN_LORDS, SUPPORT_HOUSES,
-    planet_strength_score, applying_yoga, aspect_between,
+    planet_strength_score, authenticity_check, applying_yoga, aspect_between,
     aspect_gap, aspect_name, confidence_label, gap_is_widening,
     item, ordinal, timing_from_yoga, unique_planets,
     verdict_from_score,
@@ -127,6 +127,20 @@ def infer_job_subdomain(question: str) -> str:
     if any(word in text for word in ["private", "company", "corporate", "startup", "interview", "offer", "package"]):
         return "private"
     return ""
+
+def detect_general_intent(question: str, domain: str = "general") -> str:
+    text = question.lower()
+    intents = [
+        ("timing", ["when", "how soon", "delay", "time", "date", "month", "year"]),
+        ("yes_no", ["will", "can i", "should i", "is it", "am i", "do i", "does", "possible"]),
+        ("choice", ["which", "choose", "better", "option", "between", "or not"]),
+        ("outcome", ["result", "outcome", "success", "happen", "complete", "finish"]),
+        ("obstacle", ["problem", "block", "delay", "obstacle", "issue", "stuck", "fail"]),
+    ]
+    for intent, keywords in intents:
+        if any(keyword in text for keyword in keywords):
+            return intent
+    return domain or "general"
 
 def interpret_general_prashna(chart: dict, domain: str = "general") -> dict:
     planets = {planet["name"]: planet for planet in chart["planets"]}
@@ -232,6 +246,44 @@ def best_general_yoga(lagna_lord: dict, moon: dict, targets: list[dict]) -> dict
     pool = applying or candidates
     return sorted(pool, key=lambda item: item["degree_gap"])[0]
 
+def general_readiness(lagna_lord: dict, moon: dict) -> dict:
+    evidence = []
+    score = 0
+    blockers = 0
+    for label, planet in [("Lagna lord", lagna_lord), ("Moon", moon)]:
+        strength = planet_strength_score(planet)
+        score += strength
+        if planet["house"] in SUPPORT_HOUSES:
+            score += 1
+            evidence.append(item(label, "support", f"{planet['name']} is in the {ordinal(planet['house'])} house, showing readiness and visible agency."))
+        elif planet["house"] in HIDDEN_HOUSES:
+            score -= 1
+            blockers += 1
+            evidence.append(item(label, "caution", f"{planet['name']} is in the {ordinal(planet['house'])} house, so the matter needs patience or inner correction."))
+        else:
+            evidence.append(item(label, "neutral", f"{planet['name']} is in the {ordinal(planet['house'])} house."))
+    return {"score": score, "blockers": blockers, "evidence": evidence}
+
+def general_outcome_support(fourth_lord: dict, tenth_lord: dict, eleventh_lord: dict) -> dict:
+    evidence = []
+    score = 0
+    blockers = 0
+    for label, planet in [
+        ("Conclusion lord", fourth_lord),
+        ("Action lord", tenth_lord),
+        ("Fulfilment lord", eleventh_lord),
+    ]:
+        if planet["house"] in SUPPORT_HOUSES:
+            score += 1
+            evidence.append(item(label, "support", f"{planet['name']} supports the matter from the {ordinal(planet['house'])} house."))
+        elif planet["house"] in HIDDEN_HOUSES:
+            score -= 1
+            blockers += 1
+            evidence.append(item(label, "caution", f"{planet['name']} is hidden or pressured in the {ordinal(planet['house'])} house."))
+        else:
+            evidence.append(item(label, "neutral", f"{planet['name']} is in the {ordinal(planet['house'])} house."))
+    return {"score": score, "blockers": blockers, "evidence": evidence}
+
 def general_obstacles(lagna_lord: dict, moon: dict, planets: dict[str, dict]) -> dict:
     evidence = []
     score = 0
@@ -259,4 +311,3 @@ def general_verdict_from_score(score: int, blockers: int) -> dict:
     if score >= 3:
         return {"level": "possible_with_effort", "summary": "The matter can work, but it needs correct action, patience, and attention to the pressure points shown in the chart."}
     return {"level": "uncertain", "summary": "The chart is mixed; the desire is visible, but the result is not fully secured yet."}
-

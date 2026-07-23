@@ -38,6 +38,7 @@ from app.storage.database import get_service_client
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from app.config import get_settings
+from app.services.astrology_gateway import AstrologyEngineHTTPError, calculate_chart
 from app.services.timezone_service import timezone_at
 
 router = APIRouter()
@@ -195,7 +196,6 @@ async def _enrich_case_snapshot(payload: ConsultationCasePayload) -> Consultatio
     if user.latitude is None or user.longitude is None or not user.place:
         return payload
 
-    astrology_url = get_settings().astrology_engine_url
     chart_req_data = {
         "chart_type": payload.chart_type.value,
         "name": user.full_name,
@@ -223,13 +223,10 @@ async def _enrich_case_snapshot(payload: ConsultationCasePayload) -> Consultatio
             except Exception:
                 pass
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(f"{astrology_url}/calculate", json=chart_req_data, timeout=30.0)
-
-    if resp.status_code != 200:
-        raise HTTPException(status_code=422, detail=f"Failed to calculate consultation chart snapshot: {resp.text}")
-
-    result = resp.json()
+    try:
+        result = await calculate_chart(chart_req_data, timeout=30.0)
+    except AstrologyEngineHTTPError as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to calculate consultation chart snapshot: {exc.detail}") from exc
     chart = result.get("chart") or {}
     interpretation = result.get("interpretation") or chart.get("interpretation")
     enriched_snapshot = AstrologySnapshot.model_validate({

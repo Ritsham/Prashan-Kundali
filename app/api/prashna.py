@@ -8,12 +8,12 @@ from pydantic import Field, field_validator
 import httpx
 from app.config import get_settings
 from app.services.geocoding_service import geocode_place, reverse_geocode_place
-from app.services.timezone_service import timezone_at
 from app.storage.database import get_chart, save_prashna_chart, save_lagna_chart, sync_user, update_prashna_chart
 from app.dependencies import get_current_user, AuthState
 from app.core.rate_limiter import RateLimiter, llm_limiter, public_limiter
 from app.insight_engine import build_interpretation
 from app.schemas.common import ID_RE, LocationInput, StrictRequestModel, parse_iso_datetime
+from app.services.astrology_gateway import AstrologyEngineHTTPError, calculate_chart
 from app.services.job_status import create_job, get_job
 
 router = APIRouter()
@@ -117,8 +117,6 @@ async def create_prashna(
                 raise HTTPException(status_code=400, detail="Invalid asked_at_utc ISO datetime.") from exc
         
         try:
-            astrology_url = get_settings().astrology_engine_url
-            
             payload_data = {
                 "chart_type": "prashna",
                 "name": payload.name,
@@ -133,16 +131,8 @@ async def create_prashna(
             }
             if payload.asked_at_utc:
                 payload_data["asked_at_utc"] = asked_at_utc.isoformat()
-                
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
-                
-            if resp.status_code == 503:
-                raise HTTPException(status_code=503, detail=resp.json().get("detail", "Calculation Dependency Error"))
-            elif resp.status_code != 200:
-                raise HTTPException(status_code=422, detail=resp.json().get("detail", "Failed to calculate chart"))
-                
-            result = resp.json()
+
+            result = await calculate_chart(payload_data, timeout=30.0)
             chart = result["chart"]
             interpretation = result.get("interpretation") or chart.get("interpretation")
             if not interpretation:
@@ -150,8 +140,9 @@ async def create_prashna(
             if interpretation:
                 chart["interpretation"] = interpretation
 
-        except httpx.RequestError as exc:
-            raise HTTPException(status_code=502, detail=f"Failed to connect to astrology engine: {str(exc)}") from exc
+        except AstrologyEngineHTTPError as exc:
+            status_code = 503 if exc.status_code == 503 else 422
+            raise HTTPException(status_code=status_code, detail=exc.detail) from exc
         except Exception as exc:
             if isinstance(exc, HTTPException):
                 raise
@@ -224,10 +215,6 @@ def read_prashna_job(job_id: str = Path(pattern=r"^job_[A-Za-z0-9]{8,40}$"), aut
 async def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_current_user), _ = Depends(lagna_rate_limiter)) -> dict:
     try:
         try:
-            tz_name = timezone_at(payload.location.latitude, payload.location.longitude)
-            local_dt = datetime.fromisoformat(payload.birth_datetime_local)
-            astrology_url = get_settings().astrology_engine_url
-            
             payload_data = {
                 "chart_type": "lagna",
                 "name": payload.name,
@@ -239,19 +226,12 @@ async def create_lagna(payload: LagnaRequest, auth: AuthState = Depends(get_curr
                     "place_name": payload.location.place_name
                 }
             }
-                
-            async with httpx.AsyncClient() as client:
-                resp = await client.post(f"{astrology_url}/calculate", json=payload_data, timeout=30.0)
-                
-            if resp.status_code == 503:
-                raise HTTPException(status_code=503, detail=resp.json().get("detail", "Calculation Dependency Error"))
-            elif resp.status_code != 200:
-                raise HTTPException(status_code=422, detail=resp.json().get("detail", "Failed to calculate chart"))
-                
-            chart = resp.json()["chart"]
-            
-        except httpx.RequestError as exc:
-            raise HTTPException(status_code=502, detail=f"Failed to connect to astrology engine: {str(exc)}") from exc
+
+            chart = (await calculate_chart(payload_data, timeout=30.0))["chart"]
+
+        except AstrologyEngineHTTPError as exc:
+            status_code = 503 if exc.status_code == 503 else 422
+            raise HTTPException(status_code=status_code, detail=exc.detail) from exc
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
