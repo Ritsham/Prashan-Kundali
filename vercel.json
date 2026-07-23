@@ -1,6 +1,11 @@
 {
   "buildCommand": "node build.js",
   "outputDirectory": "public",
+  "functions": {
+    "api/**/*.py": {
+      "excludeFiles": "{.git/**,.agents/**,.codex/**,.vercel/**,.venv/**,__pycache__/**,.pycache/**,.pycache-build/**,node_modules/**,frontend/node_modules/**,frontend/dist/**,frontend/src/**,frontend/public/**,frontend/*.json,frontend/*.ts,frontend/*.html,docs/**,scripts/**,services/**,data/**,ephemeris/**,validation/generated_outputs.csv,*.db,*.sqlite3,Dockerfile,docker-compose*.yml,README*.md}"
+    }
+  },
   "headers": [
     {
       "source": "/frontend_old/(.*)\\.js",
