@@ -151,6 +151,10 @@ def _status_filter_values() -> list[str]:
     return sorted(statuses | {"pending", "accepted", "scheduled", "in_progress", "waiting_queue", "QUEUED"})
 
 
+def _is_waiting_row(row: Dict[str, Any]) -> bool:
+    return row.get("queue_number") is not None
+
+
 async def _has_active_booking_conflict(
     db: Any,
     *,
@@ -416,15 +420,8 @@ async def update_consultation_case(case_id: str, updates: Dict[str, Any], db_cli
 async def count_active_consultation_requests(db_client: Optional[Any] = None) -> int:
     db = db_client or supabase
     try:
-        stats_res = db.table("consultant_platform_stats").select("current_queue_size").eq("id", 1).execute()
-        if stats_res.data:
-            return int(stats_res.data[0].get("current_queue_size") or 0)
-    except Exception as exc:
-        print(f"Warning: consultation stats count failed: {exc}")
-
-    try:
-        res = db.table("consultation_requests").select("id").in_("status", _status_filter_values()).execute()
-        return len(res.data or [])
+        res = db.table("consultation_requests").select("id,queue_number").in_("status", _status_filter_values()).execute()
+        return len([row for row in (res.data or []) if not _is_waiting_row(row)])
     except Exception as exc:
         print(f"Warning: active consultation request count failed: {exc}")
 
@@ -439,6 +436,12 @@ async def count_active_consultation_requests(db_client: Optional[Any] = None) ->
 async def get_public_consultation_queue_status(db_client: Optional[Any] = None) -> Dict[str, Any]:
     db = db_client or supabase
     active_count = await count_active_consultation_requests(db)
+    waiting_count = 0
+    try:
+        waiting_res = db.table("consultation_requests").select("id,queue_number").in_("status", _status_filter_values()).execute()
+        waiting_count = len([row for row in (waiting_res.data or []) if _is_waiting_row(row)])
+    except Exception as exc:
+        print(f"Warning: consultation waiting queue count failed: {exc}")
     try:
         stats_res = db.table("consultant_platform_stats").select("max_capacity").eq("id", 1).execute()
         max_active = int(stats_res.data[0].get("max_capacity") or MAX_ACTIVE_CONSULTATION_REQUESTS) if stats_res.data else MAX_ACTIVE_CONSULTATION_REQUESTS
@@ -449,7 +452,7 @@ async def get_public_consultation_queue_status(db_client: Optional[Any] = None) 
         "active_count": active_count,
         "max_active": max_active,
         "available_slots": max(0, max_active - active_count),
-        "waiting_count": 0,
+        "waiting_count": waiting_count,
         "can_request_active_slot": active_count < max_active,
     }
 
