@@ -12,6 +12,7 @@ from app.storage.consultation_db import (
     create_consultation_request,
     get_consultation_request,
     list_consultation_requests,
+    submit_consultation_review,
     update_consultation_request,
     create_consultation_case,
     get_consultation_case,
@@ -290,6 +291,11 @@ class CancelConsultationRequest(StrictRequestModel):
     requester_email: Optional[str] = Field(default=None, max_length=160, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+class ConsultationReviewRequest(StrictRequestModel):
+    rating: int = Field(ge=1, le=5)
+    review_text: str = Field(min_length=5, max_length=1200)
+
+
 class AdminConsultationUpdate(StrictRequestModel):
     status: Optional[str] = Field(default=None, pattern="^(requested|pending_payment|confirmed|active|completed|cancelled|refunded|pending|reviewed|accepted|scheduled|in_progress|rejected|waiting_queue)$")
     meeting_link: Optional[str] = Field(default=None, max_length=500)
@@ -453,6 +459,45 @@ async def read_consultation_request(request_id: Annotated[str, Path(pattern=ID_R
     if not _can_read_own_case(auth, request):
         raise HTTPException(status_code=403, detail="Not allowed to read this consultation request")
     return {"request": request}
+
+
+@router.post("/consultation/request/{request_id}/review", dependencies=[Depends(booking_limiter)])
+async def review_consultation_request(
+    request_id: Annotated[str, Path(pattern=ID_RE)],
+    payload: ConsultationReviewRequest,
+    auth: AuthState = Depends(get_current_user),
+):
+    db = get_service_client()
+    if not db:
+        raise HTTPException(status_code=500, detail="Supabase service role client is not configured")
+
+    request = await get_consultation_request(request_id, db)
+    if not request:
+        raise HTTPException(status_code=404, detail="Consultation request not found")
+    request_email = str(request.get("email") or request.get("user", {}).get("email") or "").strip().lower()
+    owns_request = bool(request.get("user_id") == auth.user_id or (request_email and request_email == (auth.email or "").strip().lower()))
+    if not owns_request:
+        raise HTTPException(status_code=403, detail="Not allowed to review this consultation request")
+    if normalize_consultation_status(request.get("status")) != "completed":
+        raise HTTPException(status_code=400, detail="Reviews can be submitted after the consultation is completed")
+
+    reviewed = await submit_consultation_review(
+        request_id,
+        rating=payload.rating,
+        review_text=payload.review_text.strip(),
+        db_client=db,
+    )
+    if not reviewed:
+        raise HTTPException(status_code=404, detail="Consultation request not found")
+    record_admin_audit(
+        actor_user_id=auth.user_id,
+        entity_type="consultation_review",
+        entity_id=request_id,
+        action="submit",
+        before_json={"user_review_rating": request.get("user_review_rating"), "user_review_text": request.get("user_review_text")},
+        after_json={"user_review_rating": reviewed.get("user_review_rating"), "user_review_text": reviewed.get("user_review_text")},
+    )
+    return {"request": reviewed}
 
 
 @router.post("/consultation/request/{request_id}/cancel", dependencies=[Depends(booking_limiter)])

@@ -57,6 +57,16 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            width: 100%;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            box-shadow: none;
+            border-radius: 0;
+        }
+        button.list-item:hover {
+            background: rgba(200,162,97,0.08);
+            transform: none;
         }
         .list-item:last-child {
             border-bottom: none;
@@ -155,6 +165,114 @@
             color: var(--ink-dim);
             font-size: 0.86rem;
         }
+        .consultation-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 18px;
+            background: rgba(20, 16, 40, 0.45);
+        }
+        .consultation-modal.hidden {
+            display: none;
+        }
+        .consultation-modal-panel {
+            width: min(760px, 100%);
+            max-height: 88vh;
+            overflow-y: auto;
+            background: var(--bg-surface);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 22px;
+            box-shadow: 0 24px 60px rgba(33,28,77,0.25);
+        }
+        .consultation-modal-head {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--line);
+        }
+        .consultation-modal-head h3 {
+            margin: 0;
+            color: var(--ink-light);
+        }
+        .consultation-detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+        .consultation-detail-box {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px 12px;
+            background: rgba(255,255,255,0.45);
+        }
+        .consultation-detail-box span {
+            display: block;
+            margin-bottom: 4px;
+            color: var(--ink-dim);
+            font-size: 0.74rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .consultation-detail-box strong,
+        .consultation-question {
+            color: var(--ink-light);
+            line-height: 1.45;
+        }
+        .consultation-question {
+            white-space: pre-wrap;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 12px;
+            background: rgba(255,255,255,0.55);
+            margin-bottom: 16px;
+        }
+        .review-box {
+            border-top: 1px solid var(--line);
+            padding-top: 16px;
+            margin-top: 16px;
+        }
+        .star-rating {
+            display: flex;
+            gap: 6px;
+            margin: 8px 0 12px;
+        }
+        .star-rating button {
+            min-height: 40px;
+            padding: 0 8px;
+            border-radius: 8px;
+            font-size: 22px;
+            color: #8a785f;
+            background: #fffaf0;
+        }
+        .star-rating button.active {
+            color: #b7791f;
+            border-color: #f6c453;
+            background: #fff3c4;
+        }
+        .review-box textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .review-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        .review-status {
+            color: var(--ink-dim);
+            font-size: 0.88rem;
+        }
         @media (max-width: 640px) {
             .profile-stats-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -162,6 +280,9 @@
             .list-item {
                 align-items: flex-start;
                 gap: 12px;
+            }
+            .consultation-detail-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -255,9 +376,10 @@
             </div>
         </div>
     </main>
+    <div id="consultation-modal" class="consultation-modal hidden" aria-hidden="true"></div>
 
     <script src="./saved-charts.js?v=1" defer></script>
-    <script type="module" src="./profile.js?v=2" defer></script>
+    <script type="module" src="./profile.js?v=3" defer></script>
   <!-- ===== MOBILE NAV v3: shared mobile header + drawer, injected on every page ===== -->
   <script src="mobile-nav.js?v=4" defer></script>
 </body>

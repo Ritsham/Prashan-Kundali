@@ -21,6 +21,7 @@ from app.schemas.consultation_case import ConsultationCasePayload
 MAX_ACTIVE_CONSULTATION_REQUESTS = 20
 MAX_ACTIVE_CONSULTATION_REQUESTS_PER_ACCOUNT = 5
 MISSING_SCHEMA_COLUMN_RE = re.compile(r"Could not find the '([^']+)' column")
+USER_REVIEW_RE = re.compile(r"\[\[USER_REVIEW:(\{.*?\})\]\]", re.DOTALL)
 
 FOUNDER_CONSULTANT = {
     "id": "founder-rupesh-kumar",
@@ -99,6 +100,11 @@ def _insert_with_schema_fallback(db: Any, table: str, row: Dict[str, Any]) -> Di
 
 def _normalize_case_row(row: Dict[str, Any]) -> Dict[str, Any]:
     case = dict(row)
+    review = _extract_user_review(case.get("admin_notes"))
+    if review:
+        case["user_review_rating"] = review.get("rating")
+        case["user_review_text"] = review.get("text")
+        case["user_reviewed_at"] = review.get("reviewed_at")
     snapshot = _json_value(case.get("astrology_snapshot") or case.get("astrological_snapshot"))
     case["astrology_snapshot"] = snapshot
     case["astrological_snapshot"] = snapshot
@@ -144,6 +150,28 @@ def _normalize_case_row(row: Dict[str, Any]) -> Dict[str, Any]:
         "currency": case.get("currency") or "INR",
     }
     return case
+
+
+def _extract_user_review(notes: Any) -> Optional[Dict[str, Any]]:
+    if not notes:
+        return None
+    match = USER_REVIEW_RE.search(str(notes))
+    if not match:
+        return None
+    try:
+        review = json.loads(match.group(1))
+    except Exception:
+        return None
+    if not isinstance(review, dict):
+        return None
+    return review
+
+
+def _upsert_user_review_note(notes: Any, review: Dict[str, Any]) -> str:
+    base = str(notes or "").strip()
+    cleaned = USER_REVIEW_RE.sub("", base).strip()
+    marker = f"[[USER_REVIEW:{json.dumps(review, separators=(',', ':'))}]]"
+    return f"{cleaned}\n{marker}".strip() if cleaned else marker
 
 
 def _status_filter_values() -> list[str]:
@@ -619,6 +647,30 @@ async def update_consultation_request(request_id: str, updates: Dict[str, Any], 
 
     request = await get_consultation_request(request_id, db)
     return {"request": request, "promoted_request": promoted}
+
+
+async def submit_consultation_review(
+    request_id: str,
+    *,
+    rating: int,
+    review_text: str,
+    db_client: Optional[Any] = None,
+) -> Optional[Dict[str, Any]]:
+    db = db_client or supabase
+    current = await get_consultation_request(request_id, db)
+    if not current:
+        return None
+    review = {
+        "rating": rating,
+        "text": review_text,
+        "reviewed_at": _now_iso(),
+    }
+    notes = _upsert_user_review_note(current.get("admin_notes"), review)
+    db.table("consultation_requests").update({
+        "admin_notes": notes,
+        "updated_at": _now_iso(),
+    }).eq("id", request_id).execute()
+    return await get_consultation_request(request_id, db)
 
 
 async def promote_oldest_waiting_request() -> Optional[Dict[str, Any]]:

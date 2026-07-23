@@ -258,6 +258,24 @@ const CaseDetail = ({ request, detail, loading }: { request: ConsultationRequest
         </div>
       </section>
 
+      {(activeCase.user_review_rating || activeCase.user_review_text || request.user_review_rating || request.user_review_text) && (
+        <section className="mb-6">
+          <h4 className="mb-3 text-sm font-bold uppercase tracking-wider text-gray-500">User Feedback</h4>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/30">
+            <div className="mb-2 font-bold text-amber-900 dark:text-amber-100">
+              Rating: {'★'.repeat(Number(activeCase.user_review_rating || request.user_review_rating || 0))}
+              {'☆'.repeat(Math.max(0, 5 - Number(activeCase.user_review_rating || request.user_review_rating || 0)))}
+            </div>
+            <div className="whitespace-pre-wrap text-gray-800 dark:text-gray-200">
+              {activeCase.user_review_text || request.user_review_text}
+            </div>
+            {(activeCase.user_reviewed_at || request.user_reviewed_at) && (
+              <div className="mt-2 text-xs text-gray-500">Submitted {formatDateTime(activeCase.user_reviewed_at || request.user_reviewed_at || undefined)}</div>
+            )}
+          </div>
+        </section>
+      )}
+
       <section>
         <h4 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-gray-500">
           <FileText size={16} /> Kundali Snapshot

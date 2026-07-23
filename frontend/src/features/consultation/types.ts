@@ -143,6 +143,9 @@ export interface ConsultationCase extends ConsultationCasePayload {
   astrological_snapshot?: AstrologySnapshot | null;
   booking_status?: string;
   admin_notes?: string | null;
+  user_review_rating?: number | null;
+  user_review_text?: string | null;
+  user_reviewed_at?: string | null;
   assigned_astrologer?: string | null;
   meeting_link?: string | null;
   scheduled_at?: string | null;
