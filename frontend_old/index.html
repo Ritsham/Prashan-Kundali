@@ -37,6 +37,29 @@
       }
     </style>
     <link rel="stylesheet" href="./styles.css?v=15" />
+    <style>
+      @media (min-width: 901px) {
+        body.has-result,
+        body.has-result.result-prashna {
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
+        }
+
+        body.has-result .shell {
+          height: auto !important;
+          min-height: calc(100dvh - 58px) !important;
+          padding-bottom: 44px !important;
+        }
+
+        body.has-result .result,
+        body.has-result.result-prashna .result {
+          height: auto !important;
+          min-height: calc(100dvh - 58px) !important;
+          overflow: visible !important;
+          padding-bottom: 36px !important;
+        }
+      }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <script>
       // Global error handler to help debug frontend crashes.
