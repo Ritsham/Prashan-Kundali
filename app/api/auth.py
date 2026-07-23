@@ -21,4 +21,5 @@ def read_current_auth(auth: AuthState = Depends(get_current_user)) -> CurrentUse
         "role": auth.role,
         "metadata": auth.user_metadata,
         "profile": auth.profile,
+        "profile_exists": auth.profile_exists,
     })

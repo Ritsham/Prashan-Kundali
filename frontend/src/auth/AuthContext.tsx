@@ -2,10 +2,13 @@ import React from 'react';
 import {
   type AuthSession,
   clearStoredSession,
+  completeUserProfile,
+  consumeOAuthCallback,
   enrichSessionWithBackendUser,
   getStoredSession,
   refreshSession,
   signInWithPassword,
+  signInWithGoogle as signInWithGoogleRequest,
   signOut as signOutRequest,
   signUpWithPassword,
 } from './supabaseAuth';
@@ -18,6 +21,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     let cancelled = false;
     async function boot() {
+      try {
+        const oauthSession = await consumeOAuthCallback();
+        if (oauthSession?.access_token) {
+          if (!cancelled) setSession(oauthSession);
+          if (!cancelled) setLoading(false);
+          return;
+        }
+      } catch {
+        clearStoredSession();
+        if (!cancelled) setSession(null);
+        if (!cancelled) setLoading(false);
+        return;
+      }
+
       const stored = getStoredSession();
       if (!stored) {
         setLoading(false);
@@ -58,6 +75,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     signUp: async (email: string, password: string, fullName: string) => {
       const next = await signUpWithPassword(email, password, fullName);
+      setSession(next);
+    },
+    signInWithGoogle: async (intent, profile) => {
+      await signInWithGoogleRequest(intent, profile);
+    },
+    completeProfile: async (name: string, mobileNumber: string) => {
+      if (!session) throw new Error('Authentication required.');
+      const next = await completeUserProfile(session, name, mobileNumber);
       setSession(next);
     },
     signOut: async () => {

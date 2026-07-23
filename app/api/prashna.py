@@ -66,8 +66,14 @@ def _is_admin(auth: AuthState) -> bool:
 @router.post("/users/sync")
 def sync_user_endpoint(payload: UserSyncRequest, auth: AuthState = Depends(get_current_user)) -> dict:
     try:
-        sync_user(auth.client, auth.user_id, payload.email, payload.name, payload.mobile_number)
-        return {"status": "success"}
+        if payload.email.lower() != auth.email.lower():
+            raise HTTPException(status_code=400, detail="Profile email must match the signed-in Google account.")
+        if auth.profile_exists:
+            return {"status": "success", "profile_exists": True}
+        sync_user(auth.client, auth.user_id, auth.email, payload.name, payload.mobile_number)
+        return {"status": "success", "profile_exists": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"User sync failed: {str(e)}")
 

@@ -70,6 +70,7 @@ class AuthState:
         user_metadata: Optional[dict] = None,
         role: str = ROLE_USER,
         profile: Optional[dict[str, Any]] = None,
+        profile_exists: bool = False,
     ):
         self.client = client
         self.user_id = user_id
@@ -77,6 +78,7 @@ class AuthState:
         self.user_metadata = user_metadata or {}
         self.role = role
         self.profile = profile or {}
+        self.profile_exists = profile_exists
 
     @property
     def is_admin(self) -> bool:
@@ -95,7 +97,7 @@ def _load_user_profile(user_id: str, fallback_client: Optional[Client] = None) -
     try:
         res = (
             db.table("users")
-            .select("id, email, name, full_name, role, verification_status, community_access, community_verification_status")
+            .select("id, email, name, full_name, mobile_number, role, verification_status, community_access, community_verification_status")
             .eq("id", user_id)
             .limit(1)
             .execute()
@@ -136,6 +138,7 @@ def _auth_state_from_user(client: Optional[Client], user: Any) -> AuthState:
     user_metadata = getattr(user, "user_metadata", None) or {}
     app_metadata = getattr(user, "app_metadata", None) or {}
     profile = _load_user_profile(user.id, client)
+    profile_exists = bool(profile.get("id"))
     profile_role = normalize_role(profile)
     metadata_role = normalize_role({**app_metadata, **user_metadata})
     role = profile_role
@@ -152,6 +155,7 @@ def _auth_state_from_user(client: Optional[Client], user: Any) -> AuthState:
         user_metadata=user_metadata,
         role=role,
         profile={**user_metadata, **app_metadata, **profile},
+        profile_exists=profile_exists,
     )
 
 def get_current_user(authorization: str = Header(None)) -> AuthState:

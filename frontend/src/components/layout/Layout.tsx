@@ -20,15 +20,15 @@ function getProfileInitial(session: ReturnType<typeof useAuth>['session']) {
 const Layout: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { session, loading, signIn, signUp, signOut } = useAuth();
+  const { session, loading, signInWithGoogle, signOut } = useAuth();
   const isCommunityWorkspace = location.pathname === '/astro-community';
   const isHome = location.pathname === '/';
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [authOpen, setAuthOpen] = React.useState(false);
-  const [authMode, setAuthMode] = React.useState<'sign-in' | 'sign-up'>('sign-in');
+  const [authMode, setAuthMode] = React.useState<'sign_in' | 'sign_up'>('sign_in');
   const [authError, setAuthError] = React.useState('');
   const [authBusy, setAuthBusy] = React.useState(false);
-  const [authForm, setAuthForm] = React.useState({ email: '', password: '', fullName: '' });
+  const [signupForm, setSignupForm] = React.useState({ fullName: '', mobileNumber: '' });
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const isSignedIn = Boolean(session?.access_token);
   const role = session?.user?.role || 'user';
@@ -70,21 +70,37 @@ const Layout: React.FC = () => {
     navigate('/');
   };
 
-  const submitAuth = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const validMobileNumber = (mobileNumber: string) => /^\+?[0-9 ()-]{6,24}$/.test(mobileNumber);
+
+  const startGoogleSignIn = async () => {
     setAuthBusy(true);
     setAuthError('');
     try {
-      if (authMode === 'sign-up') {
-        await signUp(authForm.email, authForm.password, authForm.fullName);
-      } else {
-        await signIn(authForm.email, authForm.password);
-      }
-      setAuthOpen(false);
-      setAuthForm({ email: '', password: '', fullName: '' });
+      await signInWithGoogle('sign_in');
     } catch (error: any) {
-      setAuthError(error.message || 'Authentication failed.');
-    } finally {
+      setAuthError(error.message || 'Google sign in failed.');
+      setAuthBusy(false);
+    }
+  };
+
+  const startGoogleSignUp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const fullName = signupForm.fullName.trim();
+    const mobileNumber = signupForm.mobileNumber.trim();
+    if (!fullName) {
+      setAuthError('Please enter your full name.');
+      return;
+    }
+    if (!validMobileNumber(mobileNumber)) {
+      setAuthError('Please enter a valid mobile number.');
+      return;
+    }
+    setAuthBusy(true);
+    setAuthError('');
+    try {
+      await signInWithGoogle('sign_up', { fullName, mobileNumber });
+    } catch (error: any) {
+      setAuthError(error.message || 'Google sign up failed.');
       setAuthBusy(false);
     }
   };
@@ -152,7 +168,17 @@ const Layout: React.FC = () => {
                 )}
               </div>
             ) : (
-              <button type="button" id="btn-login-header" className="nav-btn" onClick={() => setAuthOpen(true)}>Sign In</button>
+              <button
+                type="button"
+                id="btn-login-header"
+                className="nav-btn"
+                onClick={() => {
+                  setAuthMode('sign_in');
+                  setAuthOpen(true);
+                }}
+              >
+                Sign In
+              </button>
             )}
             <button
               type="button"
@@ -272,53 +298,76 @@ const Layout: React.FC = () => {
 
       {authOpen && (
         <div className="auth-backdrop" role="presentation" onClick={() => setAuthOpen(false)}>
-          <form className="auth-panel" onSubmit={submitAuth} onClick={(event) => event.stopPropagation()}>
+          <div className="auth-panel" role="dialog" aria-modal="true" aria-labelledby="google-auth-title" onClick={(event) => event.stopPropagation()}>
             <button type="button" className="btn-close-auth" onClick={() => setAuthOpen(false)} aria-label="Close sign in">×</button>
-            <h1>{authMode === 'sign-up' ? 'Create account' : 'Sign in'}</h1>
-            <p>{authMode === 'sign-up' ? 'Create your Shree Lakshmi Astro account.' : 'Use your Shree Lakshmi Astro account.'}</p>
+            <h1 id="google-auth-title">{authMode === 'sign_in' ? 'Sign in' : 'Sign up'}</h1>
+            <div className="auth-mode-tabs" role="tablist" aria-label="Authentication options">
+              <button
+                type="button"
+                className={authMode === 'sign_in' ? 'active' : ''}
+                aria-selected={authMode === 'sign_in'}
+                onClick={() => {
+                  setAuthMode('sign_in');
+                  setAuthError('');
+                }}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                className={authMode === 'sign_up' ? 'active' : ''}
+                aria-selected={authMode === 'sign_up'}
+                onClick={() => {
+                  setAuthMode('sign_up');
+                  setAuthError('');
+                }}
+              >
+                Sign up
+              </button>
+            </div>
             {authError && <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm">{authError}</div>}
-            {authMode === 'sign-up' && (
-              <input
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
-                placeholder="Full name"
-                value={authForm.fullName}
-                onChange={(event) => setAuthForm({ ...authForm, fullName: event.target.value })}
-                required
-              />
+            {authMode === 'sign_in' ? (
+              <>
+                <p>Use Google to continue with your existing account.</p>
+                <button type="button" className="btn-google-login" disabled={authBusy} onClick={startGoogleSignIn}>
+                  {authBusy ? 'Opening Google...' : 'Sign in with Google'}
+                </button>
+              </>
+            ) : (
+              <form className="auth-signup-form" onSubmit={startGoogleSignUp}>
+                <p>Create your account once with name, mobile number, and Google.</p>
+                <div className="auth-fields">
+                  <label htmlFor="signup-full-name">Full name</label>
+                  <input
+                    id="signup-full-name"
+                    type="text"
+                    autoComplete="name"
+                    maxLength={120}
+                    value={signupForm.fullName}
+                    onChange={(event) => setSignupForm({ ...signupForm, fullName: event.target.value })}
+                    required
+                  />
+                  <label htmlFor="signup-mobile-number">Mobile number</label>
+                  <input
+                    id="signup-mobile-number"
+                    type="tel"
+                    autoComplete="tel"
+                    maxLength={24}
+                    placeholder="+91 98765 43210"
+                    value={signupForm.mobileNumber}
+                    onChange={(event) => setSignupForm({ ...signupForm, mobileNumber: event.target.value })}
+                    required
+                  />
+                </div>
+                <button type="submit" className="btn-google-login" disabled={authBusy}>
+                  {authBusy ? 'Opening Google...' : 'Continue with Google'}
+                </button>
+              </form>
             )}
-            <input
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
-              type="email"
-              placeholder="Email"
-              value={authForm.email}
-              onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })}
-              required
-            />
-            <input
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900"
-              type="password"
-              placeholder="Password"
-              minLength={6}
-              value={authForm.password}
-              onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })}
-              required
-            />
-            <button type="submit" className="nav-btn" disabled={authBusy}>
-              {authBusy ? 'Please wait...' : authMode === 'sign-up' ? 'Create account' : 'Sign in'}
-            </button>
-            <button
-              type="button"
-              className="profile-dropdown-item"
-              onClick={() => {
-                setAuthError('');
-                setAuthMode(authMode === 'sign-up' ? 'sign-in' : 'sign-up');
-              }}
-            >
-              {authMode === 'sign-up' ? 'I already have an account' : 'Create a new account'}
-            </button>
-          </form>
+          </div>
         </div>
       )}
+
     </div>
   );
 };

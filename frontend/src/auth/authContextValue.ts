@@ -6,6 +6,8 @@ export type AuthContextValue = {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signInWithGoogle: (intent?: 'sign_in' | 'sign_up', profile?: { fullName: string; mobileNumber: string }) => Promise<void>;
+  completeProfile: (name: string, mobileNumber: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 

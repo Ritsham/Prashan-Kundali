@@ -183,6 +183,84 @@ p {
   color: rgb(185 28 28);
 }
 
+.shell > .auth-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(9, 9, 11, 0.82);
+}
+
+.shell > .auth-backdrop .auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: min(100% - 24px, 440px);
+  max-height: calc(100svh - 32px);
+  overflow-y: auto;
+  border-radius: 8px;
+}
+
+.shell > .auth-backdrop .auth-panel h1,
+.shell > .auth-backdrop .auth-panel p {
+  margin-bottom: 0;
+}
+
+.auth-fields {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+
+.auth-mode-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid rgba(112, 99, 77, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.auth-mode-tabs button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-light);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-mode-tabs button.active {
+  background: #fff;
+  color: #312414;
+}
+
+.auth-signup-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-fields label {
+  color: var(--ink-light);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.auth-fields input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(112, 99, 77, 0.28);
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2937;
+  padding: 10px 12px;
+}
+
 .form-label {
   display: block;
   margin-bottom: 6px;
