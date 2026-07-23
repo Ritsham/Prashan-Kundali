@@ -1,201 +1,83 @@
-# Shree Lakshmi Astro (Prashna & Lagna Engine)
+<div align="center">
+  <img src="frontend_old/ganesha.png" alt="Shree Lakshmi Astro brand artwork" width="180" />
 
-An advanced, premium Vedic Astrology SaaS platform combining high-precision astronomical calculations (Swiss Ephemeris + Lahiri Ayanamsa) with an AI-driven interpretation engine, a real-time WebSocket-powered astrologer community board, and professional practitioner workspaces.
+  <h1>Shree Lakshmi Astro</h1>
 
-The platform is designed with a **Modern Indian Luxury** aesthetic—drawing visual inspiration from ancient astronomical observatories like Jantar Mantar and the Indian Museum of Astronomy, combined with clean, high-end interfaces, gold-and-cream HSL color systems, serif typography, and glassmorphism elements.
+  <p>
+    A production Vedic astrology platform for meaningful guidance, accurate chart intelligence,
+    verified astrologer workflows, and a dedicated learning community for practitioners.
+  </p>
 
----
+  <p>
+    <a href="https://www.shreelakshmiastro.com"><strong>Visit the live website</strong></a>
+  </p>
+</div>
 
-## 🌌 Core Features
+## Purpose
 
-### 1. Calculation Engine (Swiss Ephemeris & Ayanamsa)
-- **High-Precision Coordinates**: Uses `pyswisseph` (C-ephemeris wrapper) to compute exact planetary positions, whole-sign house coordinates, and degrees.
-- **Divisional Charts (Vargas)**: Dynamically generates D1 (Lagna Chart) and D9 (Navamsha Chart) layouts.
-- **Nakshatra & Pada Mapping**: Calculates exact Nakshatra divisions, padas, and planetary rulers.
-- **Vimshottari Dasha**: Computes full 120-year three-tier Dasha structures (Maha Dasha, Antar Dasha, Pratyantar Dasha) based on moon coordinates.
-- **Timezone Resolver**: Uses `timezonefinder` and geographical coordinates to automatically determine exact UTC offsets for any location.
+Shree Lakshmi Astro was made to bring traditional Vedic astrology into a professional digital experience. Many astrology journeys still depend on scattered messages, manual chart preparation, repeated explanations, and disconnected follow-ups. This platform brings those pieces together so users can ask important life questions, receive structured astrological context, and connect with trusted practitioners in a smoother way.
 
-### 2. Frontends Served by FastAPI
-- **Canonical Public Website**: The public landing, Prashna/Lagna flow, consultation intake, matchmaking, policy pages, and supporting static pages are served from `frontend_old/`.
-- **React Workspaces**: Payment, Astro Community, and Admin workspace screens are built from `frontend/` and served from `frontend/dist/` on their explicit routes.
-- **Luxury Spiritual Aesthetic**: Styled with curated gold-and-cream palettes, traditional brand elements, and an integrated Lord Ganesha icon in the navigation header.
-- **Production Routes**: FastAPI serves the legacy public platform at `/` and `/index.html`; `/payment`, `/astro-community`, and `/admin` require the React build output.
+The product is built for real-world use. It focuses on clarity, trust, cultural depth, and practical access to astrology without making the experience feel confusing or overwhelming.
 
-### 3. Consultation Workspaces & Queues
-- **Consultant Directory & Profiles**: Interactive search and detailed practitioner dashboards.
-- **Admin Verification Portal**: Review and approve pending astrologer registration requests.
-- **Real-Time Client Consultation Workspaces**: Secure chat channels for clients and astrologers during consultations.
+## What It Offers
 
----
+- Prashna and Lagna chart generation using precise astronomical calculations.
+- Planetary positions, rashis, nakshatras, padas, divisional chart context, and Vimshottari dasha insights.
+- AI-assisted interpretation layered on top of deterministic astrology calculations.
+- Consultant discovery and guided consultation workflows.
+- Verified astrologer and admin workspaces for managing professional activity.
+- Real-time community features for discussion, collaboration, and knowledge sharing.
+- A responsive public website designed around the Shree Lakshmi Astro brand.
 
-## 🛠️ Technology Stack
+## Product Proof
 
-| Layer | Technologies |
-| :--- | :--- |
-| **Backend Framework** | FastAPI (Python 3.11+, ASGI), Uvicorn |
-| **Astro Calculations** | PySwissEph (Swiss Ephemeris), TimezoneFinder |
-| **Database & Cache** | Supabase Postgres, Supabase Storage, optional Redis |
-| **Authentication & AuthZ** | Supabase Auth, Row-Level Security (RLS) policies |
-| **Real-Time Layer** | Native WebSockets |
-| **AI Interpretation** | Multi-key rotated LLM providers (Gemini / OpenAI) |
-| **Frontend** | Static HTML/CSS/JS in `frontend_old/`, plus React/Vite workspaces in `frontend/` |
+Shree Lakshmi Astro is not just a concept or landing page. The platform includes working astrology tools, generated chart views, and dasha timelines designed for real interpretation workflows.
 
----
+<div align="center">
+  <img src="docs/assets/kundali-chart-proof.png" alt="Generated D1 Rashi Lagna chart in Shree Lakshmi Astro" width="720" />
+  <p><strong>D1 Rashi / Lagna chart output</strong></p>
+</div>
 
-## 🚀 Setup & Installation
+<div align="center">
+  <img src="docs/assets/vimshottari-dasha-proof.png" alt="Vimshottari Dasha engine timeline in Shree Lakshmi Astro" width="720" />
+  <p><strong>Vimshottari Dasha engine with Mahadasha timeline</strong></p>
+</div>
 
-### Prerequisite: Ephemeris Data
-The calculation engine uses Swiss Ephemeris binary files to compute coordinates. Run the built-in downloader script to pull the required astronomical ephemerides before launching:
+## Astrologer Community
 
-```bash
-python3 -m pip install -r requirements.txt
-python3 scripts/download_ephemeris.py
-```
-This populates the local `ephemeris/` directory with `sepl_18.se1`, `semo_18.se1`, and `seas_18.se1`.
+One of the key goals of Shree Lakshmi Astro is to create a serious community for astrologers.
 
-### Environment Configuration
-Create the backend environment file from the example:
+The community is designed as a space where verified practitioners can learn, discuss, ask questions, compare techniques, and grow together. Astrologers can explore classical systems, chart interpretation, prediction methods, case discussions, research notes, and practical consultation experience in one focused environment.
 
-```bash
-cp .env.example .env
-```
+It is not just a chat area. It is intended to become a professional learning circle for astrology practitioners, where knowledge can be shared respectfully and real practice can improve through discussion.
 
-Backend secrets such as `SUPABASE_SERVICE_ROLE_KEY`, LLM provider keys, Redis credentials, and Razorpay secrets must stay in backend/server environment storage only.
+## How It Is Made
 
-See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) for development, staging, and production requirements.
+Shree Lakshmi Astro is powered by a Python FastAPI backend and a browser-first frontend experience.
 
-### Launching the Application
-Build the React workspace bundle when you need `/payment`, `/astro-community`, or `/admin`:
+The backend manages astrology calculations, chart interpretation, user-aware APIs, consultation workflows, admin operations, and real-time communication. The calculation layer uses Swiss Ephemeris data with timezone-aware location handling, allowing chart outputs to be based on accurate astronomical inputs.
 
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
+The frontend combines public website pages with React-powered workspace screens. The public experience focuses on users and consultations, while the authenticated workspace supports community, admin, and practitioner-facing flows.
 
-Launch the ASGI development server:
+Supabase is used for identity, database storage, and protected user flows. Real-time communication is handled through WebSocket channels served by the FastAPI application.
 
-```bash
-python3 main.py
-```
+## Technology
 
-The server will run locally at `http://127.0.0.1:8000`.
+| Area | Stack |
+| --- | --- |
+| Backend | Python, FastAPI, Uvicorn, Pydantic |
+| Astrology Calculations | Swiss Ephemeris, PySwissEph, TimezoneFinder |
+| Frontend | HTML, CSS, JavaScript, React, Vite, TypeScript |
+| Data & Identity | Supabase Postgres, Supabase Auth, Supabase Storage |
+| Realtime | FastAPI WebSockets |
+| AI Layer | Provider-backed interpretation services |
 
-- **Main Application & Pages**: `http://127.0.0.1:8000/` and `http://127.0.0.1:8000/index.html` served from `frontend_old/`
-- **React Workspace Pages**: `http://127.0.0.1:8000/payment`, `/astro-community`, and `/admin` served from `frontend/dist/`
+## Contributing
 
----
+Contributions are welcome. If you are interested in improving the product, fixing issues, strengthening the astrology engine, enhancing the user experience, or expanding the astrologer community features, you are welcome to contribute.
 
-## 📂 Codebase Architecture
+Please keep contributions aligned with the product's purpose: a professional, respectful, and reliable astrology platform for users and practitioners.
 
-```
-├── app/
-│   ├── api/                   # FastAPI Endpoints
-│   │   ├── admin_metrics.py   # Admin metrics logs
-│   │   ├── astrologer.py      # Astrologer verification controllers
-│   │   ├── community.py       # Community chat logs
-│   │   ├── consultants.py     # Consultant directory queries
-│   │   ├── consultation.py    # Consultation booking handlers
-│   │   ├── matchmaking.py     # Compatibility reporting
-│   │   └── prashna.py         # Lagna & Prashna chart APIs
-│   ├── astrology/             # Core Astronomy Calculations
-│   │   ├── constants.py       # Ayanamsa & degree indices
-│   │   ├── divisional.py      # Vargas (D1/D9) computation
-│   │   ├── vimshottari.py     # Vimshottari Dasha calculations
-│   │   └── zodiac.py          # Rashi & Nakshatra mapping
-│   ├── services/              # Business Logic
-│   │   ├── answer_generator.py # Rule-based & LLM interpretations
-│   │   ├── chart_calculator.py# High-precision coordinates
-│   │   ├── geocoding_service.py# Nominatim geographic queries
-│   │   └── realtime.py        # WebSocket connection manager
-│   └── storage/               # SQLite & Supabase access helpers
-├── frontend_old/              # Canonical public website and legacy app flows
-│   ├── index.html             # Landing page
-│   ├── consultation.html      # Consultant/payment flow page
-│   ├── styles.css             # Shared site styling
-│   └── *.js                   # Browser-side page scripts
-├── frontend/                  # React/Vite payment, community, and admin workspaces
-│   ├── src/                   # React application source
-│   └── dist/                  # Built assets served by FastAPI after npm run build
-├── main.py                    # Application Entrypoint & WS Mounts
-└── requirements.txt           # Python Dependency Manifest
-```
+## Website
 
----
-
-## 📡 API Reference & WebSockets
-
-### REST API Endpoints
-
-#### `POST /api/prashna`
-Calculates an astrological chart and returns rule-based/AI interpretations.
-
-**Request Body:**
-```json
-{
-  "question": "Will I get my dream job this year?",
-  "latitude": 28.6139,
-  "longitude": 77.2090,
-  "place_name": "New Delhi, Delhi, India"
-}
-```
-
-**Response Elements:** Includes house placements (1-12), planetary degrees, Nakshatras, current Vimshottari Dasha lords, and a structured `interpretation.answer` section.
-
-#### `GET /api/admin/pending-astrologers`
-Retrieves pending verification profiles (Admin authentication token required).
-
----
-
-## 🔄 WebSocket Event Protocol
-
-The platform implements real-time WebSockets to synchronize chat logs, threaded replies, reactions, and online statuses.
-
-### WebSocket Gateways
-- **Astro Board Channels**: `/ws/community/{channel_name}`
-- **Live Consultations**: `/ws/consultation/{booking_id}`
-
-### Message Flows
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Astrologer as Astrologer Client
-    actor Client as Standard Client
-    participant Server as FastAPI Server
-    database DB as Supabase DB
-
-    Note over Astrologer, Server: WebSocket Handshake & Connection
-    Astrologer->>Server: Connect to /ws/community/{channel}
-    Astrologer->>Server: { "action": "authenticate", "token": "<Supabase JWT>" }
-    activate Server
-    Server->>Server: Validate Supabase JWT and Role
-    Server-->>Astrologer: Connection Established (ACK)
-
-    Note over Astrologer, Server: Event: send_message
-    Astrologer->>Server: { "action": "send_message", "content": "Daily horoscope update...", "chart_id": "123" }
-    Server->>DB: Save message to community_messages
-    DB-->>Server: Message saved successfully (id: msg_789)
-    Server-->>Astrologer: Broadcast payload: { "type": "new_message", "message": "..." }
-    Server-->>Client: Broadcast payload: { "type": "new_message", "message": "..." }
-
-    Note over Client, Server: Event: toggle_reaction
-    Client->>Server: { "action": "toggle_reaction", "message_id": "msg_789", "reaction_type": "helpful" }
-    Server->>DB: Update user reaction state
-    Server-->>Astrologer: Broadcast: { "type": "reaction_updated", "message_id": "msg_789", "reaction_type": "helpful" }
-    Server-->>Client: Broadcast: { "type": "reaction_updated", "message_id": "msg_789", "reaction_type": "helpful" }
-    deactivate Server
-```
-
----
-
-## 🔒 Security & Verification
-
-- **Supabase JWTs**: Restricts access to sensitive workspaces (Admin dashboard, Astro Board) to users carrying verified roles.
-- **Row-Level Security (RLS)**: Enforced database schemas to prevent unapproved profile reads or modifications.
-- **Client Side Guards**: Browser-side scripts validate sessions and roles before rendering protected controls.
-
----
-
-## ॐ Subhamastu
+[https://www.shreelakshmiastro.com](https://www.shreelakshmiastro.com)
