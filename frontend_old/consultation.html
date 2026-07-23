@@ -499,6 +499,64 @@
   </script>
   <script src="/consultation.js?v=consultation-status-fix-20260723-2" defer></script>
   <script src="/consultation-payment-contact.js?v=consultation-status-fix-20260723-2" defer></script>
+  <script>
+    (() => {
+      const clearedRequests = new Set();
+
+      function requestIdFromDetails() {
+        const text = document.getElementById("result-details")?.textContent || "";
+        return text.match(/Request ID:\s*([A-Za-z0-9_:-]+)/)?.[1] || "";
+      }
+
+      function clearBookingForm() {
+        const form = document.getElementById("consultation-form");
+        form?.reset();
+        [
+          "name",
+          "phone",
+          "email",
+          "date_of_birth",
+          "time_of_birth",
+          "place_search",
+          "place_of_birth",
+          "latitude",
+          "longitude",
+          "question",
+        ].forEach((id) => {
+          const field = document.getElementById(id);
+          if (field) field.value = "";
+        });
+        const topic = document.getElementById("topic");
+        if (topic) topic.selectedIndex = 0;
+        const placeResults = document.getElementById("place-results");
+        if (placeResults) placeResults.innerHTML = "";
+        sessionStorage.removeItem("consultation_form_state");
+        sessionStorage.removeItem("kundali_chart_progression");
+      }
+
+      function clearAfterPaidRequest() {
+        const status = (document.getElementById("result-status")?.textContent || "").trim().toLowerCase();
+        const title = (document.getElementById("result-title")?.textContent || "").trim().toLowerCase();
+        if (status !== "paid" && !title.includes("payment confirmed")) return;
+        const requestId = requestIdFromDetails() || "latest-paid-request";
+        if (clearedRequests.has(requestId)) return;
+        clearedRequests.add(requestId);
+        clearBookingForm();
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const panel = document.getElementById("result-panel");
+        if (!panel) return;
+        new MutationObserver(clearAfterPaidRequest).observe(panel, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+        });
+        window.setTimeout(clearAfterPaidRequest, 0);
+      });
+    })();
+  </script>
   <!-- ===== MOBILE NAV v3: shared mobile header + drawer, injected on every page ===== -->
   <script src="mobile-nav.js?v=4" defer></script>
 </body>
