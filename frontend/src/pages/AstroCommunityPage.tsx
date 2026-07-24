@@ -1132,7 +1132,7 @@ function AstroCommunityPage() {
   };
 
   const showMessageInfo = (message: Message, authorName: string) => {
-    const seenCount = Math.max(0, onlineCount);
+    const seenCount = Math.max(0, displayOnlineCount);
     setInfoNotice(`${authorName} · ${message.time || 'Just now'} · Seen by ${seenCount} ${seenCount === 1 ? 'user' : 'users'}`);
     setActiveMessageMenuId(null);
   };
@@ -1268,6 +1268,15 @@ function AstroCommunityPage() {
 
   const userName = profile?.display_name || profile?.username || 'User';
   const userId = profile?.user_id;
+  const displayOnlineCount = React.useMemo(() => {
+    const uniqueUserIds = new Set(
+      onlineUsers
+        .map((member) => member.user_id)
+        .filter(Boolean) as string[],
+    );
+    if (connectionState === 'connected' && userId) uniqueUserIds.add(userId);
+    return Math.max(onlineCount, uniqueUserIds.size);
+  }, [connectionState, onlineCount, onlineUsers, userId]);
   const mentionMembers = React.useMemo(() => {
     const fallbackMember = {
       user_id: userId,
@@ -1308,12 +1317,6 @@ function AstroCommunityPage() {
       .filter((member, index, list) => Boolean(member.user_id) && list.findIndex((item) => item.user_id === member.user_id) === index);
   }, [communityMembers, draft]);
 
-  const visibleOnlineUsers = React.useMemo(() => {
-    const rows = onlineUsers.length ? onlineUsers : (connectionState === 'connected' ? [{ user_id: userId, display_name: userName }] : []);
-    return rows
-      .filter((member, index, list) => Boolean(member.display_name || member.user_id) && list.findIndex((item) => item.user_id === member.user_id) === index)
-      .slice(0, 8);
-  }, [connectionState, onlineUsers, userId, userName]);
   const typingNames = React.useMemo(() => Object.values(typingUsers).slice(0, 3), [typingUsers]);
 
   const insertMention = () => {
@@ -1470,7 +1473,7 @@ function AstroCommunityPage() {
             <div className="astro-community-name">Welcome to<br/>Astro Community</div>
             <div className="astro-user-line" style={{ marginTop: '4px', opacity: 0.8, fontSize: '0.85rem' }}>
               <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: '#2d8a5d', marginRight: '6px' }}></span>
-              {onlineCount} {onlineCount === 1 ? 'person' : 'people'} online
+              {displayOnlineCount} {displayOnlineCount === 1 ? 'person' : 'people'} online
             </div>
           </div>
           <button className="astro-icon-button" aria-label="Open settings" onClick={() => setSettingsOpen(true)}>
@@ -1488,23 +1491,11 @@ function AstroCommunityPage() {
           ))}
         </nav>
 
-        <section className="astro-online-panel" aria-label="Online members">
-          <div className="astro-online-title">
-            <span>Online now</span>
-            <strong>{onlineCount}</strong>
-          </div>
-          <div className="astro-online-list">
-            {visibleOnlineUsers.map((member) => {
-              const name = member.display_name || 'Astrologer';
-              return (
-                <div className="astro-online-member" key={member.user_id || name}>
-                  <span className="astro-online-avatar">{initials(name)}</span>
-                  <span>{name}</span>
-                </div>
-              );
-            })}
-            {!visibleOnlineUsers.length && <p>No one else is online.</p>}
-          </div>
+        <section className="astro-return-panel" aria-label="Return to main application">
+          <button className="astro-return-main-btn" type="button" onClick={returnToMainApplication}>
+            <ArrowLeft size={18} />
+            <span>Go to Main Application</span>
+          </button>
         </section>
 
         <div className="astro-channel-scroll">

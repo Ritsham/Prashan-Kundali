@@ -183,6 +183,17 @@ def _is_waiting_row(row: Dict[str, Any]) -> bool:
     return row.get("queue_number") is not None
 
 
+def _is_paid_queue_row(row: Dict[str, Any]) -> bool:
+    payment_status = str(row.get("payment_status") or "").strip().lower()
+    return payment_status in {"paid", "verified", "success", "successful", "confirmed", "captured", "completed"} or bool(
+        row.get("razorpay_payment_id")
+        or row.get("payment_id")
+        or row.get("payment_verified_at")
+        or row.get("payment_captured_at")
+        or row.get("paid_at")
+    )
+
+
 async def _has_active_booking_conflict(
     db: Any,
     *,
@@ -231,8 +242,10 @@ async def create_consultation_case(
 ) -> Dict[str, Any]:
     db = db_client or supabase
     active_count = await count_active_consultation_requests(db)
-    status = CONSULTATION_STATUS_REQUESTED
-    queue_number = None if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else await next_waiting_queue_number(db)
+    payment_status = str(payload.consultation.payment_status or "not_paid").lower()
+    is_paid = payment_status == "paid"
+    status = CONSULTATION_STATUS_REQUESTED if is_paid else CONSULTATION_STATUS_PENDING_PAYMENT
+    queue_number = None if (not is_paid or active_count < MAX_ACTIVE_CONSULTATION_REQUESTS) else await next_waiting_queue_number(db)
     now = _now_iso()
 
     if payload.idempotency_key:
@@ -294,7 +307,7 @@ async def create_consultation_case(
         "preferred_date": consultation.preferred_date,
         "preferred_time": consultation.preferred_time or "",
         "consultation_mode": consultation.consultation_mode,
-        "payment_status": consultation.payment_status or "not_paid",
+        "payment_status": payment_status,
         "quoted_price": consultation.quoted_price,
         "status": status,
         "queue_number": queue_number,
@@ -327,9 +340,13 @@ async def create_consultation_case(
         "case": _normalize_case_row(row),
         "slot_available": queue_number is None,
         "message": (
-            "Your consultation request has been received. Payment is not collected yet; the consultant will confirm next steps."
-            if queue_number is None
-            else "Currently, all consultation slots are full. You have been added to the waiting queue."
+            "Your consultation request has been created. Complete payment to confirm it for astrologer review."
+            if not is_paid
+            else (
+                "Your consultation request has been received and added to the astrologer queue."
+                if queue_number is None
+                else "Currently, all consultation slots are full. You have been added to the waiting queue."
+            )
         ),
         "duplicate": False,
     }
@@ -448,8 +465,8 @@ async def update_consultation_case(case_id: str, updates: Dict[str, Any], db_cli
 async def count_active_consultation_requests(db_client: Optional[Any] = None) -> int:
     db = db_client or supabase
     try:
-        res = db.table("consultation_requests").select("id,queue_number").in_("status", _status_filter_values()).execute()
-        return len([row for row in (res.data or []) if not _is_waiting_row(row)])
+        res = db.table("consultation_requests").select("id,queue_number,payment_status").in_("status", _status_filter_values()).execute()
+        return len([row for row in (res.data or []) if _is_paid_queue_row(row) and not _is_waiting_row(row)])
     except Exception as exc:
         print(f"Warning: active consultation request count failed: {exc}")
 
@@ -466,8 +483,8 @@ async def get_public_consultation_queue_status(db_client: Optional[Any] = None) 
     active_count = await count_active_consultation_requests(db)
     waiting_count = 0
     try:
-        waiting_res = db.table("consultation_requests").select("id,queue_number").in_("status", _status_filter_values()).execute()
-        waiting_count = len([row for row in (waiting_res.data or []) if _is_waiting_row(row)])
+        waiting_res = db.table("consultation_requests").select("id,queue_number,payment_status").in_("status", _status_filter_values()).execute()
+        waiting_count = len([row for row in (waiting_res.data or []) if _is_paid_queue_row(row) and _is_waiting_row(row)])
     except Exception as exc:
         print(f"Warning: consultation waiting queue count failed: {exc}")
     try:
@@ -512,8 +529,9 @@ async def create_consultation_request(
     db = db_client or supabase
     active_count = await count_active_consultation_requests(db)
     payment_status = str(payload.get("payment_status") or "not_paid").lower()
-    status = CONSULTATION_STATUS_PENDING_PAYMENT if payment_status in {"pending", "created"} else CONSULTATION_STATUS_REQUESTED
-    queue_number = None if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else await next_waiting_queue_number(db)
+    is_paid = payment_status == "paid"
+    status = CONSULTATION_STATUS_REQUESTED if is_paid else CONSULTATION_STATUS_PENDING_PAYMENT
+    queue_number = None if (not is_paid or active_count < MAX_ACTIVE_CONSULTATION_REQUESTS) else await next_waiting_queue_number(db)
     now = _now_iso()
     request_id = f"creq_{uuid4().hex[:12]}"
     if await _has_active_booking_conflict(
@@ -556,12 +574,12 @@ async def create_consultation_request(
         print(f"Error: consultation_requests insert failed: {exc}")
         raise ValueError(f"Supabase Security Error: {exc}")
 
-    if queue_number is not None:
-        message = "Currently, all consultation slots are full. You have been added to the waiting queue. You will be notified when your turn comes."
-    elif status == CONSULTATION_STATUS_PENDING_PAYMENT:
+    if not is_paid:
         message = "Your consultation request has been created. Complete payment to confirm it for astrologer review."
+    elif queue_number is not None:
+        message = "Currently, all consultation slots are full. You have been added to the waiting queue. You will be notified when your turn comes."
     else:
-        message = "Your consultation request has been received. Payment is not collected yet; the consultant will confirm next steps."
+        message = "Your consultation request has been received and added to the astrologer queue."
 
     return {
         "request": row,
@@ -590,9 +608,13 @@ async def mark_consultation_request_paid(
     if payment_note not in notes:
         notes = (notes + "\n" + payment_note).strip()
 
+    active_count = await count_active_consultation_requests(db)
+    queue_number = None if active_count < MAX_ACTIVE_CONSULTATION_REQUESTS else await next_waiting_queue_number(db)
+
     updates = {
         "payment_status": "paid",
         "status": CONSULTATION_STATUS_CONFIRMED,
+        "queue_number": queue_number,
         "admin_notes": notes,
         "updated_at": _now_iso(),
     }
@@ -682,6 +704,7 @@ async def promote_oldest_waiting_request() -> Optional[Dict[str, Any]]:
         supabase.table("consultation_requests")
         .select("*")
         .eq("status", CONSULTATION_STATUS_REQUESTED)
+        .eq("payment_status", "paid")
         .order("created_at")
         .limit(25)
         .execute()

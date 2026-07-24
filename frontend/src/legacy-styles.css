@@ -7095,3 +7095,50 @@ body.has-result.result-prashna .technical-table-wrap {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 768px) {
+  body.has-result.result-lagna .shell {
+    width: 100% !important;
+    padding-inline: 0 !important;
+  }
+
+  body.has-result.result-lagna .result {
+    gap: 8px !important;
+  }
+
+  body.has-result.result-lagna .worksheet {
+    border-inline: 0 !important;
+    border-radius: 0 !important;
+    padding: 6px 0 8px !important;
+  }
+
+  body.has-result.result-lagna .chart-tabs {
+    padding-inline: 8px;
+  }
+
+  body.has-result.result-lagna .worksheet-canvas,
+  body.has-result.result-lagna .worksheet-canvas[data-chart-count="1"] {
+    padding: 0 !important;
+    border-inline: 0 !important;
+    grid-template-rows: auto !important;
+    overflow: visible !important;
+  }
+
+  body.has-result.result-lagna .worksheet-canvas[data-chart-count="1"] .worksheet-item {
+    border-inline: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  body.has-result.result-lagna .worksheet-canvas[data-chart-count="1"] .chart-surface {
+    padding: 0 !important;
+  }
+
+  body.has-result.result-lagna .worksheet-canvas[data-chart-count="1"] .north-chart {
+    width: 100% !important;
+    height: min(100vw, calc(100svh - 250px)) !important;
+    min-height: min(100vw, 360px) !important;
+    aspect-ratio: 1 / 1 !important;
+    border-inline: 0 !important;
+    border-radius: 0 !important;
+  }
+}

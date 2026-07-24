@@ -1,5 +1,6 @@
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 from app.storage.database import supabase
@@ -66,10 +67,16 @@ def admin_metrics(db: Any = None) -> Dict[str, Any]:
     community = _community_metrics(today_start, user_rows, community_app_rows, membership_rows, message_rows, report_rows)
     consultations = _consultation_metrics(today_start, consultation_rows, paid_rows)
     product_usage = _product_usage_metrics(visit_rows, consultation_rows, match_rows)
+    acquisition = _acquisition_metrics(visit_rows)
+    behavior = _behavior_metrics(visit_rows)
+    funnel = _funnel_metrics(visit_rows, user_rows, consultation_rows, paid_rows, match_rows)
 
     return {
         "generated_at": _iso(now),
         "traffic": visits,
+        "acquisition": acquisition,
+        "behavior": behavior,
+        "funnel": funnel,
         "growth": growth,
         "retention": retention,
         "revenue": revenue,
@@ -132,8 +139,38 @@ def _visit_metrics(today_start: datetime, yesterday_start: datetime, week_start:
         "visits_7d": len(week),
         "dau": _unique_count(today, "visitor_key"),
         "live_users": _unique_count(live, "visitor_key"),
+        "daily_visits": _daily_visit_series(rows),
         "top_paths_today": _top_paths(today),
     }
+
+
+def _daily_visit_series(rows: List[Dict[str, Any]], days: int = 30) -> List[Dict[str, Any]]:
+    today = _now().date()
+    start = today - timedelta(days=days - 1)
+    buckets: Dict[str, Dict[str, Any]] = {
+        (start + timedelta(days=offset)).isoformat(): {"date": (start + timedelta(days=offset)).isoformat(), "visits": 0, "unique_visitors": 0, "_visitors": set()}
+        for offset in range(days)
+    }
+    for row in rows:
+        dt = _parse_dt(row.get("created_at"))
+        if not dt:
+            continue
+        day = dt.date()
+        if day < start or day > today:
+            continue
+        key = day.isoformat()
+        bucket = buckets[key]
+        bucket["visits"] += 1
+        if row.get("visitor_key"):
+            bucket["_visitors"].add(row.get("visitor_key"))
+    series = []
+    for bucket in buckets.values():
+        series.append({
+            "date": bucket["date"],
+            "visits": bucket["visits"],
+            "unique_visitors": len(bucket["_visitors"]),
+        })
+    return series
 
 
 def _top_paths(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -145,6 +182,133 @@ def _top_paths(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         {"path": path, "visits": count}
         for path, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:5]
     ]
+
+
+def _clean_path(value: Any) -> str:
+    path = str(value or "/").strip() or "/"
+    if path.startswith("http"):
+        parsed = urlparse(path)
+        path = parsed.path or "/"
+    return path.split("?")[0] or "/"
+
+
+def _referrer_domain(referrer: Any) -> str:
+    text = str(referrer or "").strip()
+    if not text:
+        return "direct"
+    parsed = urlparse(text if "://" in text else f"https://{text}")
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host or "direct"
+
+
+def _source_channel(row: Dict[str, Any]) -> str:
+    path = str(row.get("path") or "")
+    ref = _referrer_domain(row.get("referrer"))
+    parsed = urlparse(path if path.startswith("http") else f"https://local{path}")
+    query = parse_qs(parsed.query)
+    utm_source = (query.get("utm_source") or [""])[0].lower()
+    utm_medium = (query.get("utm_medium") or [""])[0].lower()
+    source_text = f"{utm_source} {utm_medium} {ref}"
+    if ref == "direct" and not utm_source:
+        return "direct"
+    if any(term in source_text for term in ("google", "bing", "yahoo", "duckduckgo")):
+        return "organic/search"
+    if any(term in source_text for term in ("instagram", "facebook", "fb", "youtube", "twitter", "x.com", "linkedin", "social")):
+        return "social"
+    if any(term in source_text for term in ("whatsapp", "telegram", "sms")):
+        return "messaging"
+    if any(term in source_text for term in ("email", "newsletter")):
+        return "email"
+    if utm_source or utm_medium:
+        return "campaign"
+    return "referral"
+
+
+def _device_type(user_agent: Any) -> str:
+    text = str(user_agent or "").lower()
+    if any(bot in text for bot in ("bot", "crawler", "spider", "preview")):
+        return "bot"
+    if any(tablet in text for tablet in ("ipad", "tablet")):
+        return "tablet"
+    if any(mobile in text for mobile in ("mobile", "iphone", "android")):
+        return "mobile"
+    return "desktop"
+
+
+def _top_named_counts(names: List[str], limit: int = 8) -> List[Dict[str, Any]]:
+    counts: Dict[str, int] = {}
+    for name in names:
+        counts[name or "unknown"] = counts.get(name or "unknown", 0) + 1
+    total = sum(counts.values())
+    return [
+        {"name": name, "count": count, "percentage": _percent(count, total)}
+        for name, count in sorted(counts.items(), key=lambda item: item[1], reverse=True)[:limit]
+    ]
+
+
+def _acquisition_metrics(visits: List[Dict[str, Any]]) -> Dict[str, Any]:
+    return {
+        "source_channels": _top_named_counts([_source_channel(row) for row in visits]),
+        "referrer_domains": _top_named_counts([_referrer_domain(row.get("referrer")) for row in visits if _referrer_domain(row.get("referrer")) != "direct"]),
+        "device_mix": _top_named_counts([_device_type(row.get("user_agent")) for row in visits]),
+        "campaign_paths": _top_paths([row for row in visits if "utm_" in str(row.get("path") or "")]),
+    }
+
+
+def _first_touch_rows(visits: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    first: Dict[str, Dict[str, Any]] = {}
+    for row in sorted(visits, key=lambda item: str(item.get("created_at") or "")):
+        identity = _row_identity(row)
+        if identity and identity not in first:
+            first[identity] = row
+    return list(first.values())
+
+
+def _behavior_metrics(visits: List[Dict[str, Any]]) -> Dict[str, Any]:
+    paths = [_clean_path(row.get("path")) for row in visits]
+    first_touch = _first_touch_rows(visits)
+    visitor_path_counts: Dict[str, int] = {}
+    for row in visits:
+        identity = _row_identity(row)
+        if identity:
+            visitor_path_counts[identity] = visitor_path_counts.get(identity, 0) + 1
+    single_page_visitors = len([identity for identity, count in visitor_path_counts.items() if count == 1])
+    return {
+        "top_pages": _top_named_counts(paths, 10),
+        "landing_pages": _top_named_counts([_clean_path(row.get("path")) for row in first_touch], 10),
+        "single_page_visitors": single_page_visitors,
+        "estimated_bounce_rate": _percent(single_page_visitors, len(visitor_path_counts)),
+        "avg_events_per_visitor": round((len(visits) / len(visitor_path_counts)), 2) if visitor_path_counts else 0,
+    }
+
+
+def _funnel_metrics(
+    visits: List[Dict[str, Any]],
+    users: List[Dict[str, Any]],
+    consultations: List[Dict[str, Any]],
+    paid: List[Dict[str, Any]],
+    matches: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    visitors = len(_unique_identity(visits))
+    signups = len(users)
+    consultation_requests = len(consultations)
+    paid_events = len(paid) + len([row for row in consultations if str(row.get("payment_status") or "").lower() == "paid"])
+    matchmaking_reports = len(matches)
+    steps = [
+        {"name": "Visitors", "count": visitors, "conversion_from_previous": 100},
+        {"name": "Signups", "count": signups, "conversion_from_previous": _percent(signups, visitors)},
+        {"name": "Consultation Requests", "count": consultation_requests, "conversion_from_previous": _percent(consultation_requests, signups or visitors)},
+        {"name": "Paid Actions", "count": paid_events, "conversion_from_previous": _percent(paid_events, consultation_requests or visitors)},
+        {"name": "Matchmaking Reports", "count": matchmaking_reports, "conversion_from_previous": _percent(matchmaking_reports, visitors)},
+    ]
+    return {
+        "steps": steps,
+        "visitor_to_signup_rate": _percent(signups, visitors),
+        "visitor_to_consultation_rate": _percent(consultation_requests, visitors),
+        "visitor_to_paid_rate": _percent(paid_events, visitors),
+    }
 
 
 def _growth_metrics(today_start: datetime, week_start: datetime, month_start: datetime, live_cutoff: datetime, visits: List[Dict[str, Any]], users: List[Dict[str, Any]]) -> Dict[str, Any]:

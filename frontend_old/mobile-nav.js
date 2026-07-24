@@ -8,16 +8,15 @@
      download / edit / back icons (removed per bug report).
    - Drawer: real links only, based on files that actually exist in the repo:
        Home            -> /index.html
-       Kundali         -> /index.html (scrolls to entry / result section)
-       Match Making    -> /matchmaking.html
-       Charts          -> /index.html (jumps to Charts tab of a result, if any)
-       Predictions     -> /index.html (jumps to Interpretation tab of a result)
+       Consultant      -> /consultation
        Astro Community -> /astro-community
+       Privacy Policy  -> /privacy-policy.html
+       Refund Policy   -> /refund-policy.html
+       Return Policy   -> /return-policy.html
        About           -> /about.html
        Contact Us      -> /about-contact.html
      The signed-in account block opens Profile directly on mobile.
-     Footer (bottom of drawer): Privacy Policy, Refund Policy, Disclaimer,
-     Return Policy, Login/Logout.
+     The guest account block opens the sign-in modal.
      NOTE: no "Prashna" page exists as a standalone route (grep found no
      prashna*.html) - Prashna is a mode of the existing Kundali form on
      index.html (#prashna-form), so it is intentionally not a separate
@@ -57,10 +56,6 @@
     drawer.setAttribute("aria-hidden", "true");
     drawer.innerHTML =
       '<div class="mobile-drawer-panel" id="mobile-nav-drawer-v2" role="dialog" aria-label="Navigation menu" aria-modal="true">' +
-        '<div class="mobile-drawer-head">' +
-          '<strong>Shree Lakshmi Astro</strong>' +
-          '<button type="button" id="mobile-menu-close" aria-label="Close navigation menu">&times;</button>' +
-        '</div>' +
         '<button type="button" class="mdw-profile" id="mdw-profile">' +
           '<div class="mdw-avatar" id="mdw-avatar">U</div>' +
           '<div class="mdw-profile-info">' +
@@ -72,20 +67,13 @@
         '<nav class="mdw-links" aria-label="Primary">' +
           '<a href="/index.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="home">Home</a>' +
           '<a href="/consultation" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="consultant">Consultant</a>' +
-          '<a href="/matchmaking.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="matchmaking">Match Making</a>' +
           '<a href="/astro-community" class="mobile-drawer-link mdw-community-alert" data-mobile-nav-link data-mdw-section="community">Astro Community <span>(Astrologers Only)</span></a>' +
+          '<a href="/privacy-policy.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="privacy">Privacy Policy</a>' +
+          '<a href="/refund-policy.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="refund">Refund Policy</a>' +
+          '<a href="/return-policy.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="return">Return Policy</a>' +
           '<a href="/about.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="about">About</a>' +
           '<a href="/about-contact.html" class="mobile-drawer-link" data-mobile-nav-link data-mdw-section="contact">Contact Us</a>' +
         '</nav>' +
-        '<div class="mdw-spacer"></div>' +
-        '<div class="mdw-footer">' +
-          '<a href="/privacy-policy.html" class="mobile-drawer-link mdw-footer-link">Privacy Policy</a>' +
-          '<a href="/refund-policy.html" class="mobile-drawer-link mdw-footer-link">Refund Policy</a>' +
-          '<a href="/disclaimer.html" class="mobile-drawer-link mdw-footer-link">Disclaimer</a>' +
-          '<a href="/return-policy.html" class="mobile-drawer-link mdw-footer-link">Return Policy</a>' +
-          '<button type="button" class="mobile-drawer-link mobile-login-link" id="mdw-login-btn" data-mobile-login>Login / Sign In</button>' +
-          '<button type="button" class="mobile-drawer-link mdw-logout-link hidden" id="mdw-logout-btn">Sign Out</button>' +
-        '</div>' +
       '</div>';
 
     document.body.prepend(drawer);
@@ -107,7 +95,23 @@
     var drawer = document.getElementById("mobile-nav-drawer");
     var drawerPanel = document.getElementById("mobile-nav-drawer-v2");
     var drawerScrim = document.getElementById("mobile-drawer-scrim");
-    var drawerClose = document.getElementById("mobile-menu-close");
+    var dragState = null;
+
+    function setDrawerProgress(progress) {
+      if (!drawerPanel) return;
+      var clamped = Math.max(0, Math.min(1, progress));
+      drawerPanel.style.transition = "none";
+      drawerPanel.style.transform = "translate3d(" + ((clamped - 1) * 100) + "%, 0, 0)";
+      if (drawerScrim) drawerScrim.style.opacity = String(clamped);
+    }
+
+    function resetDrawerMotion() {
+      if (drawerPanel) {
+        drawerPanel.style.transition = "";
+        drawerPanel.style.transform = "";
+      }
+      if (drawerScrim) drawerScrim.style.opacity = "";
+    }
 
     function openDrawer() {
       if (!drawer) return;
@@ -122,6 +126,7 @@
 
       drawer.classList.add("open");
       drawerScrim && drawerScrim.classList.add("open");
+      resetDrawerMotion();
       drawer.setAttribute("aria-hidden", "false");
       hamburgerBtn && hamburgerBtn.setAttribute("aria-expanded", "true");
       document.body.classList.add("mdw-open-lock");
@@ -130,6 +135,7 @@
       if (!drawer) return;
       drawer.classList.remove("open");
       drawerScrim && drawerScrim.classList.remove("open");
+      resetDrawerMotion();
       drawer.setAttribute("aria-hidden", "true");
       hamburgerBtn && hamburgerBtn.setAttribute("aria-expanded", "false");
       document.body.classList.remove("mdw-open-lock");
@@ -139,7 +145,9 @@
     window.openMobileNavDrawer = openDrawer;
 
     hamburgerBtn && hamburgerBtn.addEventListener("click", openDrawer);
-    drawerClose && drawerClose.addEventListener("click", closeDrawer);
+    drawer && drawer.addEventListener("click", function (e) {
+      if (e.target === drawer) closeDrawer();
+    });
     drawerScrim && drawerScrim.addEventListener("click", closeDrawer);
 
     // Escape key handling for accessibility
@@ -149,21 +157,64 @@
       }
     });
 
-    // Swipe-left-to-close on the drawer panel.
+    // Android-style drawer gestures: drag from the left edge to open, drag left to close.
     (function initDrawerSwipe() {
       if (!drawerPanel) return;
-      var startX = null, startY = null, tracking = false;
+      var EDGE_SIZE = 28;
+      var CLOSE_DISTANCE = 86;
+      var OPEN_DISTANCE = 96;
+
+      document.addEventListener("touchstart", function (e) {
+        if (drawer && drawer.classList.contains("open")) {
+          var openTouch = e.touches[0];
+          if (openTouch && (!drawerPanel || !drawerPanel.contains(e.target))) {
+            dragState = { mode: "close", startX: openTouch.clientX, startY: openTouch.clientY, lastX: openTouch.clientX, tracking: true };
+          }
+          return;
+        }
+        if (!isMobileViewport() || (drawer && drawer.classList.contains("open"))) return;
+        var t = e.touches[0];
+        if (!t || t.clientX > EDGE_SIZE) return;
+        dragState = { mode: "open", startX: t.clientX, startY: t.clientY, lastX: t.clientX, tracking: true };
+        drawer && drawer.classList.add("open");
+        drawerScrim && drawerScrim.classList.add("open");
+        setDrawerProgress(0);
+      }, { passive: true });
+
       drawerPanel.addEventListener("touchstart", function (e) {
         var t = e.touches[0];
-        startX = t.clientX; startY = t.clientY; tracking = true;
+        dragState = { mode: "close", startX: t.clientX, startY: t.clientY, lastX: t.clientX, tracking: true };
       }, { passive: true });
-      drawerPanel.addEventListener("touchmove", function (e) {
-        if (!tracking) return;
+
+      document.addEventListener("touchmove", function (e) {
+        if (!dragState || !dragState.tracking) return;
         var t = e.touches[0];
-        var dx = t.clientX - startX, dy = t.clientY - startY;
-        if (dx < -60 && Math.abs(dy) < 40) { closeDrawer(); tracking = false; }
+        var dx = t.clientX - dragState.startX;
+        var dy = t.clientY - dragState.startY;
+        if (Math.abs(dy) > 42 && Math.abs(dy) > Math.abs(dx)) {
+          dragState.tracking = false;
+          resetDrawerMotion();
+          if (dragState.mode === "open") closeDrawer();
+          dragState = null;
+          return;
+        }
+        dragState.lastX = t.clientX;
+        if (dragState.mode === "close") {
+          setDrawerProgress(1 + Math.min(0, dx) / CLOSE_DISTANCE);
+        } else {
+          setDrawerProgress(Math.max(0, dx) / OPEN_DISTANCE);
+        }
       }, { passive: true });
-      drawerPanel.addEventListener("touchend", function () { tracking = false; });
+
+      document.addEventListener("touchend", function () {
+        if (!dragState) return;
+        var dx = dragState.lastX - dragState.startX;
+        var shouldOpen = dragState.mode === "open" ? dx > OPEN_DISTANCE * 0.45 : dx > -CLOSE_DISTANCE * 0.45;
+        dragState = null;
+        resetDrawerMotion();
+        if (shouldOpen) openDrawer();
+        else closeDrawer();
+      });
     })();
 
     // Close drawer on any real nav link tap.
@@ -173,20 +224,9 @@
 
     // Login / Logout: reuse the existing auth modal + logout button if present
     // on this page (auth.js / auth-shared.js wire these ids up globally).
-    document.getElementById("mdw-login-btn") && document.getElementById("mdw-login-btn").addEventListener("click", function () {
-      closeDrawer();
-      var loginBtn = document.getElementById("btn-login-header");
-      loginBtn && loginBtn.click();
-    });
-    document.getElementById("mdw-logout-btn") && document.getElementById("mdw-logout-btn").addEventListener("click", function () {
-      closeDrawer();
-      var logoutBtn = document.getElementById("btn-logout");
-      logoutBtn && logoutBtn.click();
-    });
     document.getElementById("mdw-profile") && document.getElementById("mdw-profile").addEventListener("click", function () {
       closeDrawer();
-      var logoutBtn = document.getElementById("mdw-logout-btn");
-      if (logoutBtn && !logoutBtn.classList.contains("hidden")) {
+      if (document.body.classList.contains("mdw-signed-in")) {
         window.location.href = "/profile.html";
         return;
       }
@@ -202,8 +242,6 @@
       var subEl = document.getElementById("mdw-profile-sub");
       var avatarEl = document.getElementById("mdw-avatar");
       var badgeEl = document.getElementById("mdw-plan-badge");
-      var loginBtn = document.getElementById("mdw-login-btn");
-      var logoutBtn = document.getElementById("mdw-logout-btn");
       var user = session && session.user;
       if (user) {
         var fullName = (user.user_metadata && (user.user_metadata.full_name || user.user_metadata.name)) || "Member";
@@ -216,15 +254,13 @@
           if (plan) { badgeEl.textContent = plan; badgeEl.classList.remove("hidden"); }
           else badgeEl.classList.add("hidden");
         }
-        loginBtn && loginBtn.classList.add("hidden");
-        logoutBtn && logoutBtn.classList.remove("hidden");
+        document.body.classList.add("mdw-signed-in");
       } else {
         if (nameEl) nameEl.textContent = "Guest";
         if (subEl) subEl.textContent = "Sign in to save your charts";
         if (avatarEl) avatarEl.textContent = "U";
         badgeEl && badgeEl.classList.add("hidden");
-        loginBtn && loginBtn.classList.remove("hidden");
-        logoutBtn && logoutBtn.classList.add("hidden");
+        document.body.classList.remove("mdw-signed-in");
       }
     }
     document.addEventListener("astro:authChanged", function (e) { renderDrawerProfile(e.detail); });
@@ -242,6 +278,22 @@
       });
       observer.observe(resultTabsNav, { subtree: true, attributes: true, attributeFilter: ["class"] });
     }
+
+    (function markActiveDrawerLink() {
+      if (!drawerPanel) return;
+      var path = window.location.pathname || "/";
+      var activeSection = path.includes("consultation") ? "consultant" :
+        path.includes("astro-community") ? "community" :
+        path.includes("privacy-policy") ? "privacy" :
+        path.includes("refund-policy") ? "refund" :
+        path.includes("return-policy") ? "return" :
+        path.includes("about-contact") ? "contact" :
+        path.includes("about") ? "about" :
+        "home";
+      drawerPanel.querySelectorAll("[data-mdw-section]").forEach(function (link) {
+        link.classList.toggle("active", link.getAttribute("data-mdw-section") === activeSection);
+      });
+    })();
   }
 
   document.addEventListener("DOMContentLoaded", function () {

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { LogOut, Menu, MessageCircle, User, X } from 'lucide-react';
+import { LogOut, Menu, MessageCircle, User } from 'lucide-react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/useAuth';
 
@@ -33,7 +33,7 @@ const Layout: React.FC = () => {
   const isSignedIn = Boolean(session?.access_token);
   const role = session?.user?.role || 'user';
   const canOpenCommunity = role === 'admin' || role === 'astrologer_verified';
-  const appNavItems: NavItem[] = [
+  const desktopNavItems: NavItem[] = [
     { label: 'Home', to: '/index.html', external: true },
     { label: 'Consultant', to: '/consultation', external: true },
     { label: 'Payment', to: '/payment' },
@@ -42,7 +42,17 @@ const Layout: React.FC = () => {
     ...(canOpenCommunity ? [{ label: 'Astro Community', to: '/astro-community' }] : []),
     ...(role === 'admin' ? [{ label: 'Admin', to: '/admin' }] : []),
   ];
-  const navItems = appNavItems;
+  const mobileNavItems: NavItem[] = [
+    { label: 'Home', to: '/index.html', external: true },
+    { label: 'Consultant', to: '/consultation', external: true },
+    { label: 'Astro Community', to: '/astro-community' },
+    { label: 'Privacy Policy', to: '/privacy-policy.html', external: true },
+    { label: 'Refund Policy', to: '/refund-policy.html', external: true },
+    { label: 'Return Policy', to: '/return-policy.html', external: true },
+    { label: 'About', to: '/about.html', external: true },
+    { label: 'Contact Us', to: '/about-contact.html', external: true },
+    ...(role === 'admin' ? [{ label: 'Admin', to: '/admin' }] : []),
+  ];
   const policyItems = [
     { label: 'Return Policy', to: '/return-policy' },
     { label: 'Refund Policy', to: '/refund-policy' },
@@ -63,6 +73,11 @@ const Layout: React.FC = () => {
     setIsProfileOpen(false);
     setMobileNavOpen(false);
   }, [location.pathname]);
+
+  useEffect(() => {
+    document.body.classList.toggle('react-mobile-nav-lock', mobileNavOpen);
+    return () => document.body.classList.remove('react-mobile-nav-lock');
+  }, [mobileNavOpen]);
 
   const handleLogout = async () => {
     await signOut();
@@ -116,7 +131,7 @@ const Layout: React.FC = () => {
             </Link>
           </div>
           <div className="nav-links" id="desktop-navigation">
-            {navItems.map((item) => (
+            {desktopNavItems.map((item) => (
               item.external ? (
                 <a
                   key={item.to}
@@ -183,56 +198,72 @@ const Layout: React.FC = () => {
             <button
               type="button"
               className="nav-menu-toggle"
-              aria-label={mobileNavOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-label="Open navigation menu"
               aria-expanded={mobileNavOpen}
               aria-controls="mobile-navigation"
               onClick={() => setMobileNavOpen((open) => !open)}
             >
-              {mobileNavOpen ? <X size={20} /> : <Menu size={20} />}
+              <Menu size={20} />
             </button>
           </div>
         </nav>
       )}
 
       {!isCommunityWorkspace && mobileNavOpen && (
-        <div className="mobile-nav-panel" id="mobile-navigation">
-          {isSignedIn && (
+        <>
+          <button type="button" className="mobile-nav-scrim" aria-label="Close navigation menu" onClick={() => setMobileNavOpen(false)} />
+          <div className="mobile-nav-panel" id="mobile-navigation">
             <button
               type="button"
               className="mobile-nav-account"
               onClick={() => {
                 setMobileNavOpen(false);
-                setIsProfileOpen(true);
+                if (isSignedIn) window.location.href = '/profile.html';
+                else {
+                  setAuthMode('sign_in');
+                  setAuthOpen(true);
+                }
               }}
             >
               <span className="mobile-nav-account-avatar">{profileInitial}</span>
-              <span className="mobile-nav-account-text">{session?.user?.email || 'Signed in'}</span>
+              <span className="mobile-nav-account-copy">
+                <span className="mobile-nav-account-name">{isSignedIn ? session?.user?.email || 'Signed in' : 'Guest'}</span>
+                <span className="mobile-nav-account-text">{isSignedIn ? 'Open your profile' : 'Sign in to save your charts'}</span>
+              </span>
             </button>
-          )}
-          {navItems.map((item) => (
-            item.external ? (
-              <a
-                key={item.to}
-                href={item.to}
-                target={item.targetBlank ? '_blank' : undefined}
-                rel={item.targetBlank ? 'noreferrer' : undefined}
-                className={`mobile-nav-link ${location.pathname === item.to ? 'active' : ''}`}
-              >
-                {item.label}
-              </a>
-            ) : (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`mobile-nav-link ${location.pathname === item.to ? 'active' : ''}`}
-              >
-                {item.label}
-              </Link>
-            )
-          ))}
-        </div>
+            {mobileNavItems.map((item) => {
+              const isActive = item.to.includes('consultation')
+                ? location.pathname.includes('consultation')
+                : item.to.includes('astro-community')
+                  ? location.pathname.includes('astro-community')
+                  : location.pathname === item.to;
+              const className = `mobile-nav-link ${isActive ? 'active' : ''} ${item.label === 'Astro Community' ? 'mobile-nav-community' : ''}`;
+              return item.external ? (
+                <a
+                  key={item.to}
+                  href={item.to}
+                  target={item.targetBlank ? '_blank' : undefined}
+                  rel={item.targetBlank ? 'noreferrer' : undefined}
+                  className={className}
+                >
+                  {item.label}
+                  {item.label === 'Astro Community' && <span>(Astrologers Only)</span>}
+                </a>
+              ) : (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={className}
+                  onClick={() => setMobileNavOpen(false)}
+                >
+                  {item.label}
+                  {item.label === 'Astro Community' && <span>(Astrologers Only)</span>}
+                </Link>
+              );
+            })}
+          </div>
+        </>
       )}
-
       {/* Main Content Area */}
       <div
         className={isCommunityWorkspace ? 'community-layout-host' : isHome ? '' : 'app-content-shell'}

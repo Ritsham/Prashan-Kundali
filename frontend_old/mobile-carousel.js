@@ -27,9 +27,26 @@
   }
 
   MobileAstrologyCarousel.prototype.init = function () {
+    var hashIndex = this.indexFromHash();
+    if (hashIndex >= 0) {
+      this.currentIndex = hashIndex;
+    } else if (this.pageType === "kundali") {
+      var chartIndex = this.sections.findIndex(function (sec) { return sec.id === "lagna-chart"; });
+      if (chartIndex >= 0) this.currentIndex = chartIndex;
+    }
     this.buildMarkup();
     this.bindEvents();
     this.updateState(this.currentIndex, true);
+    var self = this;
+    setTimeout(function () {
+      self.updateState(self.currentIndex, true);
+    }, 350);
+  };
+
+  MobileAstrologyCarousel.prototype.indexFromHash = function () {
+    var hash = (global.location && global.location.hash || "").replace(/^#section-/, "");
+    if (!hash) return -1;
+    return this.sections.findIndex(function (sec) { return sec.id === hash; });
   };
 
   MobileAstrologyCarousel.prototype.buildMarkup = function () {
@@ -289,6 +306,48 @@
     var currentSec = this.sections[index];
     if (!currentSec) return;
 
+    this.sections.forEach(function (sec) {
+      if (!sec.element) return;
+      sec.element.classList.remove("hidden");
+      sec.element.style.display = "";
+    });
+
+    if (this.pageType === "kundali") {
+      var isKPSection = currentSec.id === "kp-tables";
+      document.body.classList.toggle("show-kp", isKPSection);
+      if (isKPSection) {
+        document.body.classList.remove("show-planetary");
+        var kpSection = currentSec.element && currentSec.element.querySelector("#kp-section");
+        if (kpSection) {
+          kpSection.classList.remove("hidden");
+          kpSection.style.setProperty("display", "block", "important");
+          kpSection.style.setProperty("visibility", "visible", "important");
+          [
+            ".kp-chart-panel",
+            ".kp-details-panel",
+            ".kp-significators-panel",
+            ".kp-cusps-panel",
+            ".table-wrap"
+          ].forEach(function (selector) {
+            kpSection.querySelectorAll(selector).forEach(function (node) {
+              node.style.setProperty("display", "block", "important");
+              node.style.setProperty("visibility", "visible", "important");
+            });
+          });
+        }
+      } else if (currentSec.id === "planet-positions") {
+        document.body.classList.add("show-planetary");
+      }
+    }
+
+    var chartCanvas = currentSec.element && currentSec.element.querySelector("#divisional-charts");
+    if (chartCanvas) {
+      var firstChart = chartCanvas.querySelector(".worksheet-item");
+      if (firstChart && !chartCanvas.querySelector(".worksheet-item.is-mobile-active")) {
+        firstChart.classList.add("is-mobile-active");
+      }
+    }
+
     if (this.track) {
       this.track.style.transform = "translateX(-" + (index * 100) + "%)";
     }
@@ -304,6 +363,13 @@
       if (idx === index) dot.classList.add("active");
       else dot.classList.remove("active");
     });
+
+    if (this.track) {
+      Array.prototype.forEach.call(this.track.children, function (slide, idx) {
+        if (idx === index) slide.classList.add("is-active");
+        else slide.classList.remove("is-active");
+      });
+    }
 
     var prevBtn = this.container.querySelector("#carousel-prev-btn");
     if (prevBtn) prevBtn.disabled = (index === 0);

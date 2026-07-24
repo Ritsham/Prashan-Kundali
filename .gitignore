@@ -11,6 +11,7 @@ ephemeris/
 .env
 .env.*
 !.env.example
+docs/ENVIRONMENT.md
 .vercel
 node_modules/
 public/frontend/

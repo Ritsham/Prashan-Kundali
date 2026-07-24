@@ -81,10 +81,10 @@ async def add_security_headers(request: Request, call_next):
 async def add_cache_control_headers(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/frontend_old/") and not path.endswith(".html"):
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    elif path.endswith(".html") or path == "/":
+    if path.endswith(".html") or path == "/" or path.endswith((".js", ".css")):
         response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    elif path.startswith("/frontend_old/") and not path.endswith(".html"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
 @app.middleware("http")

@@ -25,7 +25,9 @@
       })();
 
       try {
-        if (!window.location.hash && localStorage.getItem("kundali_active_chart_state_v2")) {
+        const hash = window.location.hash;
+        const shouldRestoreChart = !hash || !["#about-platform", "#pricing"].includes(hash);
+        if (shouldRestoreChart && localStorage.getItem("kundali_active_chart_state_v2")) {
           document.documentElement.classList.add("restoring-chart");
         }
       } catch (_error) {}
@@ -36,7 +38,7 @@
         visibility: hidden !important;
       }
     </style>
-    <link rel="stylesheet" href="./styles.css?v=15" />
+    <link rel="stylesheet" href="./styles.css?v=25" />
     <style>
       @media (min-width: 901px) {
         body.has-result,
@@ -540,6 +542,17 @@
                 rows="4"
                 placeholder="Ask the exact Prashna question"
               ></textarea>
+            </label>
+
+            <label id="question-time-field">
+              Time question came to mind
+              <input
+                id="question_time"
+                name="question_time"
+                type="time"
+                step="1"
+                autocomplete="off"
+              />
             </label>
 
             <label id="question-domain-field">
@@ -1653,7 +1666,7 @@
     </main>
 
     <script src="./saved-charts.js?v=1" defer></script>
-    <script type="module" src="./app.js?v=17" defer></script>
+    <script type="module" src="./app.js?v=21" defer></script>
 
     <!-- Floating Popups Section -->
     <div id="popup-astro-community" class="floating-popup popup-left">
@@ -2092,7 +2105,7 @@
     </script>
 
   <!-- ===== MOBILE NAV v3 & ASTROLOGY CAROUSEL ===== -->
-  <script src="mobile-carousel.js" defer></script>
-  <script src="mobile-nav.js?v=4" defer></script>
+  <script src="mobile-carousel.js?v=5" defer></script>
+  <script src="mobile-nav.js?v=5" defer></script>
 </body>
 </html>
