@@ -20,6 +20,7 @@
     this.sections = config.sections || []; // Array of { id, title, element }
     this.currentIndex = config.initialIndex || 0;
     this.onSlideChange = config.onSlideChange || null;
+    this.ignoreHash = !!config.ignoreHash;
 
     if (!this.container || this.sections.length === 0) return;
 
@@ -27,7 +28,7 @@
   }
 
   MobileAstrologyCarousel.prototype.init = function () {
-    var hashIndex = this.indexFromHash();
+    var hashIndex = this.ignoreHash ? -1 : this.indexFromHash();
     if (hashIndex >= 0) {
       this.currentIndex = hashIndex;
     } else if (this.pageType === "kundali") {
@@ -146,10 +147,12 @@
       '<div class="carousel-dots-wrap">' + dotsHtml + '</div>' +
       '<button type="button" id="carousel-next-btn" class="carousel-nav-btn next-btn" aria-label="Next slide">Next &rarr;</button>';
 
-    // Append to container
-    this.container.appendChild(headerControls);
-    this.container.appendChild(carouselWrap);
-    this.container.appendChild(navControls);
+    // Keep section navigation directly under the result title on mobile.
+    var resultHead = this.container.querySelector(".result-head");
+    var anchor = resultHead ? resultHead.nextSibling : this.container.firstChild;
+    this.container.insertBefore(headerControls, anchor);
+    this.container.insertBefore(carouselWrap, headerControls.nextSibling);
+    this.container.insertBefore(navControls, carouselWrap.nextSibling);
 
     document.body.appendChild(scrim);
     document.body.appendChild(drawer);
@@ -157,6 +160,7 @@
     this.track = carouselTrack;
     this.drawer = drawer;
     this.scrim = scrim;
+    this.container._mobileAstrologyCarousel = this;
   };
 
   MobileAstrologyCarousel.prototype.bindEvents = function () {
@@ -205,6 +209,7 @@
     var startX = 0, startY = 0, distX = 0, distY = 0, isSwiping = false;
 
     this.track.addEventListener("touchstart", function (e) {
+      if (self.pageType === "prashna") return;
       if (e.touches.length > 1) return;
       var touch = e.touches[0];
       startX = touch.clientX;
@@ -215,6 +220,7 @@
     }, { passive: true });
 
     this.track.addEventListener("touchmove", function (e) {
+      if (self.pageType === "prashna") return;
       if (!isSwiping) return;
       var touch = e.touches[0];
       distX = touch.clientX - startX;
@@ -222,6 +228,7 @@
     }, { passive: true });
 
     this.track.addEventListener("touchend", function () {
+      if (self.pageType === "prashna") return;
       if (!isSwiping) return;
       isSwiping = false;
       if (Math.abs(distX) > 40 && Math.abs(distY) < 60) {
@@ -303,6 +310,7 @@
   };
 
   MobileAstrologyCarousel.prototype.updateState = function (index, silent) {
+    var self = this;
     var currentSec = this.sections[index];
     if (!currentSec) return;
 
@@ -349,7 +357,11 @@
     }
 
     if (this.track) {
-      this.track.style.transform = "translateX(-" + (index * 100) + "%)";
+      if (this.pageType === "prashna") {
+        this.track.style.transform = "none";
+      } else {
+        this.track.style.transform = "translateX(-" + (index * 100) + "%)";
+      }
     }
 
     var titleEl = this.container.querySelector("#mobile-carousel-current-title");
@@ -366,8 +378,19 @@
 
     if (this.track) {
       Array.prototype.forEach.call(this.track.children, function (slide, idx) {
-        if (idx === index) slide.classList.add("is-active");
-        else slide.classList.remove("is-active");
+        if (idx === index) {
+          slide.classList.add("is-active");
+          if (self.pageType === "prashna") {
+            slide.style.setProperty("display", "block", "important");
+            slide.style.setProperty("visibility", "visible", "important");
+          }
+        } else {
+          slide.classList.remove("is-active");
+          if (self.pageType === "prashna") {
+            slide.style.setProperty("display", "none", "important");
+            slide.style.setProperty("visibility", "hidden", "important");
+          }
+        }
       });
     }
 
@@ -404,8 +427,8 @@
       window.dispatchEvent(new Event("resize"));
     }, 250);
 
-    if (!silent && typeof this.onSlideChange === "function") {
-      this.onSlideChange(index, currentSec);
+    if (typeof this.onSlideChange === "function") {
+      this.onSlideChange(index, currentSec, { silent: !!silent });
     }
   };
 

@@ -59,6 +59,24 @@ def _consultation_amount_inr() -> float:
     return float(validate_price_amount(get_settings().consultation_price_inr))
 
 
+def _matchmaking_amount_inr() -> float:
+    return float(validate_price_amount(get_settings().matchmaking_price_inr))
+
+
+def _is_matchmaking_payment(payload: Any, case: Optional[dict[str, Any]] = None) -> bool:
+    purpose = str(getattr(payload, "purpose", "") or "").strip().lower()
+    if purpose in {"matchmaking", "matchmaking_consultation", "match_consultation"}:
+        return True
+    if getattr(payload, "match_request_id", None):
+        return True
+    if not case:
+        return False
+    return any(
+        str(case.get(key) or "").strip().lower() == "matchmaking"
+        for key in ("source_type", "chart_type", "consultation_mode")
+    ) or str(case.get("topic") or "").strip().lower() == "marriage match"
+
+
 def _case_owner_matches(case: dict[str, Any], auth: Optional[AuthState], requester_email: Optional[str]) -> bool:
     if not case:
         return False
@@ -125,12 +143,13 @@ async def create_razorpay_order(
     if not payload.consultation_case_id:
         raise HTTPException(status_code=400, detail="consultation_case_id is required")
 
+    case = None
     if payload.consultation_case_id:
         case = await get_consultation_case(payload.consultation_case_id, db)
         if not _case_owner_matches(case or {}, auth, payload.requester_email):
             raise HTTPException(status_code=403, detail="Not allowed to create payment for this consultation case")
 
-    amount_inr = _consultation_amount_inr()
+    amount_inr = _matchmaking_amount_inr() if _is_matchmaking_payment(payload, case) else _consultation_amount_inr()
     amount_paise = int(round(amount_inr * 100))
     if amount_paise < 100:
         raise HTTPException(status_code=400, detail="Amount must be at least 100 paise")
@@ -184,13 +203,16 @@ async def create_standard_checkout_order(
     db = _service_db_or_500()
     user_id = auth.user_id if auth else None
 
+    case = None
     if payload.consultation_case_id:
         case = await get_consultation_case(payload.consultation_case_id, db)
         if not _case_owner_matches(case or {}, auth, payload.requester_email):
             raise HTTPException(status_code=403, detail="Not allowed to create payment for this consultation case")
 
     amount_paise = payload.amount
-    if payload.purpose == "consultation" or payload.consultation_case_id:
+    if _is_matchmaking_payment(payload, case):
+        amount_paise = int(round(_matchmaking_amount_inr() * 100))
+    elif payload.purpose == "consultation" or payload.consultation_case_id:
         amount_paise = int(round(_consultation_amount_inr() * 100))
     if amount_paise < 100:
         raise HTTPException(status_code=400, detail="Amount must be at least 100 paise")

@@ -66,22 +66,17 @@ async def calculate_prashna_chart(
     dashas_task = asyncio.to_thread(vimshottari_from_moon, moon["longitude"], asked_at_utc)
     divisional_task = asyncio.to_thread(build_all_divisional_charts, planets, lagna)
     
-    transit_task = None
-    if chart_type == "lagna":
-        transit_task = asyncio.to_thread(
-            calculate_transit,
-            swe=swe,
-            latitude=latitude,
-            longitude=longitude,
-            timezone_name=tz_name,
-            natal_lagna_sign_index=lagna["sign_index"],
-        )
-        tasks = [kp_data_task, dashas_task, divisional_task, transit_task]
-        kp_data, dashas, divisional_charts, transit = await asyncio.gather(*tasks)
-    else:
-        transit = None
-        tasks = [kp_data_task, dashas_task, divisional_task]
-        kp_data, dashas, divisional_charts = await asyncio.gather(*tasks)
+    transit_task = asyncio.to_thread(
+        calculate_transit,
+        swe=swe,
+        latitude=latitude,
+        longitude=longitude,
+        timezone_name=tz_name,
+        natal_lagna_sign_index=lagna["sign_index"],
+        house_reference="birth_lagna" if chart_type == "lagna" else "prashna_lagna",
+    )
+    tasks = [kp_data_task, dashas_task, divisional_task, transit_task]
+    kp_data, dashas, divisional_charts, transit = await asyncio.gather(*tasks)
 
     chart = {
         "meta": {
@@ -125,6 +120,7 @@ def calculate_transit(
     longitude: float,
     timezone_name: str,
     natal_lagna_sign_index: int,
+    house_reference: str = "birth_lagna",
 ) -> dict:
     transit_utc = datetime.now(timezone.utc)
     jd = julian_day(swe, transit_utc)
@@ -139,7 +135,7 @@ def calculate_transit(
         "calculated_at_local": transit_local.isoformat(),
         "timezone": timezone_name,
         "ayanamsa_degrees": round(ayanamsa, 6),
-        "house_reference": "birth_lagna",
+        "house_reference": house_reference,
         "lagna": transit_lagna,
         "planets": planets,
         "chart": build_d1(planets, transit_lagna),

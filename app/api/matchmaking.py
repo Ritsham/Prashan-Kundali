@@ -5,7 +5,9 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from pydantic import Field, field_validator
 
+from app.config import get_settings
 from app.core.rate_limiter import booking_limiter, llm_limiter
+from app.core.consultation_lifecycle import validate_price_amount
 from app.dependencies import AuthState, RequireAdmin, get_current_user
 from app.schemas.consultation_case import AstrologySnapshot, ConsultationCasePayload
 from app.services.job_status import create_job, get_job
@@ -52,6 +54,10 @@ class MatchConsultationRequest(StrictRequestModel):
 
 class AdminMatchStatusUpdate(StrictRequestModel):
     status: str = Field(pattern="^(calculated|consultation_booked|completed|rejected|cancelled)$")
+
+
+def _matchmaking_price() -> float:
+    return float(validate_price_amount(get_settings().matchmaking_price_inr))
 
 
 @router.post("/matchmaking/requests", dependencies=[Depends(llm_limiter)])
@@ -235,8 +241,8 @@ def build_matchmaking_booking_payload(
         "topic": "Marriage",
         "question": full_question,
         "preferred_time": preferred_slot,
-        "payment_status": "paid",
-        "quoted_price": 299.0,
+        "payment_status": "pending",
+        "quoted_price": _matchmaking_price(),
     }
 
 
@@ -280,8 +286,8 @@ def build_matchmaking_case_payload(
             "additional_message": question,
             "preferred_time": preferred_slot,
             "consultation_mode": "matchmaking_consultation",
-            "payment_status": "paid",
-            "quoted_price": 299.0,
+            "payment_status": "pending",
+            "quoted_price": _matchmaking_price(),
         },
         "astrology_snapshot": {
             "chart_type": "matchmaking",

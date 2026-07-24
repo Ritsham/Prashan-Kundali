@@ -42,9 +42,12 @@ async function loadConsultantProfile() {
 }
 
 function renderRequestStatus(request, message, slotAvailable = true) {
-  resultStatus.textContent = request.status;
-  resultStatus.className = `status-pill ${request.status}`;
+  const paymentStatus = request.payment_status || request.consultation?.payment_status || "not_paid";
+  const status = paymentStatus === "paid" ? "paid" : request.status;
+  resultStatus.textContent = status;
+  resultStatus.className = `status-pill ${status}`;
   resultTitle.textContent = slotAvailable ? "Your request is active" : "Added to waiting queue";
+  if (paymentStatus === "paid") resultTitle.textContent = "Payment confirmed";
   if (request.status === "accepted") resultTitle.textContent = "Your request is accepted";
   if (request.status === "in_progress") resultTitle.textContent = "Consultation is in progress";
   if (request.status === "completed") resultTitle.textContent = "Consultation completed";
@@ -52,10 +55,21 @@ function renderRequestStatus(request, message, slotAvailable = true) {
   if (request.status === "cancelled") resultTitle.textContent = "Request cancelled";
   if (request.status === "waiting_queue") resultTitle.textContent = "Added to waiting queue";
 
-  resultMessage.textContent = message || statusMessageFor(request.status);
+  resultMessage.textContent = message || statusMessageFor(paymentStatus === "paid" ? "paid" : request.status);
+  const paidContactBox = paymentStatus === "paid" ? `
+    <div class="paid-contact-box">
+      <strong>Payment Successful</strong>
+      <div>Your payment has been received. Our team will guide you with the next steps.</div>
+      <div><strong>Manager:</strong> <a href="tel:9142327953">9142327953</a></div>
+      <div><strong>WhatsApp:</strong> <a href="https://wa.me/919142327953" target="_blank" rel="noopener">Message the manager</a></div>
+      <div>Recommended: share your payment screenshot and a short message on WhatsApp. If you do not receive an answer within 2 days of payment, contact us by the email and mobile number provided on the Contact Us page.</div>
+    </div>
+  ` : "";
   resultDetails.innerHTML = `
+    ${paidContactBox}
     <div><strong>Request ID:</strong> ${escapeHtml(request.id)}</div>
     <div><strong>Request status:</strong> ${escapeHtml(request.status)}</div>
+    <div><strong>Payment status:</strong> ${escapeHtml(paymentStatus)}</div>
     <div><strong>Queue number:</strong> ${request.queue_number ? escapeHtml(request.queue_number) : "Active slot"}</div>
     <div><strong>Submitted question:</strong> ${escapeHtml(request.question)}</div>
     <div><strong>Consultant name:</strong> Rupesh Kumar</div>
@@ -66,6 +80,9 @@ function renderRequestStatus(request, message, slotAvailable = true) {
 }
 
 function statusMessageFor(status) {
+  if (status === "paid") {
+    return "Your payment is confirmed. Please contact the manager on WhatsApp for next steps.";
+  }
   if (status === "waiting_queue") {
     return "Currently, all consultation slots are full. You are in the waiting queue and will be notified when your turn comes.";
   }

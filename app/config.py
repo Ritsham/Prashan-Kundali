@@ -128,6 +128,7 @@ class Settings:
     razorpay_key_secret: str
     razorpay_webhook_secret: str
     consultation_price_inr: str
+    matchmaking_price_inr: str
     require_llm_in_production: bool
 
     @property
@@ -199,12 +200,17 @@ class Settings:
                 errors.append("RAZORPAY_KEY_SECRET is required when Razorpay/payments are enabled.")
             if self.is_production and is_placeholder_value("RAZORPAY_WEBHOOK_SECRET", self.razorpay_webhook_secret):
                 errors.append("RAZORPAY_WEBHOOK_SECRET is required in production when Razorpay/payments are enabled.")
-            try:
-                price = Decimal(str(self.consultation_price_inr))
+            for env_name, raw_price in (
+                ("CONSULTATION_PRICE_INR", self.consultation_price_inr),
+                ("MATCHMAKING_PRICE_INR", self.matchmaking_price_inr),
+            ):
+                try:
+                    price = Decimal(str(raw_price))
+                except (InvalidOperation, TypeError):
+                    errors.append(f"{env_name} must be a valid decimal amount.")
+                    continue
                 if price <= 0 or price > Decimal("100000") or abs(price.as_tuple().exponent) > 2:
-                    errors.append("CONSULTATION_PRICE_INR must be a positive amount up to 100000 with at most two decimals.")
-            except (InvalidOperation, TypeError):
-                errors.append("CONSULTATION_PRICE_INR must be a valid decimal amount.")
+                    errors.append(f"{env_name} must be a positive amount up to 100000 with at most two decimals.")
 
         if errors:
             raise SettingsError("Invalid environment configuration:\n- " + "\n- ".join(errors))
@@ -257,6 +263,7 @@ def _build_settings() -> Settings:
         razorpay_key_secret=_env("RAZORPAY_KEY_SECRET"),
         razorpay_webhook_secret=_env("RAZORPAY_WEBHOOK_SECRET"),
         consultation_price_inr=_env("CONSULTATION_PRICE_INR", "199.00"),
+        matchmaking_price_inr=_env("MATCHMAKING_PRICE_INR", "299.00"),
         require_llm_in_production=_bool_env("REQUIRE_LLM_IN_PRODUCTION", True),
     )
 

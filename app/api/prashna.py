@@ -86,6 +86,10 @@ async def create_prashna(
     sync: bool = Query(default=False),
 ) -> dict:
     try:
+        settings = get_settings()
+        if not settings.is_production:
+            sync = True
+
         if not sync:
             job = create_job(
                 "prashna_generation",
@@ -162,7 +166,7 @@ async def create_prashna(
         if interpretation:
             answer = None
             try:
-                llm_url = get_settings().llm_engine_url
+                llm_url = settings.llm_engine_url
                 async with httpx.AsyncClient(timeout=httpx.Timeout(25.0, connect=5.0)) as client:
                     llm_resp = await client.post(
                         f"{llm_url}/generate/sync",

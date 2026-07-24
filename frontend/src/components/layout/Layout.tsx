@@ -32,14 +32,13 @@ const Layout: React.FC = () => {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
   const isSignedIn = Boolean(session?.access_token);
   const role = session?.user?.role || 'user';
-  const canOpenCommunity = role === 'admin' || role === 'astrologer_verified';
   const desktopNavItems: NavItem[] = [
     { label: 'Home', to: '/index.html', external: true },
     { label: 'Consultant', to: '/consultation', external: true },
     { label: 'Payment', to: '/payment' },
     { label: 'Pricing', to: '/index.html#pricing', external: true },
     { label: 'About', to: '/about.html', external: true },
-    ...(canOpenCommunity ? [{ label: 'Astro Community', to: '/astro-community' }] : []),
+    { label: 'Astro Community', to: '/astro-community' },
     ...(role === 'admin' ? [{ label: 'Admin', to: '/admin' }] : []),
   ];
   const mobileNavItems: NavItem[] = [
